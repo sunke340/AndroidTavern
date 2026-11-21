@@ -126,6 +126,19 @@ class OpenAiCompatibleClientTest {
     }
 
     @Test
+    fun `连接直接关闭（没有 DONE）也要给出 Completed`() = runBlocking {
+        // 有些 provider 只把数据推完就关连接，既不给 finish_reason 也不给 [DONE]。
+        // 不补一条终止事件的话，上层会永远停在"生成中"。
+        server.enqueue(sse("""{"choices":[{"delta":{"content":"半句"},"index":0}]}"""))
+
+        val events = client.stream(request()).toList()
+
+        assertEquals("半句", events.filterIsInstance<StreamEvent.Delta>().joinToString("") { it.text })
+        assertEquals(1, events.filterIsInstance<StreamEvent.Completed>().size)
+        Unit
+    }
+
+    @Test
     fun `取消：只取一条就返回，不会挂住`() = runBlocking {
         server.enqueue(sse("""{"choices":[{"delta":{"content":"a"},"index":0}]}"""))
 

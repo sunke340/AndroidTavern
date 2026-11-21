@@ -96,8 +96,11 @@ public class OpenAiCompatibleClient private constructor(
             }
 
             override fun onClosed(eventSource: EventSource) {
+                // 有些 provider 既不发 finish_reason 也不发 [DONE]，直接关连接。
+                // 这里必须补一条 Completed，否则上层永远等不到终止事件，界面卡在"生成中"。
                 if (!finished) {
                     finished = true
+                    trySend(StreamEvent.Completed(null))
                     close()
                 }
             }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,8 +41,13 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("AndroidTavern M0", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = viewModel::toggleSettings) {
-                Text(if (state.showSettings) "收起设置" else "设置")
+            Row {
+                TextButton(onClick = viewModel::toggleRequest) {
+                    Text(if (state.showRequest) "收起请求" else "看请求")
+                }
+                TextButton(onClick = viewModel::toggleSettings) {
+                    Text(if (state.showSettings) "收起设置" else "设置")
+                }
             }
         }
 
@@ -56,7 +63,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 OutlinedTextField(
                     value = state.apiKey,
                     onValueChange = viewModel::onApiKeyChange,
-                    label = { Text("API Key（只存在内存里）") },
+                    label = { Text("API Key（只在内存里）") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
@@ -68,10 +75,36 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Seraphina（真卡）", "Synthetic（占位卡）").forEach { name ->
+                        FilterChip(
+                            selected = state.cardName == name,
+                            onClick = { viewModel.selectCard(name) },
+                            label = { Text(name) },
+                        )
+                    }
+                }
             }
         }
 
         Text(state.status, style = MaterialTheme.typography.labelSmall)
+
+        if (state.showRequest) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 260.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(10.dp),
+                ) {
+                    Text("这次实际发出去的内容", style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        state.requestPreview.ifEmpty { "（还没发过）" },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
