@@ -77,6 +77,8 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 模块职责、包结构、依赖规则 | [docs/dev/layout.md](docs/dev/layout.md) |
 | 夹具怎么录、长什么样 | [docs/dev/fixtures.md](docs/dev/fixtures.md) |
 | 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
+| 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
+| 当前这一轮在做什么 | [docs/plan-overnight.md](docs/plan-overnight.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
 | 本机能力边界（实测） | [docs/environment.md](docs/environment.md) |
 
