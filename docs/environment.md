@@ -81,8 +81,11 @@ org.gradle.configureondemand=true
 
 如果坚持本机出包：可行，但要接受"首次 20–40 分钟、偶发 OOM、增量构建也要 1–3 分钟"。
 
-## 5. 需要你拍板的事
+## 5. 已定
 
-1. **出包方式**：CI（推荐）还是本机硬扛？
-2. **真机调试**：要不要配 Tailscale + 无线 adb？（需要你在手机上装 Tailscale）
-3. **GitHub 仓库**：新建 public/private？有 `gh` 或 token 吗？（CI 方案的前提）
+- **出包方式：GitHub Actions CI**（2026-11-21 定）。本机只做「写码 + 纯逻辑单测」，不装 Android SDK。
+- GitHub 仓库地址待提供；CI 需要 `.github/workflows/build.yml` + `assembleDebug` + artifact 上传。
+- 真机调试暂不配（Tailscale）。上真机时先走「CI 出包 → 下载 APK → 直接装」。
+
+不装 SDK 的代价：本机跑不了 `./gradlew`，所以单测若也要在本机跑，仍需一个 JDK（约 190MB，禁 root 可装）；
+或者干脆把单测也交给 CI——但那样"改一行等两秒"的回路就没了。建议保留本机 JDK，不装 SDK。
