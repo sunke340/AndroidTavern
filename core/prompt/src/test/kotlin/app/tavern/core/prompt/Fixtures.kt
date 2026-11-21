@@ -17,6 +17,13 @@ internal data class RecordedRequest(
 )
 
 internal object Fixtures {
+    /** 从 `fixtures/cards/` 读一张真卡（PNG 里的 chara/ccv3 chunk）。 */
+    fun card(fileName: String): app.tavern.core.card.CharacterCard {
+        val file = repoRoot.resolve("fixtures/cards/$fileName")
+        require(Files.exists(file)) { "卡片不存在：$file" }
+        return app.tavern.core.card.PngCard.read(Files.readAllBytes(file))
+    }
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val repoRoot: Path = Path.of(
         System.getProperty("repo.root") ?: error("缺少 repo.root 系统属性，检查 core/prompt/build.gradle.kts 的 tasks.test"),

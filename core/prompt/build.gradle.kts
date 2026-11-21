@@ -1,5 +1,7 @@
 plugins {
     kotlin("jvm")
+    // 公开 API 里出现了 :core:card-format 的类型，所以要用 api 而不是 implementation
+    `java-library`
 }
 
 kotlin {
@@ -8,6 +10,8 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:card-format"))
+
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")

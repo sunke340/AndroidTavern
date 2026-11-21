@@ -1,5 +1,7 @@
 package app.tavern.core.prompt
 
+import app.tavern.core.card.CharacterCard
+
 /**
  * 提示词拼装。产出必须与夹具逐字相等——夹具是原版 1.19.1 实际发给 API 的请求体。
  *
@@ -14,7 +16,7 @@ package app.tavern.core.prompt
  */
 public class PromptBuilder {
     public fun build(
-        character: CharacterDefinition,
+        character: CharacterCard,
         userName: String,
         history: List<ChatMessage> = emptyList(),
     ): List<ChatMessage> {
@@ -38,7 +40,7 @@ public class PromptBuilder {
             messages += system(substitute(formatted, character.name, userName))
         }
 
-        val examples = ExampleDialogue.parse(character.mesExample, character.name, userName)
+        val examples = ExampleDialogue.parse(character.messageExample, character.name, userName)
         if (examples.isNotEmpty()) {
             messages += system(SillyTavernDefaults.EXAMPLE_CHAT)
             examples.forEach { messages += system(it) }

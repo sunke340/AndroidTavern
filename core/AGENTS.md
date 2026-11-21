@@ -8,7 +8,7 @@
 
 | 模块 | 职责 | 入口类 |
 |---|---|---|
-| `card-format` | PNG `tEXt` chunk、charx、V2/V3 映射 | `CharacterCard` |
+| `card-format` | PNG `tEXt` chunk、charx、V2/V3 映射 | `PngCard` / `CharacterCard` |
 | `chat-format` | JSONL 流式读写 | `ChatFile` |
 | `prompt` | 提示词组装：顺序、宏、names_behavior、裁剪 | `PromptBuilder` |
 | `lorebook` | 激活：关键字、selectiveLogic、递归、概率、预算 | `LorebookScanner` |
@@ -23,5 +23,6 @@
 - 不读文件、不碰设置、不做生命周期——这些是 `data` 和 `feature` 的事。
 - 顺序、裁剪、递归这类行为只能以原版实发请求为准；不要从单处源码推导（原版分三处组装）。
 - 新增依赖前先问：标准库能不能做？已有依赖能不能做？
+- 模块间依赖只能单向：现在只有 `:core:prompt → :core:card-format`。
 
 测试：`tools/gradle-local.sh :core:<模块>:test`（本机；CI 用 `./gradlew test`）

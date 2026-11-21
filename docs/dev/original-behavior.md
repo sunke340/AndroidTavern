@@ -51,6 +51,25 @@
 
 ---
 
+## 角色卡文件
+
+### 读卡时 `ccv3` 优先
+
+PNG 里可能同时有 `tEXt` 的 `chara`（V2）和 `ccv3`（V3），**读的时候 ccv3 优先**，没有再退回 chara。
+证据：`src/character-card-parser.js` 的 `read()`；Seraphina 卡两个都有，我们按 ccv3 读出 `spec=chara_card_v3`。
+
+### 写卡时两个都写
+
+原版写回时先删掉已有的 `chara`/`ccv3`，然后**同一份 JSON 写两遍**：一份 `chara`，
+一份把 `spec`/`spec_version` 改成 `chara_card_v3`/`3.0` 写进 `ccv3`，都插在 `IEND` 之前。
+这样老客户端（只认 chara）和新客户端（只认 ccv3）都能读。
+证据：同文件 `write()`；我们的 `PngCard.write` 与 `PngCardTest` 复刻了这一点。
+
+### 只动 tEXt，不动图
+
+写回时除 `tEXt`（`chara`/`ccv3`）以外的 chunk 一律原样搬运；IDAT 被重编码就意味着画质/体积受损。
+证据：`PngCardTest` 断言重写前后 IDAT 逐字节相同。
+
 ## 待验证（不要照抄进实现）
 
 - `names_behavior = CONTENT` 时的完整前缀规则（要单录一份夹具）。

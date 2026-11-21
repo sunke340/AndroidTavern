@@ -11,7 +11,7 @@ settings.gradle.kts        include(":app", ":core:card-format", ...)
 
 app/                       :app                    Compose 入口、Navigation、DI 装配
 core/
-  card-format/             :core:card-format       纯 JVM  PNG/charx/V2-V3 编解码
+  card-format/             :core:card-format       纯 JVM  PNG/charx/V2-V3 编解码（入口 PngCard / CharacterCard）
   chat-format/             :core:chat-format       纯 JVM  JSONL 读写（流式）
   prompt/                  :core:prompt            纯 JVM  提示词组装（兼容性心脏）
   lorebook/                :core:lorebook          纯 JVM  世界书激活算法
@@ -34,7 +34,8 @@ data/                      :data                    Room、DataStore、SAF、Key
 
 - 单向，**反向一律禁止**：`core` 不知道 `data`，`data` 不知道 `feature`。
 - `:feature:*` 之间**不许互相依赖**。需要共享 UI 组件 → 建 `:feature:common`，经 ADR 批准。
-- `:core:*` 之间可以互依，但保持无环；`card-format` 与 `chat-format` 不依赖 `prompt`。
+- `:core:*` 之间可以互依，但保持无环。当前唯一的内部依赖是 `:core:prompt → :core:card-format`
+  （提示词要读卡里的字段）。方向不能反：卡片格式不该知道"提示词"这回事。
 
 ## 3. 每个模块内部
 

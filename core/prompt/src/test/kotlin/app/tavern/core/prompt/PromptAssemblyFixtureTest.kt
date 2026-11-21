@@ -1,5 +1,6 @@
 package app.tavern.core.prompt
 
+import app.tavern.core.card.CharacterCard
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -41,7 +42,7 @@ class PromptAssemblyFixtureTest {
 
     @Test
     fun `空字段不会产生空消息`() {
-        val bare = CharacterDefinition(name = "Synthetic")
+        val bare = CharacterCard.fromJson("""{"name":"Synthetic"}""")
         val actual = PromptBuilder().build(bare, "User")
 
         // 只有 main + new-chat 标记，没有任何空 system 消息
@@ -51,7 +52,7 @@ class PromptAssemblyFixtureTest {
 
     @Test
     fun `示例对话的名字前缀被剥掉且独立成条`() {
-        val parsed = ExampleDialogue.parse(definition.mesExample, "Synthetic", "User")
+        val parsed = ExampleDialogue.parse(syntheticCard.messageExample, "Synthetic", "User")
 
         assertEquals(listOf("EXAMPLE-DELTA-user line", "EXAMPLE-DELTA-char line"), parsed)
     }
