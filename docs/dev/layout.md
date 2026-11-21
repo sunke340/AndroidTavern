@@ -77,7 +77,7 @@ ChatUseCase.kt       会话级编排（生成、swipe、重试），依赖 repos
 
 | 东西 | 位置 | 规则 |
 |---|---|---|
-| 面向 agent/贡献者的规则 | `AGENTS.md`（根，唯一入口） | 只放"每次都要遵守"的，细节链到 docs |
+| 面向 agent/贡献者的规则 | 根 `AGENTS.md` + 各目录 `AGENTS.md` | 根放"每次都要遵守的"；模块目录放该模块独有的规则，就近优先、按需加载 |
 | 方向与里程碑 | `docs/plan.md` | 少改；改了就说明方向变了 |
 | 进度 | `docs/compat-matrix.md` | **每个 PR 都可能改**；只改状态列 |
 | 决策 | `docs/adr/NNNN-*.md` | **只增不改**；推翻旧决策要写新 ADR 并标注 supersedes |

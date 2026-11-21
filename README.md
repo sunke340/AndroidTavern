@@ -16,7 +16,7 @@
 ## 仓库地图
 
 ```
-AGENTS.md      规则（agent 与人的共同入口）
+AGENTS.md      规则入口（agent 与人的共同入口）
 app/           Compose 入口、导航、DI
 core/          纯 JVM 兼容内核（禁 android.*）
 feature/       Compose 界面
@@ -26,6 +26,8 @@ tools/         开发期脚本（夹具、检查、引导）
 fixtures/      golden 夹具（兼容性的物证）
 vendor/        原版 SillyTavern，只读参考，不入库
 ```
+
+每个代码目录里有一份自己的 `AGENTS.md`，写该目录独有的规则（`core/` 禁 Android 依赖、`feature/` 禁直接摸数据、`data/` 的存储约定、`app/` 只管装配）。
 
 ## 状态
 
