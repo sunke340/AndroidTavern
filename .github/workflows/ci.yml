@@ -120,16 +120,29 @@ jobs:
           set -o pipefail
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
 
+      # 冒烟：把"签的是不是那把固定钥匙""versionCode 有没有递增"打进日志。
+      # 工具路径在各版本 runner 上会变，找不到就降级成 warning，不要让诊断步骤挡住出包。
       - name: 核对签名与 versionCode（冒烟）
         if: steps.probe.outputs.ready == 'true' && success()
         run: |
           APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
-          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
-          echo "== badging =="
-          "$AAPT2" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission: name='android.permission.INTERNET'" || true
-          echo "== 签名 =="
-          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
-          "$apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256|Signer #1 certificate DN"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          AAPT2=$(ls "$SDK"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+
+          if [ -z "$AAPT2" ]; then
+            echo "::warning::找不到 aapt2（SDK=$SDK），跳过 badging 核对"
+          else
+            echo "== badging =="
+            "$AAPT2" dump badging "$APK" | grep -E "^package:|sdkVersion:|targetSdkVersion:|uses-permission: name='android.permission.INTERNET'" || true
+          fi
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "::warning::找不到 apksigner，跳过签名核对"
+          else
+            echo "== 签名 =="
+            "$APKSIGNER" verify --print-certs "$APK" | grep -E "Signer #1 certificate (SHA-256 digest|DN)" || true
+          fi
 
       - name: 上传 APK（需登录才能下）
         if: steps.probe.outputs.ready == 'true' && success()
