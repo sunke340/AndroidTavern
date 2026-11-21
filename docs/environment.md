@@ -110,3 +110,25 @@ org.gradle.configureondemand=true
 - 两次录制结果**逐字节一致**，见 [dev/fixtures.md](dev/fixtures.md)。
 
 结论修正：这台机器不仅"能写文档 + 跑纯 JVM 单测"，还能**跑原版 ST 并生成兼容性基准**。仍然不能做的只有：Android 构建（内存）和模拟器（无 KVM）。
+
+## 7. Git 访问方式（已切换为 SSH 部署密钥）
+
+| 项 | 现状 |
+|---|---|
+| remote | `git@github.com:sunke340/AndroidTavern.git` |
+| 凭据 | `.secrets/deploy_key`（私钥，600，gitignore），权限仅限本仓库 |
+| host key | `.secrets/known_hosts`，已与 `api.github.com/meta` 公布的清单核对后钉死 |
+| 旧 PAT | 已撤销（用 `/user` 验证返回 401），`git-credentials` 已删 |
+
+**关于 443 端口**：`ssh.github.com:443` 实测可用（同一把部署密钥认证成功，host key 与 github.com 相同），
+但本机 **22 端口直连正常**（握手 ~3s，推送成功），所以默认不切。只有在这类情况下才需要临时改：
+
+```bash
+# 22 超时 / 被拒时的一行逃生口
+git config core.sshCommand "ssh -i $PWD/.secrets/deploy_key -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=$PWD/.secrets/known_hosts -p 443"
+git remote set-url origin git@ssh.github.com:sunke340/AndroidTavern.git
+```
+
+不默认切的原因：443 需要额外维护 `[ssh.github.com]:443` 的 known_hosts 条目，且一旦出问题就有两种
+访问路径要排查。**22 能通就别加变量。**
