@@ -2,7 +2,7 @@
 
 原生安卓「酒馆」：Kotlin + Compose 重写 SillyTavern 1.19.1，兼容其**文件格式**与**提示词行为**。
 单 APK、单进程、无服务端、无 WebView（[ADR 0002](docs/adr/0002-single-process.md)）。
-**M0 收尾中**：`:core:{model,card-format,prompt,ai}` 有 20 个单测；`:app` 已能装到真机、真连 provider、流式显示。
+**M0 已完成**：`:core:{model,card-format,prompt,ai}` 20 个单测；`:app` 已在真机真连 provider 跑通（见 docs/dev/device-verification.md）。下一步 M1。
 
 ## TL;DR — 违反即改动无效
 
