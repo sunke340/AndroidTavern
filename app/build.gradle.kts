@@ -4,6 +4,18 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// 覆盖安装必须"就地升级"，不能要求卸载重装。所以 debug 包也用**仓库里固定的**签名：
+// CI 每次重新生成母版 debug keystore 会导致签名不一致（installer 直接拒装）。
+// keystore/tavern-debug.jks 是公开的开发用密钥（口令写在 keystore/README.md），只用于 debug。
+val debugKeystore = rootProject.file("keystore/tavern-debug.jks")
+
+// versionCode 必须单调递增，否则覆盖安装会被判定为降级而被拒。
+// CI 传 github.run_number（全局单调），本机不给就用 1。
+val ciVersionCode = providers.environmentVariable("TAVERN_VERSION_CODE").orNull?.toIntOrNull()
+// 让人一眼看出手机上装的是哪一次构建。
+val buildId = providers.environmentVariable("TAVERN_BUILD_ID").orNull
+    ?: "local-${System.currentTimeMillis() / 1000}"
+
 android {
     namespace = "app.tavern"
     compileSdk = 35
@@ -12,12 +24,23 @@ android {
         applicationId = "app.tavern"
         minSdk = 26 // java.util.Base64 / PNG chunk 读写都要求 26+
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1-m0"
+        versionCode = ciVersionCode ?: 1
+        versionName = "0.0.1-m1"
+        buildConfigField("String", "BUILD_ID", "\"$buildId\"")
+    }
+
+    signingConfigs {
+        create("debugFixed") {
+            storeFile = debugKeystore
+            storePassword = "taverndebug"
+            keyAlias = "tavern-debug"
+            keyPassword = "taverndebug"
+        }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -32,6 +55,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debugFixed")
         }
     }
 

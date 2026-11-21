@@ -57,13 +57,20 @@ curl -L -C - -o /tmp/tavern.apk \
 - 旧的 PAT 已撤销（`/user` 返回 401 验证过），**不要再要 PAT**
 - `.secrets/` 已 gitignore
 
-## 5. 签名与安装
+## 5. 签名、版本号与回退点
 
-debug 包的签名见 `app/build.gradle.kts` 的 `signingConfigs.debug`（debug keystore 随仓库走，公开仓库里放调试签名只影响"调试版互相覆盖"，不影响正式版）。
+- keystore 固定在 `keystore/tavern-debug.jks`（**故意入库**，口令与指纹见 [keystore/README.md](../../keystore/README.md)）。CI 与本地都用它，所以可以互相覆盖安装。
+- `versionCode` 由 CI 注入 `TAVERN_VERSION_CODE=${{ github.run_number }}`；本机不传则回落成 1。手机会拒绝 versionCode 更低（或签名不同）的包，所以**不要手工指定比上次更小的值**。
+- `buildId`：CI 注入 commit sha，本机是时间戳；App 标题下面显示前 7 位，用来确认手机上装的是哪个包。
+- 出正式版要另建 release keystore，口令走 GitHub Secrets，不要复用这个。
 
-- 同一 keystore → 可以覆盖安装，不用卸载
-- CI 注入递增的 `versionCode`，避免"降级"提示
-- 真要出正式版时另建 release keystore，走 secrets
+### 打回退点
+
+```bash
+git tag apk-m0 && git push origin apk-m0   # 触发 tag 构建，产物钉在 releases/tag/apk-m0
+```
+
+tag 构建不会覆盖 `apk-latest`，资产长期有效；出问题时回装那一版即可。
 
 ## 6. 常见故障的排查顺序
 

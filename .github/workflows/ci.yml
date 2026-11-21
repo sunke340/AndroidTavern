@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # 打 apk-* tag = 钉一个可回退的 APK（例：apk-m0）。见下方「回退点」步骤。
+    tags: ['apk-*']
   pull_request:
   workflow_dispatch:
 
@@ -96,6 +98,7 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "::notice::app 模块还没建（M0 之前），跳过出包"
           fi
+          echo "stamp=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         if: steps.probe.outputs.ready == 'true'
@@ -106,11 +109,27 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         if: steps.probe.outputs.ready == 'true'
 
+      # versionCode 必须单调递增，否则手机会把新包当降级直接拒装。
+      # run_number 在整个仓库生命周期内只增不减，正好当 versionCode 用。
       - name: 出包
         if: steps.probe.outputs.ready == 'true'
+        env:
+          TAVERN_VERSION_CODE: ${{ github.run_number }}
+          TAVERN_BUILD_ID: ${{ github.sha }}
         run: |
           set -o pipefail
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: 核对签名与 versionCode（冒烟）
+        if: steps.probe.outputs.ready == 'true' && success()
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+          echo "== badging =="
+          "$AAPT2" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission: name='android.permission.INTERNET'" || true
+          echo "== 签名 =="
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          "$apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256|Signer #1 certificate DN"
 
       - name: 上传 APK（需登录才能下）
         if: steps.probe.outputs.ready == 'true' && success()
@@ -123,14 +142,36 @@ jobs:
 
       # artifact 下载要登录；release 资产公开可下，手机浏览器点一下就能装。
       - name: 公开 APK（apk-latest release）
-        if: steps.probe.outputs.ready == 'true' && success()
+        if: steps.probe.outputs.ready == 'true' && success() && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
           name: 最新 debug APK
           prerelease: true
           files: app/build/outputs/apk/debug/*.apk
-          body: 每次 main 构建成功后覆盖。手机浏览器打开本页即可下载安装。
+          body: |
+            每次 main 构建成功后覆盖。手机浏览器打开本页即可下载安装。
+
+            - commit：`${{ github.sha }}`
+            - 构建：${{ steps.probe.outputs.stamp }}
+            - 运行：[${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      # 回退点：打 apk-* tag 就把它构建出来钉成一个独立 release（资产不会被后续构建覆盖）。
+      # 例：git tag apk-m0 && git push origin apk-m0
+      - name: 公开 APK（回退点 tag）
+        if: steps.probe.outputs.ready == 'true' && success() && startsWith(github.ref, 'refs/tags/apk-')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 回退点 ${{ github.ref_name }}
+          prerelease: true
+          files: app/build/outputs/apk/debug/*.apk
+          body: |
+            钉死的 APK（后续构建不会覆盖这里）。出问题时回装这一版。
+
+            - commit：`${{ github.sha }}`
+            - 构建：${{ steps.probe.outputs.stamp }}
+            - 签名：固定，可直接覆盖安装
 
       - name: 失败时公开日志
         if: failure()

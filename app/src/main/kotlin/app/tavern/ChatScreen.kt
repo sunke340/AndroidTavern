@@ -40,7 +40,18 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("AndroidTavern M0", style = MaterialTheme.typography.titleMedium)
+            Column {
+                Text("AndroidTavern M0", style = MaterialTheme.typography.titleMedium)
+                // 带 build id：出问题时能一眼确认手机上装的是不是最新那个包
+                Text(
+                    if (BuildConfig.BUILD_ID.startsWith("local-")) {
+                        "local:" + BuildConfig.BUILD_ID.takeLast(7)
+                    } else {
+                        BuildConfig.BUILD_ID.take(7)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
             Row {
                 TextButton(onClick = viewModel::toggleRequest) {
                     Text(if (state.showRequest) "收起请求" else "看请求")
