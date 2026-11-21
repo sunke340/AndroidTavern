@@ -1,26 +1,32 @@
 package app.tavern
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -33,6 +39,11 @@ import app.tavern.core.model.ChatRole
 fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // SAF：只挑图片，但真正的判定在 CardStore（读得出 chara/ccv3 才算角色卡）
+    val pickCard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importCard(uri)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -41,7 +52,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("AndroidTavern M0", style = MaterialTheme.typography.titleMedium)
+                Text("AndroidTavern M1", style = MaterialTheme.typography.titleMedium)
                 // 带 build id：出问题时能一眼确认手机上装的是不是最新那个包
                 Text(
                     if (BuildConfig.BUILD_ID.startsWith("local-")) {
@@ -86,14 +97,37 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Seraphina（真卡）", "Synthetic（占位卡）").forEach { name ->
-                        FilterChip(
-                            selected = state.cardName == name,
-                            onClick = { viewModel.selectCard(name) },
-                            label = { Text(name) },
+
+                Spacer(Modifier.width(4.dp))
+                Text("卡片（点一下切换）", style = MaterialTheme.typography.labelMedium)
+                state.cards.forEach { ref ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.selectCard(ref.id) }
+                            .padding(vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = state.cardId == ref.id,
+                            onClick = { viewModel.selectCard(ref.id) },
                         )
+                        Text(
+                            text = ref.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (ref.imported) {
+                            Spacer(Modifier.width(6.dp))
+                            Text("导入", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
+                }
+                OutlinedButton(
+                    onClick = { pickCard.launch(arrayOf("image/*")) },
+                    enabled = !state.importing,
+                ) {
+                    Text(if (state.importing) "导入中…" else "导入 PNG 角色卡")
                 }
             }
         }

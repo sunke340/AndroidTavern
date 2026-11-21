@@ -66,6 +66,7 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(project(":data"))
     implementation(project(":core:card-format"))
     implementation(project(":core:prompt"))
     implementation(project(":core:ai"))

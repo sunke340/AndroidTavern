@@ -1,6 +1,7 @@
 package app.tavern
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.tavern.core.ai.ChatRequest
@@ -11,22 +12,26 @@ import app.tavern.core.card.PngCard
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.core.prompt.PromptBuilder
+import app.tavern.data.cards.CardRef
+import app.tavern.data.cards.ImportResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * M0 的真机验证用 ViewModel：随包带的卡 → 拼提示词 → 真发一次请求 → 流式显示。
+ * 聊天页的 ViewModel。
  *
- * 两个刻意加的设计，都是为了"在手机上就能自证链路通不通"：
- * - 可以切换随包的卡（占位卡 / 原版默认卡），对比模型的表现；
- * - 能把**这次实际发出去的消息**原样打出来，不用去猜卡片注入有没有生效。
+ * 两个刻意保留的设计，都是为了"在手机上就能自证链路通不通"：
+ * - 能把**这次实际发出去的消息**原样打出来，不用猜卡片注入有没有生效；
+ * - 表层状态里带上卡名、消息条数，读卡失败会直接说出来而不是默默空白。
  *
- * 刻意简陋的地方：Key 只在内存、没有持久化、没有 swipe、没有多会话——那是 M1/M3。
+ * 刻意简陋的地方：Key 只在内存、没有多会话、没有 swipe——那是后续里程碑。
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -39,16 +44,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val streamingText: String = "",
         val isStreaming: Boolean = false,
         val status: String = "",
+        val cards: List<CardRef> = emptyList(),
+        val cardId: String? = null,
         val cardName: String = "",
         val requestPreview: String = "",
         val showSettings: Boolean = true,
         val showRequest: Boolean = false,
+        val importing: Boolean = false,
     )
 
-    private val bundledCards = linkedMapOf(
-        "Seraphina（真卡）" to "cards/seraphina.png",
-        "Synthetic（占位卡）" to "cards/synthetic.png",
-    )
+    private val cardRepository = AppGraph.cards(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -57,24 +62,70 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var job: Job? = null
 
     init {
-        selectCard("Seraphina（真卡）")
+        viewModelScope.launch { reloadCards(select = null) }
     }
 
-    fun selectCard(name: String) {
-        val asset = bundledCards[name] ?: return
-        card = runCatching {
-            getApplication<Application>().assets.open(asset).use { PngCard.read(it.readBytes()) }
-        }.getOrNull()
+    /** 重新枚举卡；`select` 为空时优先回到上次选中的那张，再不行就第一张。 */
+    private suspend fun reloadCards(select: String?) {
+        val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+        _state.update { it.copy(cards = cards) }
 
+        val target = select ?: cardRepository.selectedId ?: cards.firstOrNull()?.id
+        if (target == null) {
+            _state.update { it.copy(status = "没有可用的卡：assets/cards 下至少要有一张") }
+            return
+        }
+        applyCard(target)
+    }
+
+    fun selectCard(id: String) {
+        viewModelScope.launch { applyCard(id) }
+    }
+
+    private suspend fun applyCard(id: String) {
+        val loaded = withContext(Dispatchers.IO) {
+            val bytes = cardRepository.load(id) ?: return@withContext null
+            runCatching { PngCard.read(bytes) }.getOrNull()
+        }
+        if (loaded == null) {
+            _state.update { it.copy(status = "读卡失败：$id（文件损坏或不是角色卡）") }
+            return
+        }
+
+        card = loaded
+        cardRepository.selectedId = id
         _state.update {
             it.copy(
-                cardName = name,
+                cardId = id,
+                cardName = loaded.name.ifBlank { id },
                 transcript = emptyList(),
                 streamingText = "",
-                status = card?.let { c ->
-                    "卡片 $name：描述 ${c.description.length} 字 / 示例 ${c.messageExample.length} 字 / 世界书 ${if (c.characterBook != null) "有（未实现）" else "无"}"
-                } ?: "读卡失败：$asset",
+                status = "卡：${loaded.name.ifBlank { id }}｜描述 ${loaded.description.length} 字" +
+                    "／示例 ${loaded.messageExample.length} 字" +
+                    "／世界书 ${if (loaded.characterBook != null) "有（未实现）" else "无"}",
             )
+        }
+    }
+
+    /** 系统文件选择器返回后调用。导入成功后立刻切到这张卡。 */
+    fun importCard(uri: Uri) {
+        if (_state.value.importing) return
+        _state.update { it.copy(importing = true, status = "正在导入…") }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { cardRepository.import(uri) }
+            _state.update { it.copy(importing = false) }
+
+            when (result) {
+                is ImportResult.Ok -> {
+                    val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+                    _state.update { it.copy(cards = cards, status = "已导入：${result.card.name}") }
+                    applyCard(result.card.id)
+                }
+
+                is ImportResult.Failed ->
+                    _state.update { it.copy(status = "导入失败：${result.reason}") }
+            }
         }
     }
 
@@ -85,10 +136,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
 
+    /**
+     * 停止生成。已收到的半截内容**保留**成一条消息——原版就是这样，
+     * 用户按停止往往是因为"已经够用了，别再烧 token"。
+     */
     fun stop() {
+        val partial = _state.value.streamingText
         job?.cancel()
         job = null
-        _state.update { it.copy(isStreaming = false, status = "已停止") }
+        _state.update {
+            it.copy(
+                transcript = if (partial.isBlank()) it.transcript
+                else it.transcript + ChatMessage(ChatRole.Assistant, partial),
+                streamingText = "",
+                isStreaming = false,
+                status = if (partial.isBlank()) "已停止" else "已停止（保留了已收到的 ${partial.length} 字）",
+            )
+        }
     }
 
     fun send() {
