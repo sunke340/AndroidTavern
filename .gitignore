@@ -5,3 +5,7 @@ local.properties
 *.apk
 *.iml
 .idea/
+
+# 本地密钥（token / keystore），绝不入库
+.secrets/
+local.properties

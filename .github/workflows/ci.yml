@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: 铁律检查（零依赖）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: core 不得依赖 Android
+        run: bash tools/check-core-purity.sh
+
+      - name: 文档相对链接必须可解析
+        run: |
+          python3 - <<'PY'
+          import re, os, glob, sys
+          bad = []
+          for f in glob.glob('**/*.md', recursive=True):
+              if f.startswith('vendor/'):
+                  continue
+              base = os.path.dirname(f)
+              for m in re.finditer(r'\]\(([^)]+)\)', open(f, encoding='utf-8').read()):
+                  t = m.group(1).split('#')[0]
+                  if not t or t.startswith(('http', 'mailto:')):
+                      continue
+                  if not os.path.exists(os.path.normpath(os.path.join(base, t))):
+                      bad.append(f'{f} -> {t}')
+          print('\n'.join(bad) if bad else 'OK')
+          sys.exit(1 if bad else 0)
+          PY
+
+  build:
+    name: 单测 + 出包
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 判断 Gradle 工程是否已存在
+        id: probe
+        run: |
+          if [ -f ./gradlew ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::还没有 Gradle 工程（M0 之前），跳过构建"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.probe.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.probe.outputs.ready == 'true'
+
+      - name: 纯 JVM 单测
+        if: steps.probe.outputs.ready == 'true'
+        run: ./gradlew test --stacktrace
+
+      - name: 出 debug APK
+        if: steps.probe.outputs.ready == 'true'
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: 上传 APK
+        if: steps.probe.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 14
