@@ -321,17 +321,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     refreshSessions()
                 }
-                _state.update {
-                    it.copy(
-                        transcript = if (text.isEmpty()) {
-                            it.transcript
-                        } else {
-                            it.transcript + ChatMessage(ChatRole.Assistant, text)
-                        },
-                        streamingText = "",
-                        isStreaming = false,
-                        status = status,
-                    )
+                _state.update { current ->
+                    // 用户可能已经切到别的会话：那就只收尾全局状态，别把消息塞进新会话
+                    if (current.sessionId != sessionId) {
+                        current.copy(streamingText = "", isStreaming = false, status = status)
+                    } else {
+                        current.copy(
+                            transcript = if (text.isEmpty()) {
+                                current.transcript
+                            } else {
+                                current.transcript + ChatMessage(ChatRole.Assistant, text)
+                            },
+                            streamingText = "",
+                            isStreaming = false,
+                            status = status,
+                        )
+                    }
                 }
             }
 
@@ -340,14 +345,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) {
                     userMessageId?.let { runCatching { chatRepository.deleteMessage(it) } }
                 }
-                _state.update {
-                    it.copy(
-                        transcript = it.transcript.dropLast(1),
-                        streamingText = "",
-                        isStreaming = false,
-                        input = snapshot.input,
-                        status = message,
-                    )
+                _state.update { current ->
+                    if (current.sessionId != sessionId) {
+                        current.copy(streamingText = "", isStreaming = false, status = message)
+                    } else {
+                        current.copy(
+                            transcript = current.transcript.dropLast(1),
+                            streamingText = "",
+                            isStreaming = false,
+                            input = snapshot.input,
+                            status = message,
+                        )
+                    }
                 }
             }
 
