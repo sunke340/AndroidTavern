@@ -16,7 +16,7 @@
 | P0-2 | 角色卡导入：V2/V3 JSON、charx(zip) | ⬜ | fixture:P0-2-json, P0-2-charx | `src/charx.js`、`src/types/spec-v2.d.ts` |
 | P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ⬜ | fixture:P0-3-roundtrip | 同上 |
 | P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ⬜ | fixture:P0-4-request | `public/scripts/openai.js` |
-| P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（已录，实现未写） | `public/script.js`、`PromptManager.js` |
+| P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt；`main` 与 new-chat 标记已逐字断言，定义/历史/其余宏未写 | `public/script.js`、`PromptManager.js` |
 | P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | ⬜ | 手工 + fixture:P0-6-swipes | `public/script.js` |
 | P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | ⬜ | fixture:P0-7-jsonl | `src/endpoints/chats.js` |
 | P0-8 | 角色卡库（头像、标签、搜索、分组） | ⬜ | 手工 | `src/endpoints/characters.js` |

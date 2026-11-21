@@ -132,3 +132,31 @@ git remote set-url origin git@ssh.github.com:sunke340/AndroidTavern.git
 
 不默认切的原因：443 需要额外维护 `[ssh.github.com]:443` 的 known_hosts 条目，且一旦出问题就有两种
 访问路径要排查。**22 能通就别加变量。**
+
+## 8. 本机工具链（已装好，2026-11-22）
+
+| 东西 | 位置 | 来源 |
+|---|---|---|
+| JDK 17 (Temurin 17.0.21+9) | `.toolchain/jdk-17.0.21+9/` | 清华 Adoptium 镜像（GitHub Release 直连卡死） |
+| Gradle 8.11.1 | `.toolchain/gradle-8.11.1/` | 腾讯 gradle 镜像 |
+| Gradle 用户目录 | `.toolchain/gradle-home/` | 因为 `~/.gradle` 不可写（沙箱） |
+
+用法：
+
+```bash
+tools/gradle-local.sh :core:prompt:test
+```
+
+第二个跑的耗时 **2.2 秒**（daemon + 增量），首次编译 ~100 秒。
+
+三个坑（脚本/文档里都已处理）：
+
+1. **`~/.gradle` 不可写** → Gradle 初始化 native 服务时就挂（`Failed to load native library 'libnative-platform.so'`）。
+   必须 `GRADLE_USER_HOME` 指到工作区内。
+2. **`services.gradle.org` 在本机拉不动**（307 到 GitHub Release 后 0 字节）→ `gradle wrapper` 任务会因为
+   "Test of distribution url failed" 直接失败。解法：用腾讯镜像 URL 生成 wrapper，再把
+   `gradle-wrapper.properties` 改回官方 URL（CI 在 GHA 网络里下载正常），本机则绕开 wrapper 直接调发行版。
+3. **`unzip` 不存在** → 用 `python3 -m zipfile` 或 `jar xf` 解压。
+
+为什么 wrapper 和本机脚本并存：`./gradlew` 是给 CI 和别人克隆用的（标准、可复现）；本机的
+`tools/gradle-local.sh` 只解决"这台机器连不上 Gradle 官方下载"。两者跑的是同一个 8.11.1。

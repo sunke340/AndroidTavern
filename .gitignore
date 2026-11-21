@@ -9,3 +9,6 @@ local.properties
 # 本地密钥（token / keystore），绝不入库
 .secrets/
 local.properties
+
+# 本地工具链（JDK / Gradle）
+.toolchain/

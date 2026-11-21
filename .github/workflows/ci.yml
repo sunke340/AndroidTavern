@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: core 不得依赖 Android
         run: bash tools/check-core-purity.sh
 
@@ -41,41 +42,49 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-  build:
-    name: 单测 + 出包
+  jvm-tests:
+    name: 纯 JVM 单测（兼容性断言）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: 判断 Gradle 工程是否已存在
-        id: probe
-        run: |
-          if [ -f ./gradlew ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::还没有 Gradle 工程（M0 之前），跳过构建"
-          fi
-
       - uses: actions/setup-java@v4
-        if: steps.probe.outputs.ready == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.probe.outputs.ready == 'true'
 
-      - name: 纯 JVM 单测
-        if: steps.probe.outputs.ready == 'true'
+      - name: 单测
         run: ./gradlew test --stacktrace
 
-      - name: 出 debug APK
-        if: steps.probe.outputs.ready == 'true'
+      - name: 测试报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/**'
+          retention-days: 7
+
+  android-build:
+    name: 出 debug APK
+    runs-on: ubuntu-latest
+    # M0 建出 app 模块之前这里不会跑——避免"还没有 Android 工程却报红"
+    if: ${{ hashFiles('app/build.gradle.kts') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 出包
         run: ./gradlew assembleDebug --stacktrace
 
       - name: 上传 APK
-        if: steps.probe.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
