@@ -69,22 +69,36 @@ jobs:
   android-build:
     name: 出 debug APK
     runs-on: ubuntu-latest
-    # M0 建出 app 模块之前这里不会跑——避免"还没有 Android 工程却报红"
-    if: ${{ hashFiles('app/build.gradle.kts') != '' }}
+    # M0 建出 app 模块之前这里只做一次探测并跳过——避免"还没有 Android 工程却报红"。
+    # 注意：hashFiles() 在 job 级 if 里不可用（GitHub 会判 "Invalid workflow file"），只能放进 step。
     steps:
       - uses: actions/checkout@v4
 
+      - name: 探测 app 模块
+        id: probe
+        run: |
+          if [ -f app/build.gradle.kts ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::app 模块还没建（M0 之前），跳过出包"
+          fi
+
       - uses: actions/setup-java@v4
+        if: steps.probe.outputs.ready == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.probe.outputs.ready == 'true'
 
       - name: 出包
+        if: steps.probe.outputs.ready == 'true'
         run: ./gradlew assembleDebug --stacktrace
 
       - name: 上传 APK
+        if: steps.probe.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
