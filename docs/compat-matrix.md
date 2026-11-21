@@ -18,8 +18,16 @@
 | P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ✅ | 单测 + [真机验证](dev/device-verification.md)：真连 provider，回复为卡内角色设定 | `public/scripts/openai.js` |
 | P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（9 条）/ P0-5-prompt-history（12 条，多轮）逐字相等；names_behavior 仅覆盖默认值 DEFAULT；世界书注入与预算裁剪未做 | `public/script.js`、`PromptManager.js` |
 | P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | ⬜ | 手工 + fixture:P0-6-swipes | `public/script.js` |
-| P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | ⬜ | fixture:P0-7-jsonl | `src/endpoints/chats.js` |
+| P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | 🟨 | fixture:P0-7-jsonl（原版录制的真实聊天：逐字节往返 + swipes + 坏行容错）；App 内运行时持久化走 SQLite，未做导入导出 UI | `src/endpoints/chats.js` |
 | P0-8 | 角色卡库（头像、标签、搜索、分组） | 🟨 | 手工：卡列表 + 切换 + 记住上次选择已做；头像/标签/搜索/分组未做 | `src/endpoints/characters.js` |
+
+## M1 · 本地可用性（不是原版兼容项，但"能用"必须靠它）
+
+| ID | 功能 | 状态 | 验收 | 备注 |
+|---|---|---|---|---|
+| M1-1 | 从手机导入 PNG 卡 + 卡列表 + 记住上次选择 | 🟨 | 手工：设置 → 导入 PNG 角色卡 → 选一张 → 能聊；杀进程重开仍记得 | 非角色卡会被拒绝并说明原因 |
+| M1-2 | 会话与消息持久化（SQLite，ADR 0003） | 🟨 | 手工：聊三轮 → 杀进程 → 重开，记录还在 | 流式半截只在内存，完成/停止才落库 |
+| M1-3 | 会话列表：新建 / 切换 / 删除 | 🟨 | 手工：新建两个会话各说一句，来回切换内容不串；删掉当前会话会落到下一个 | 删会话连带删消息（外键级联） |
 
 ## P1 · 决定"像不像一个真酒馆"
 

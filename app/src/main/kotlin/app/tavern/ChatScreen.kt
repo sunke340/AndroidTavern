@@ -64,11 +64,56 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 )
             }
             Row {
-                TextButton(onClick = viewModel::toggleRequest) {
-                    Text(if (state.showRequest) "收起请求" else "看请求")
-                }
+                TextButton(onClick = viewModel::toggleSessions) { Text("会话") }
+                TextButton(onClick = viewModel::toggleRequest) { Text("请求") }
                 TextButton(onClick = viewModel::toggleSettings) {
-                    Text(if (state.showSettings) "收起设置" else "设置")
+                    Text(if (state.showSettings) "收设置" else "设置")
+                }
+            }
+        }
+
+        if (state.showSessions) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("会话（点一行就切过去）", style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = viewModel::newSession) { Text("新建") }
+                    }
+                    if (state.sessions.isEmpty()) {
+                        Text("还没有会话", style = MaterialTheme.typography.bodySmall)
+                    }
+                    state.sessions.forEach { session ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.openSession(session.id) }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (state.sessionId == session.id) "●" else "○",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(session.title, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "${session.cardName}｜${session.messageCount} 条",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                            TextButton(onClick = { viewModel.deleteSession(session.id) }) { Text("删") }
+                        }
+                    }
                 }
             }
         }

@@ -28,7 +28,7 @@ class CardStore(context: Context) : CardRepository {
         seedBundledCards()
     }
 
-    /** 随包的卡（`assets/cards/*.png`）在首次启动/升级后补进私有目录，之后就和导入卡一样对待。 */
+    /** 随包的卡（`assets/cards/` 下的 PNG）在首次启动/升级后补进私有目录，之后就和导入卡一样对待。 */
     private fun seedBundledCards() {
         val seeded = prefs.getStringSet(KEY_SEEDED, emptySet()).orEmpty().toMutableSet()
         val assets = runCatching { appContext.assets.list(CARDS_DIR)?.toList().orEmpty() }

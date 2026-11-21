@@ -25,6 +25,11 @@ jobs:
       - name: core 不得依赖 Android
         run: bash tools/check-core-purity.sh
 
+      # Kotlin 块注释可嵌套：注释里写 `cards/*.png` 会吞掉后面整个文件，
+      # 报错却在 EOF，极难定位。真实踩过一次。
+      - name: Kotlin 块注释不得嵌套/未闭合
+        run: bash tools/check-kotlin-comments.sh
+
       - name: 文档相对链接必须可解析
         run: |
           python3 - <<'PY'

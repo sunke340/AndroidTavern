@@ -80,7 +80,8 @@ tag 构建不会覆盖 `apk-latest`，资产长期有效；出问题时回装那
 4. **`:app` 报 `Cannot access class X`**：某个 `core` 模块把第三方类型暴露在公开 API 里，但依赖写成了 `implementation`。改成 `api`。
 5. **本机 `./gradlew test` 报 `Failed to apply plugin 'com.android.application'`**：正常，本机没 SDK，用 `tools/test-core.sh`。
 6. **Gradle 起不来，`libnative-platform.so`**：`GRADLE_USER_HOME` 指到了不可写目录。用 `tools/gradle-local.sh`。
-7. **`gradle wrapper` 卡在 "Test of distribution url failed"**：`services.gradle.org` 本机不通，用镜像生成再改回官方 URL。
+7. **`Unclosed comment` + 一串莫名其妙的 `Unresolved reference`**：Kotlin 块注释可嵌套，注释里写了 `/*`（比如 `` `assets/cards/*.png` ``）会把后面的代码一起吞掉。`tools/check-kotlin-comments.sh` 守这条。
+8. **`gradle wrapper` 卡在 "Test of distribution url failed"**：`services.gradle.org` 本机不通，用镜像生成再改回官方 URL。
 
 ## 7. 交付
 

@@ -14,6 +14,7 @@ import app.tavern.core.model.ChatRole
 import app.tavern.core.prompt.PromptBuilder
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
+import app.tavern.data.chat.ChatSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,15 +24,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * 聊天页的 ViewModel。
  *
- * 两个刻意保留的设计，都是为了"在手机上就能自证链路通不通"：
- * - 能把**这次实际发出去的消息**原样打出来，不用猜卡片注入有没有生效；
- * - 表层状态里带上卡名、消息条数，读卡失败会直接说出来而不是默默空白。
+ * 刻意保留的"自证"设计：能把**这次实际发出去的消息**原样打出来，不用猜卡片注入有没有生效；
+ * 状态栏会直说读卡失败、写库失败，而不是默默空白。
  *
- * 刻意简陋的地方：Key 只在内存、没有多会话、没有 swipe——那是后续里程碑。
+ * 持久化策略（见 ADR 0003）：会话与消息都在 SQLite 里，**DB 是唯一真相**；
+ * 流式过程中只有内存里的半截文本，收到完成/停止才落库。
+ *
+ * 还没做的：Key 持久化（只在内存）、swipe 切换 UI、世界书。
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -47,13 +54,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val cards: List<CardRef> = emptyList(),
         val cardId: String? = null,
         val cardName: String = "",
+        val sessions: List<ChatSession> = emptyList(),
+        val sessionId: String? = null,
         val requestPreview: String = "",
         val showSettings: Boolean = true,
         val showRequest: Boolean = false,
+        val showSessions: Boolean = false,
         val importing: Boolean = false,
     )
 
     private val cardRepository = AppGraph.cards(application)
+    private val chatRepository = AppGraph.chats(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -62,52 +73,52 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var job: Job? = null
 
     init {
-        viewModelScope.launch { reloadCards(select = null) }
-    }
+        viewModelScope.launch {
+            val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+            _state.update { it.copy(cards = cards) }
 
-    /** 重新枚举卡；`select` 为空时优先回到上次选中的那张，再不行就第一张。 */
-    private suspend fun reloadCards(select: String?) {
-        val cards = withContext(Dispatchers.IO) { cardRepository.list() }
-        _state.update { it.copy(cards = cards) }
+            val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
+            _state.update { it.copy(sessions = sessions) }
 
-        val target = select ?: cardRepository.selectedId ?: cards.firstOrNull()?.id
-        if (target == null) {
-            _state.update { it.copy(status = "没有可用的卡：assets/cards 下至少要有一张") }
-            return
+            // 冷启动直接回到最近一次会话（标题里带卡名与时间，一眼能认出来）
+            val latest = sessions.firstOrNull()
+            if (latest != null) {
+                openSessionInternal(latest.id)
+                return@launch
+            }
+
+            val firstCard = cards.firstOrNull()
+            if (firstCard == null) {
+                _state.update { it.copy(status = "没有可用的卡：assets/cards 下至少要有一张") }
+                return@launch
+            }
+            startNewSession(firstCard.id, firstCard.name)
         }
-        applyCard(target)
     }
+
+    // ---- 卡 ----------------------------------------------------------------
 
     fun selectCard(id: String) {
-        viewModelScope.launch { applyCard(id) }
-    }
+        viewModelScope.launch {
+            val loaded = loadCard(id)
+            if (loaded == null) {
+                _state.update { it.copy(status = "读卡失败：$id（文件损坏或不是角色卡）") }
+                return@launch
+            }
+            card = loaded
+            cardRepository.selectedId = id
 
-    private suspend fun applyCard(id: String) {
-        val loaded = withContext(Dispatchers.IO) {
-            val bytes = cardRepository.load(id) ?: return@withContext null
-            runCatching { PngCard.read(bytes) }.getOrNull()
-        }
-        if (loaded == null) {
-            _state.update { it.copy(status = "读卡失败：$id（文件损坏或不是角色卡）") }
-            return
-        }
-
-        card = loaded
-        cardRepository.selectedId = id
-        _state.update {
-            it.copy(
-                cardId = id,
-                cardName = loaded.name.ifBlank { id },
-                transcript = emptyList(),
-                streamingText = "",
-                status = "卡：${loaded.name.ifBlank { id }}｜描述 ${loaded.description.length} 字" +
-                    "／示例 ${loaded.messageExample.length} 字" +
-                    "／世界书 ${if (loaded.characterBook != null) "有（未实现）" else "无"}",
-            )
+            // 切卡 = 切到这张卡最近的会话；没有就新建（原版切角色也是这个行为）
+            val recent = withContext(Dispatchers.IO) { chatRepository.sessions() }
+                .firstOrNull { it.cardId == id }
+            if (recent != null) {
+                openSessionInternal(recent.id)
+            } else {
+                startNewSession(id, loaded.name.ifBlank { id })
+            }
         }
     }
 
-    /** 系统文件选择器返回后调用。导入成功后立刻切到这张卡。 */
     fun importCard(uri: Uri) {
         if (_state.value.importing) return
         _state.update { it.copy(importing = true, status = "正在导入…") }
@@ -120,7 +131,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 is ImportResult.Ok -> {
                     val cards = withContext(Dispatchers.IO) { cardRepository.list() }
                     _state.update { it.copy(cards = cards, status = "已导入：${result.card.name}") }
-                    applyCard(result.card.id)
+                    selectCard(result.card.id)
                 }
 
                 is ImportResult.Failed ->
@@ -128,6 +139,102 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    private suspend fun loadCard(id: String): CharacterCard? = withContext(Dispatchers.IO) {
+        val bytes = cardRepository.load(id) ?: return@withContext null
+        runCatching { PngCard.read(bytes) }.getOrNull()
+    }
+
+    // ---- 会话 --------------------------------------------------------------
+
+    fun toggleSessions() = _state.update { it.copy(showSessions = !it.showSessions) }
+
+    fun newSession() {
+        val snapshot = _state.value
+        val cardId = snapshot.cardId
+        val cardName = snapshot.cardName
+        if (cardId == null) {
+            _state.update { it.copy(status = "还没有卡，先选一张卡") }
+            return
+        }
+        viewModelScope.launch { startNewSession(cardId, cardName) }
+    }
+
+    fun openSession(id: String) {
+        viewModelScope.launch { openSessionInternal(id) }
+    }
+
+    fun deleteSession(id: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { chatRepository.deleteSession(id) }
+            val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
+            _state.update { it.copy(sessions = sessions) }
+
+            if (_state.value.sessionId != id) return@launch
+
+            val next = sessions.firstOrNull()
+            if (next != null) {
+                openSessionInternal(next.id)
+            } else {
+                val cardId = _state.value.cardId
+                if (cardId != null) {
+                    startNewSession(cardId, _state.value.cardName)
+                } else {
+                    _state.update { it.copy(sessionId = null, transcript = emptyList(), status = "会话已删除") }
+                }
+            }
+        }
+    }
+
+    private suspend fun startNewSession(cardId: String, cardName: String) {
+        val title = "$cardName ${stamp()}"
+        val session = withContext(Dispatchers.IO) {
+            chatRepository.createSession(cardId = cardId, cardName = cardName, title = title)
+        }
+        refreshSessions()
+        openSessionInternal(session.id)
+    }
+
+    private suspend fun openSessionInternal(id: String) {
+        val session = withContext(Dispatchers.IO) {
+            chatRepository.sessions().firstOrNull { it.id == id }
+        } ?: run {
+            _state.update { it.copy(status = "会话已不存在：$id") }
+            return
+        }
+
+        val stored = withContext(Dispatchers.IO) { chatRepository.messages(id) }
+        val loadedCard = loadCard(session.cardId)
+        card = loadedCard
+        if (loadedCard != null) cardRepository.selectedId = session.cardId
+
+        _state.update {
+            it.copy(
+                sessionId = id,
+                cardId = session.cardId,
+                cardName = loadedCard?.name?.ifBlank { session.cardName } ?: session.cardName,
+                transcript = stored.map { message ->
+                    ChatMessage(
+                        role = if (message.isUser) ChatRole.User else ChatRole.Assistant,
+                        content = message.content,
+                    )
+                },
+                streamingText = "",
+                isStreaming = false,
+                status = buildString {
+                    append("会话：${session.title}｜${stored.size} 条")
+                    if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
+                },
+            )
+        }
+    }
+
+    private suspend fun refreshSessions() {
+        val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
+        _state.update { it.copy(sessions = sessions) }
+    }
+
+    // ---- 输入与请求 --------------------------------------------------------
 
     fun onBaseUrlChange(value: String) = _state.update { it.copy(baseUrl = value) }
     fun onApiKeyChange(value: String) = _state.update { it.copy(apiKey = value) }
@@ -137,30 +244,46 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
 
     /**
-     * 停止生成。已收到的半截内容**保留**成一条消息——原版就是这样，
+     * 停止生成。已收到的半截内容**保留**并落库——原版就是这样，
      * 用户按停止往往是因为"已经够用了，别再烧 token"。
      */
     fun stop() {
-        val partial = _state.value.streamingText
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId
+        val partial = snapshot.streamingText
         job?.cancel()
         job = null
+
         _state.update {
             it.copy(
                 transcript = if (partial.isBlank()) it.transcript
                 else it.transcript + ChatMessage(ChatRole.Assistant, partial),
                 streamingText = "",
                 isStreaming = false,
-                status = if (partial.isBlank()) "已停止" else "已停止（保留了已收到的 ${partial.length} 字）",
+                status = if (partial.isBlank()) "已停止" else "已停止（保留了 ${partial.length} 字）",
             )
+        }
+
+        if (partial.isNotBlank() && sessionId != null) {
+            viewModelScope.launch {
+                withContext(Dispatchers.IO) { chatRepository.append(sessionId, isUser = false, content = partial) }
+                refreshSessions()
+            }
         }
     }
 
     fun send() {
         val snapshot = _state.value
         val characterCard = card ?: return
+        val sessionId = snapshot.sessionId
+        if (sessionId == null) {
+            _state.update { it.copy(status = "还没有会话：先选一张卡或新建会话") }
+            return
+        }
         if (snapshot.input.isBlank() || snapshot.isStreaming) return
 
-        val userMessage = ChatMessage(ChatRole.User, snapshot.input.trim())
+        val text = snapshot.input.trim()
+        val userMessage = ChatMessage(ChatRole.User, text)
         val history = snapshot.transcript + userMessage
         val messages = PromptBuilder().build(characterCard, userName = "User", history = history)
 
@@ -188,8 +311,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         job = viewModelScope.launch {
             val buffer = StringBuilder()
+            // 用户消息落库后的行号：失败时要撤回，所以得在下面的本地函数之前声明
+            var userMessageId: Long? = null
 
-            fun finish(text: String, status: String) {
+            suspend fun finish(text: String, status: String) {
+                if (text.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        chatRepository.append(sessionId, isUser = false, content = text)
+                    }
+                    refreshSessions()
+                }
                 _state.update {
                     it.copy(
                         transcript = if (text.isEmpty()) {
@@ -204,8 +335,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            fun fail(message: String) {
-                // 把刚发出去的那条用户消息撤回来，输入框还原：否则用户重试一次就多一条
+            suspend fun fail(message: String) {
+                // 刚写进库的用户消息撤回，输入框还原：否则用户重试一次就多一条
+                withContext(Dispatchers.IO) {
+                    userMessageId?.let { runCatching { chatRepository.deleteMessage(it) } }
+                }
                 _state.update {
                     it.copy(
                         transcript = it.transcript.dropLast(1),
@@ -216,6 +350,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+
+            // 用户消息先落库：进程被杀也不会丢"我说了什么"
+            userMessageId = withContext(Dispatchers.IO) {
+                runCatching { chatRepository.append(sessionId, isUser = true, content = text) }
+                    .getOrNull()
+                    ?.id
+            }
+            if (userMessageId == null) {
+                _state.update {
+                    it.copy(
+                        transcript = it.transcript.dropLast(1),
+                        streamingText = "",
+                        isStreaming = false,
+                        input = snapshot.input,
+                        status = "写库失败：这条消息没有发出去",
+                    )
+                }
+                return@launch
+            }
+            refreshSessions()
 
             try {
                 var settled = false
@@ -251,5 +405,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 fail("客户端异常：${error.message ?: error::class.simpleName}")
             }
         }
+    }
+
+    private fun stamp(): String =
+        formatter.format(Instant.ofEpochMilli(System.currentTimeMillis()))
+
+    private companion object {
+        val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US)
+            .withZone(ZoneId.systemDefault())
     }
 }
