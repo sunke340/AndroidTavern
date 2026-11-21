@@ -89,3 +89,24 @@ org.gradle.configureondemand=true
 
 不装 SDK 的代价：本机跑不了 `./gradlew`，所以单测若也要在本机跑，仍需一个 JDK（约 190MB，禁 root 可装）；
 或者干脆把单测也交给 CI——但那样"改一行等两秒"的回路就没了。建议保留本机 JDK，不装 SDK。
+
+---
+
+## 6. 2026-11-22 实测：原版 ST + 无头浏览器能在这台机器上跑
+
+之前判断"这台机器不能跑浏览器"，实测下来**可以**，代价是三个小绕行：
+
+| 问题 | 绕法 |
+|---|---|
+| 缺 Chromium 的 34 个系统库，且无 `sudo` | `apt-get download` 33 个 deb → `dpkg-deb -x` 到 `vendor/pw-libs`（20 MB），用 `LD_LIBRARY_PATH` 喂给浏览器 |
+| 浏览器没装在系统里 | `PLAYWRIGHT_BROWSERS_PATH=vendor/pw-browsers`，全在仓库内（~280 MB，`.gitignore`） |
+| `~/.npm` 有 root 占用的缓存，`npm ci` 直接失败（exit 243） | `npm_config_cache=vendor/.npm-cache` |
+
+实测结果：
+
+- 原版 ST 1.19.1 在 Node 24 下正常启动（webpack 前端库编译 19 s），`GET /` 返回 200。
+- Playwright 无头 Chromium 正常加载完整前端（扩展全部激活），**录制 fixture 成功**。
+- 同时跑 dsh（~500 MB）+ ST（~300 MB）+ Chromium（~250 MB），靠 swap 撑住；慢，但一次录制 ~25 秒，可接受。
+- 两次录制结果**逐字节一致**，见 [dev/fixtures.md](dev/fixtures.md)。
+
+结论修正：这台机器不仅"能写文档 + 跑纯 JVM 单测"，还能**跑原版 ST 并生成兼容性基准**。仍然不能做的只有：Android 构建（内存）和模拟器（无 KVM）。

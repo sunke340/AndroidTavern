@@ -41,6 +41,9 @@ tools/check-core-purity.sh            # 铁律 #1（本机可跑，零依赖）
 bash tools/fixture/bootstrap.sh       # 重建 vendor/SillyTavern@1.19.1
 ./gradlew :core:prompt:test           # 纯 JVM 单测（需 JDK，M0 之后）
 git push                              # CI 出 debug APK
+
+# 录 golden fixture（需原版 ST 在 8000 跑着；细节见 docs/dev/fixtures.md）
+node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 ```
 
 ⛔ `./gradlew assembleDebug` 本机不要跑：2 核 / 1.7 GiB 可用不到 900 MiB，必挂 swap。
