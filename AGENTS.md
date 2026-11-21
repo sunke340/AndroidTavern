@@ -76,6 +76,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 每个特性的状态与验收方式（**进度唯一真相**） | [docs/compat-matrix.md](docs/compat-matrix.md) |
 | 模块职责、包结构、依赖规则 | [docs/dev/layout.md](docs/dev/layout.md) |
 | 夹具怎么录、长什么样 | [docs/dev/fixtures.md](docs/dev/fixtures.md) |
+| 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
 | 本机能力边界（实测） | [docs/environment.md](docs/environment.md) |
 

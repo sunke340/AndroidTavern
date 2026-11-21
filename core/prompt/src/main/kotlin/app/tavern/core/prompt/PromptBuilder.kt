@@ -46,7 +46,9 @@ public class PromptBuilder {
 
         messages += newChatMarker()
 
-        messages += history
+        // 历史消息原版也会逐条去掉 \r（"waste of tokens"，见 openai.js 的 content.replace(/\r/gm, '')），
+        // 这里照做，否则带 CRLF 的老聊天会与原版差字符。
+        messages += history.map { it.copy(content = it.content.replace("\r", "")) }
 
         return messages
     }

@@ -22,13 +22,21 @@ function arg(name, fallback = null) {
 
 const OUT = arg('out', 'fixtures/expected/capture.json');
 const CHARACTER = arg('character', 'Seraphina');
+const SEED = arg('seed', null);
 
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
+const chatDir = path.join(ROOT, 'vendor/SillyTavern/data/default-user/chats', CHARACTER);
 if (process.argv.indexOf('--keep-chat') === -1) {
-    const chatDir = path.join(ROOT, 'vendor/SillyTavern/data/default-user/chats', CHARACTER);
     fs.rmSync(chatDir, { recursive: true, force: true });
 }
+
+// --seed：不直接写 JSONL（原版不认那种"手写聊天"），而是像用户一样把消息发进去：
+// 设 textarea → Generate('normal')。助手回复由假 SSE 统一给 'ok'，所以每轮可复现。
+// 多轮之后 capture 到的是最后一轮请求，历史里自然带上了前面几轮。
+const SEEDED_TURNS = SEED
+    ? JSON.parse(fs.readFileSync(path.resolve(ROOT, SEED), 'utf8')).userTurns
+    : [];
 
 async function loadPlaywright() {
     const candidates = [
@@ -66,7 +74,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -121,7 +129,19 @@ try {
         try {
             // skipWIAN：跳过世界书激活。P0 只需要"卡 → 提示词"这条主干，
             // 世界书属于 P1，混在同一个夹具里会让两边的失败分不清是谁的。
-            await S.Generate('normal', { skipWIAN: skipWorldInfo });
+            const setTextarea = (text) => {
+                const el = document.getElementById('send_textarea');
+                el.value = text;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+
+            for (const turn of userTurns) {
+                setTextarea(turn);
+                await S.Generate('normal', { skipWIAN: skipWorldInfo });
+            }
+            if (!userTurns.length) {
+                await S.Generate('normal', { skipWIAN: skipWorldInfo });
+            }
         } catch (e) {
             error = String(e?.message ?? e);
         } finally {
@@ -142,7 +162,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);

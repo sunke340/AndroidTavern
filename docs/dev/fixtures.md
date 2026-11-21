@@ -50,6 +50,19 @@ node tools/fixture/capture.mjs --out fixtures/expected/P0-5-prompt-basic.json
 ⚠️ 实测发现：`Generate('normal', { skipWIAN: true })` **并不会**跳过角色卡内嵌 book 的注入
 （两张卡录出来的 5 条消息一模一样）。所以"关掉世界书"这条路走不通，只能换卡。
 
+## 2.6 多轮历史：`--seed`
+
+```bash
+node tools/fixture/capture.mjs --out fixtures/expected/P0-5-prompt-history.json \
+  --character Synthetic --no-wi --seed fixtures/chats/P0-5-multiturn-seed.json
+```
+
+`--seed` 不写 JSONL（原版不认手写的聊天文件，会直接开一个新的），而是像用户一样把
+`userTurns` 里的每句话发进去：设 `#send_textarea` → `Generate('normal')`。
+助手回复由假 SSE 统一给 `ok`，所以每轮可复现。录到的是**最后一轮**请求。
+
+产物：12 条消息，`[Start a new Chat]` 后面跟着开场白 + 两轮问答。
+
 ## 3. fixture 结构
 
 ```json

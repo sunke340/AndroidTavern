@@ -14,15 +14,7 @@ import kotlin.test.assertTrue
 class PromptAssemblyFixtureTest {
     private val fixture = Fixtures.load("P0-5-prompt-basic")
 
-    // 与 tools/fixture/make-test-card.py 里的 CARD 保持一致；对不上测试会红，
-    // 这是刻意的：合成卡改了就重录夹具，别让两边悄悄漂移。
-    private val definition = CharacterDefinition(
-        name = "Synthetic",
-        description = "DESC-ALPHA first line\nDESC-ALPHA second line mentions {{user}} and {{char}}",
-        personality = "PERS-BETA",
-        scenario = "SCEN-GAMMA",
-        mesExample = "<START>\n{{user}}: EXAMPLE-DELTA-user line\n{{char}}: EXAMPLE-DELTA-char line",
-    )
+    private val definition = syntheticCard
 
     private val history = listOf(ChatMessage(role = ChatRole.Assistant, content = "FIRST-OMEGA"))
 

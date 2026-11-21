@@ -1,0 +1,7 @@
+{
+  "_comment": "多轮历史夹具的输入：每一轮由原版发出这些用户消息（助手回复由录制的假 SSE 统一给 'ok'，保证可复现）。",
+  "userTurns": [
+    "USER-ONE first question",
+    "USER-THREE second question"
+  ]
+}
