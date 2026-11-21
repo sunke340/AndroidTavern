@@ -33,69 +33,37 @@ Node 只在**开发期**出现：跑原版 ST 录 golden fixture（§5），不�
 
 ---
 
-## 2. 兼容矩阵（按用户实际会用的顺序排优先级）
+## 2. 范围与优先级
 
-ST 1.19.1 有 82 个前端模块、46 个 server endpoint，全量复刻不现实。按"日常真的在用"切：
+ST 1.19.1 有 82 个前端模块、46 个 server endpoint，全量复刻不现实。按"日常真的在用"切成四档：
 
-### P0 — 不做就没有"酒馆"这回事
-| 功能 | 关键数据/行为 | 工作量 |
+| 档 | 含义 | 代表 |
 |---|---|---|
-| 角色卡导入（PNG/JSON/charx） | PNG `tEXt` 块 `chara`（base64 JSON），V2 `data{}`；V3 走 `ccv3`；charx = zip | 3–5d |
-| 单聊生成 | 系统提示词 + 定义 + 历史 → `/chat/completions` 流式 | 5d |
-| 提示词组装 | `main / worldInfoBefore / charDescription / charPersonality / scenario / worldInfoAfter / dialogueExamples / chatHistory / jailbreak` 顺序 + 宏替换 | 8d（最容易被低估） |
-| 消息操作 | swipe（多候选）、重新生成、继续、编辑、删除、分支 | 5d |
-| 聊天持久化 | JSONL：首行 metadata，逐行 `{name,is_user,is_system,send_date,mes,extra}` | 3d |
-| OpenAI 兼容 API | 自定义 base URL + key、流式 SSE、停止串、参数（temp/top_p/top_k/min_p/penalties/max_tokens/seed） | 4d |
-| 角色卡库 | 头像、标签、搜索、分组 | 4d |
+| **P0** | 不做就没有"酒馆"这回事 | 卡导入、单聊、提示词组装、swipe、JSONL、OpenAI 兼容 API |
+| **P1** | 决定"像不像一个真酒馆" | 世界书、预设、token 预算、作者注、人设、导入导出 |
+| **P2** | 加分项，手机上反而能做得更好 | 群聊、后台生成+通知、TTS、分享收卡、本地模型 |
+| **P3** | 明确不做 | 浏览器扩展、主题 CSS、STscript 全量、多用户、Horde、图片生成 |
 
-### P1 — 决定"像不像一个真酒馆"
-| 功能 | 说明 | 工作量 |
-|---|---|---|
-| 世界书（Lorebook） | 关键字触发、secondary keys + 4 种 selectiveLogic、常数条目、插入位置/深度、概率、扫描深度、递归扫描、group scoring、sticky/cooldown/delay、token 预算。ST 里 `world-info.js` 约 6000 行，是纯逻辑硬骨头 | 10–15d |
-| 预设与提示词管理器 | ST 的 62 键预设（`openai/Default.json`）子集；prompt_order 可编辑 | 6d |
-| Token 计数与上下文裁剪 | cl100k/o200k 用 jtokkit；按预算裁历史（保留 system + 最近 N 条 + 世界书配额） | 4d |
-| 作者注（Author's Note） | 深度注入、role、间隔、是否参与世界书扫描 | 2d |
-| 人设（Persona）/ 用户名 | 名称替换宏、头像 | 2d |
-| 聊天导入导出 | 与 PC 版互转（含群聊） | 3d |
+**逐项清单、状态、验收方式全部在 [compat-matrix.md](compat-matrix.md)**——它是进度的唯一真相，本文件不再重复列表（两处列表必然不同步）。
 
-### P2 — 加分项，手机上反而能做更好
-- 群聊（多角色，`natural / list / manual / pool` 激活策略）：8d
-- 后台生成 + 通知（ForegroundService，Android 14 限制要处理）：4d
-- 系统 TTS 朗读 + 语音输入：3d
-- 分享菜单收卡、图片长按保存、桌面小组件：3d
-- 本地离线模型（llama.cpp JNI，Qwen3/Gemma 3 4B 4bit）：10d+（可选，是差异化卖点）
-
-### P3 — 明确"先不做"（在 README 里写死，避免被追着要）
-- 浏览器扩展体系 / Web UI 主题 CSS
-- STscript 全量（先做 `{{macro}}` + 少量 `/command` 子集）
-- 正则脚本（`regex` 扩展）：可做，但要排在 P1 之后
-- 向量记忆 / Data Bank RAG（本地 ONNX embedding 或调 API 二选一）
-- 图片生成（ComfyUI / NovelAI / SD WebUI）
-- 多用户、server plugin、Horde
-- 非 OpenAI 协议的厂商原生 SDK（Claude/Gemini 走 OpenAI 兼容层先顶上，后面再补原生）
+粗估：P0 ≈ 5 周，P1 ≈ 6 周，两者合起来就是"能日常用"的形态。
 
 ---
 
 ## 3. 工程结构
 
 ```
-:app                     Compose + Navigation + 依赖装配
-:feature:chat            消息列表、流式渲染、swipe、输入
-:feature:character       卡库、卡编辑器、导入向导
-:feature:lorebook        世界书编辑器
-:feature:preset          预设 / 提示词管理器 / 采样参数
-:core:card-format        PNG chunk 读写、charx、V2/V3 映射
-:core:chat-format        JSONL 编解码（流式，不整文件读进内存）
-:core:prompt             PromptBuilder —— 兼容性的心脏
-:core:lorebook           激活算法（纯 Kotlin，无 Android 依赖，可 JVM 单测）
-:core:tokenizer          jtokkit + 模型→编码映射
-:core:ai                 provider 适配、SSE、重试、代理
-:data                    Room（消息/卡/世界书）+ DataStore（设置）+ SAF
+:app      Compose 入口、导航、DI 装配
+:core:*   纯 JVM：card-format / chat-format / prompt / lorebook / tokenizer / preset / ai
+:feature:* Compose 界面：chat / character / lorebook / preset / settings
+:data     Room、DataStore、SAF、Keystore、仓库实现
 ```
 
 原则：`core:*` 全部**纯 JVM**（不 import android.*），这样 90% 的兼容性逻辑能在这台 1.7GB 的机器上跑单测，不需要真机。
 
-技术栈：Kotlin 2.x、Compose Material3、Room、DataStore、kotlinx.serialization、OkHttp(+SSE)、Coil、WorkManager、Hilt（或手写 DI，省编译时间）、jtokkit、EncryptedSharedPreferences 存 key。
+**模块职责、依赖方向、每个模块内部的包结构、新增模块的判据，全部在 [dev/layout.md](dev/layout.md)**，此处不重复。
+
+技术栈：Kotlin 2.x、Compose Material3、Room、DataStore、kotlinx.serialization、OkHttp(+SSE)、Coil、WorkManager、jtokkit、EncryptedSharedPreferences；DI 先手写（省编译时间，这台机器经不起注解处理）。
 
 **存储决策**：DB 为准（Room），JSONL 只在导入/导出时生成。不要学 ST 直接拿 JSONL 当数据库——手机上频繁追加会掉电、掉性能。
 
@@ -118,19 +86,13 @@ M1 结束就已经是"能用的私人酒馆"，之后每一步都是加法。
 
 ## 5. 兼容性怎么保证（这是整个项目最该先建的东西）
 
-在写第一行业务代码之前，先建 **golden fixture 流水线**：
+一句话：**跑原版 ST，把它真正发给 API 的请求体录成 golden fixture，让 Kotlin 侧的拼装结果与它逐条比对。**
 
-1. 本机跑原版 ST（Node 24 已具备，`vendor/SillyTavern` 就是）：
-   ```bash
-   cd vendor/SillyTavern && npm i --no-audit && node server.js
-   ```
-2. 把 ST 的 OpenAI 后端指向一个**本地假 API**（几行 Node）记录 `POST /chat/completions` 的完整 body；
-3. 用同一套卡/世界书/预设/聊天，走一遍 ST，把请求体存成 `fixtures/*.json`；
-4. Kotlin 侧的 `PromptBuilder` 单测直接断言"我拼出来的 messages 等于 fixture"。
+在写第一行业务代码之前先把这条流水线跑通。方法与 fixture 结构见 [dev/fixtures.md](dev/fixtures.md)，脚本入口 `tools/fixture/bootstrap.sh`。
 
-产出：每加一个兼容特性，就多一个 fixture。**"兼容原版"从形容词变成一个 CI 绿灯。**
+产出：每加一个兼容特性就多一个 fixture。**"兼容原版"从形容词变成一个 CI 绿灯。**
 
-顺带解决另一个坑：裁剪、宏展开、世界书递归这些行为的边界情况，人脑记不住，但 fixture 记得住。
+顺带解决另一个坑：裁剪、宏展开、世界书递归这些边界情况，人脑记不住，但 fixture 记得住。
 
 ---
 
