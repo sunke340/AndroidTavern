@@ -149,6 +149,12 @@ tools/gradle-local.sh :core:prompt:test
 
 第二个跑的耗时 **2.2 秒**（daemon + 增量），首次编译 ~100 秒。
 
+⚠️ daemon 会常驻 ~600 MB。这台机器总内存 1.7 GiB，跑完记得放掉：
+
+```bash
+tools/gradle-local.sh --stop
+```
+
 三个坑（脚本/文档里都已处理）：
 
 1. **`~/.gradle` 不可写** → Gradle 初始化 native 服务时就挂（`Failed to load native library 'libnative-platform.so'`）。
