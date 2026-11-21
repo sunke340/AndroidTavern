@@ -46,7 +46,7 @@ jobs:
     name: 纯 JVM 单测（兼容性断言）
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 只为失败时发日志用的 release
+      contents: write # 只用于失败时把日志发成 release
     steps:
       - uses: actions/checkout@v4
 
@@ -58,13 +58,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: 单测
-        run: ./gradlew test --stacktrace 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          ./gradlew test --stacktrace 2>&1 | tee build.log
 
       - name: 确认没有测试被静默跳过
         run: bash tools/check-tests-ran.sh
 
-      # 这台机器没有 PAT，我和维护者都可能看不到 Actions 日志；
-      # 失败时把日志挂到 release 上，公开可读，排查不依赖任何人的账号。
+      # 这台机器没有 PAT，Actions 日志登录才看得到；失败时把日志挂成 release，
+      # 公开可读，排查不依赖任何人的账号。
       - name: 失败时公开日志
         if: failure()
         uses: softprops/action-gh-release@v2
@@ -73,21 +75,13 @@ jobs:
           name: CI 失败日志（jvm-tests）
           prerelease: true
           files: build.log
-          body: "自动发布：最近一次 jvm-tests 失败的构建日志。
-
-      - name: 测试报告
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: '**/build/reports/tests/**'
-          retention-days: 7
+          body: 自动发布，最近一次 jvm-tests 失败的构建日志。
 
   android-build:
     name: 出 debug APK
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 失败日志 + APK 落到 release
+      contents: write # 失败日志 + 公开 APK 都落到 release
     # M0 建出 app 模块之前这里只做一次探测并跳过——避免"还没有 Android 工程却报红"。
     # 注意：hashFiles() 在 job 级 if 里不可用（GitHub 会判 "Invalid workflow file"），只能放进 step。
     steps:
@@ -114,13 +108,36 @@ jobs:
 
       - name: 出包
         if: steps.probe.outputs.ready == 'true'
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
 
-      - name: 上传 APK
-        if: steps.probe.outputs.ready == 'true'
+      - name: 上传 APK（需登录才能下）
+        if: steps.probe.outputs.ready == 'true' && success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 14
+
+      # artifact 下载要登录；release 资产公开可下，手机浏览器点一下就能装。
+      - name: 公开 APK（apk-latest release）
+        if: steps.probe.outputs.ready == 'true' && success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: 最新 debug APK
+          prerelease: true
+          files: app/build/outputs/apk/debug/*.apk
+          body: 每次 main 构建成功后覆盖。手机浏览器打开本页即可下载安装。
+
+      - name: 失败时公开日志
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-log-android
+          name: CI 失败日志（android-build）
+          prerelease: true
+          files: build.log
+          body: 自动发布，最近一次 android-build 失败的构建日志。
