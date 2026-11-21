@@ -166,3 +166,19 @@ tools/gradle-local.sh --stop
 
 为什么 wrapper 和本机脚本并存：`./gradlew` 是给 CI 和别人克隆用的（标准、可复现）；本机的
 `tools/gradle-local.sh` 只解决"这台机器连不上 Gradle 官方下载"。两者跑的是同一个 8.11.1。
+
+## 9. 建了 :app 之后，本机能跑的范围又收窄了一格
+
+`:app` 一出现，聚合任务 `./gradlew test` 就会去配置 Android 插件，本机立刻报：
+
+```
+An exception occurred applying plugin request [id: 'com.android.application']
+> Failed to apply plugin 'com.android.internal.application'
+```
+
+因为本机没有 Android SDK（也不该装）。所以本机只能用 `tools/test-core.sh` 逐模块点名跑
+`:core:*`；聚合 `test` 和 `assembleDebug` 都交给 CI。
+
+这条边界要记住：**本机能验证的是"纯逻辑"，Android 相关的编译只会在 CI 上暴露**——
+一个典型的例子就是"公开 API 里出现 `implementation` 依赖的类型"（`OkHttpClient`、`JsonObject`），
+本机永远能编过，只有 `:app` 会报 `Cannot access class X`。

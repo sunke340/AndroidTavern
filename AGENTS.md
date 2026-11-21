@@ -2,7 +2,7 @@
 
 原生安卓「酒馆」：Kotlin + Compose 重写 SillyTavern 1.19.1，兼容其**文件格式**与**提示词行为**。
 单 APK、单进程、无服务端、无 WebView（[ADR 0002](docs/adr/0002-single-process.md)）。
-**M0 进行中**：`:core:prompt` 已有第一条兼容断言；Android 工程尚未建。
+**M0 收尾中**：`:core:{model,card-format,prompt,ai}` 有 20 个单测；`:app` 已能装到真机、真连 provider、流式显示。
 
 ## TL;DR — 违反即改动无效
 
@@ -39,9 +39,8 @@ vendor/     原版 ST 只读副本（.gitignore）
 ```bash
 tools/check-core-purity.sh            # 铁律 #1（本机可跑，零依赖）
 bash tools/fixture/bootstrap.sh       # 重建 vendor/SillyTavern@1.19.1
-tools/gradle-local.sh :core:prompt:test  # 纯 JVM 单测（本机，增量约 2 秒）
-./gradlew test                        # 同一套测试，CI 用
-tools/check-tests-ran.sh              # 防止 @Test 被 JUnit 静默跳过（非 Unit 返回值）
+tools/test-core.sh                    # 本机：所有 :core:* 单测 + 静默跳过守卫
+./gradlew test                        # CI 用（聚合 test 会配置 :app，需要 Android SDK，本机跑不了）
 git push                              # CI 出 debug APK
 
 # 录 golden fixture（需原版 ST 在 8000 跑着；细节见 docs/dev/fixtures.md）
