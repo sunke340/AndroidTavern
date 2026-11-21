@@ -34,12 +34,27 @@ import java.util.concurrent.TimeUnit
  *    否则用户点了"停止"之后那条连接还在慢慢烧 token。
  * 3. **流式请求不设读超时**。LLM 首字可能要几十秒，OkHttp 默认 10s 会直接掐掉。
  */
-public class OpenAiCompatibleClient(
+public class OpenAiCompatibleClient private constructor(
     baseUrl: String,
-    private val apiKey: String? = null,
-    private val httpClient: OkHttpClient = OkHttpClient(),
-    private val extraHeaders: Map<String, String> = emptyMap(),
+    private val apiKey: String?,
+    private val httpClient: OkHttpClient,
+    private val extraHeaders: Map<String, String>,
 ) : ChatCompletionClient {
+
+    /**
+     * 公开构造刻意**不**暴露 OkHttp：`implementation` 依赖不该出现在公开签名里，
+     * 否则每个用到本模块的模块都得自己去引 OkHttp（Android 上就是
+     * "Cannot access class OkHttpClient. Check your module classpath"）。
+     */
+    public constructor(
+        baseUrl: String,
+        apiKey: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
+    ) : this(baseUrl, apiKey, OkHttpClient(), extraHeaders)
+
+    /** 测试用：注入自定义 client（同模块可见）。 */
+    internal constructor(baseUrl: String, apiKey: String?, httpClient: OkHttpClient) :
+        this(baseUrl, apiKey, httpClient, emptyMap())
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }
     private val endpoint: String = baseUrl.trimEnd('/') + "/chat/completions"
 
