@@ -12,3 +12,6 @@ local.properties
 
 # 本地工具链（JDK / Gradle）
 .toolchain/
+
+# 本地保存的构建产物
+dist/
