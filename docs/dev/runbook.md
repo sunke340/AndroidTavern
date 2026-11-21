@@ -64,6 +64,16 @@ curl -L -C - -o /tmp/tavern.apk \
 - `buildId`：CI 注入 commit sha，本机是时间戳；App 标题下面显示前 7 位，用来确认手机上装的是哪个包。
 - 出正式版要另建 release keystore，口令走 GitHub Secrets，不要复用这个。
 
+### 验证下载到的 APK
+
+本机没有 Android SDK，没法用 apksigner；用 AGP 缓存里的 apksig 库代替：
+
+```bash
+tools/verify-apk.sh dist/app-debug.apk 55:E0:C6:E2:19:20:61:92:51:12:04:E8:F8:AC:80:C6:19:44:91:54:26:5B:50:FA:D3:3A:B4:72:8B:96:0B:E7
+```
+
+输出 `verified=true v2=true` 且指纹与 keystore/README.md 一致，才说明"可以直接覆盖安装"。
+
 ### 打回退点
 
 ```bash
