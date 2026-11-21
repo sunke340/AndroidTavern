@@ -64,7 +64,9 @@ try {
 
     await page.waitForFunction('document.getElementById("preloader") === null', null, { timeout: 180000 });
 
-    const result = await page.evaluate(async ({ character }) => {
+    const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
+
+    const result = await page.evaluate(async ({ character, skipWorldInfo }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -117,7 +119,9 @@ try {
 
         let error = null;
         try {
-            await S.Generate('normal');
+            // skipWIAN：跳过世界书激活。P0 只需要"卡 → 提示词"这条主干，
+            // 世界书属于 P1，混在同一个夹具里会让两边的失败分不清是谁的。
+            await S.Generate('normal', { skipWIAN: skipWorldInfo });
         } catch (e) {
             error = String(e?.message ?? e);
         } finally {
@@ -138,7 +142,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER });
+    }, { character: CHARACTER, skipWorldInfo });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
