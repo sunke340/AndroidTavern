@@ -1,5 +1,8 @@
 package app.tavern.core.prompt
 
+import app.tavern.core.model.ChatMessage
+import app.tavern.core.model.ChatRole
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

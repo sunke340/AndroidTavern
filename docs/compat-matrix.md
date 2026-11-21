@@ -15,7 +15,7 @@
 | P0-1 | 角色卡导入：PNG（`tEXt` `chara`/`ccv3`） | 🟨 | 单测：合成卡 + 原版 Seraphina（ccv3 优先）；SAF 导入链路未做 | `src/character-card-parser.js` |
 | P0-2 | 角色卡导入：V2/V3 JSON、charx(zip) | 🟨 | V2/V3/V1 JSON 已通（单测）；charx 未做 | `src/charx.js`、`src/types/spec-v2.d.ts` |
 | P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3 | 同上 |
-| P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ⬜ | fixture:P0-4-request | `public/scripts/openai.js` |
+| P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | 🟨 | 单测：SSE 增量/结束、非流式、401 错误、请求体与夹具一致、取消；**尚未连通真实 provider** | `public/scripts/openai.js` |
 | P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（9 条）/ P0-5-prompt-history（12 条，多轮）逐字相等；names_behavior 仅覆盖默认值 DEFAULT；世界书注入与预算裁剪未做 | `public/script.js`、`PromptManager.js` |
 | P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | ⬜ | 手工 + fixture:P0-6-swipes | `public/script.js` |
 | P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | ⬜ | fixture:P0-7-jsonl | `src/endpoints/chats.js` |

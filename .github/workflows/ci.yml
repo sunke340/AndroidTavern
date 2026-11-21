@@ -58,6 +58,9 @@ jobs:
       - name: 单测
         run: ./gradlew test --stacktrace
 
+      - name: 确认没有测试被静默跳过
+        run: bash tools/check-tests-ran.sh
+
       - name: 测试报告
         if: failure()
         uses: actions/upload-artifact@v4

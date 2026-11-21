@@ -41,6 +41,7 @@ tools/check-core-purity.sh            # 铁律 #1（本机可跑，零依赖）
 bash tools/fixture/bootstrap.sh       # 重建 vendor/SillyTavern@1.19.1
 tools/gradle-local.sh :core:prompt:test  # 纯 JVM 单测（本机，增量约 2 秒）
 ./gradlew test                        # 同一套测试，CI 用
+tools/check-tests-ran.sh              # 防止 @Test 被 JUnit 静默跳过（非 Unit 返回值）
 git push                              # CI 出 debug APK
 
 # 录 golden fixture（需原版 ST 在 8000 跑着；细节见 docs/dev/fixtures.md）

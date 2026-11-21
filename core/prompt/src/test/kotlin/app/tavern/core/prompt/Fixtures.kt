@@ -1,5 +1,8 @@
 package app.tavern.core.prompt
 
+import app.tavern.core.model.ChatMessage
+import app.tavern.core.model.ChatRole
+
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject

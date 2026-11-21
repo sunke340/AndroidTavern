@@ -1,4 +1,4 @@
-package app.tavern.core.prompt
+package app.tavern.core.model
 
 /**
  * OpenAI 兼容消息的角色。

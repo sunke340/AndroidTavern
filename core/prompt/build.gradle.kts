@@ -11,6 +11,7 @@ kotlin {
 
 dependencies {
     api(project(":core:card-format"))
+    api(project(":core:model"))
 
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")

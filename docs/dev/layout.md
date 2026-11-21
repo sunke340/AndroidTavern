@@ -11,13 +11,14 @@ settings.gradle.kts        include(":app", ":core:card-format", ...)
 
 app/                       :app                    Compose 入口、Navigation、DI 装配
 core/
+  model/                   :core:model             纯 JVM  ChatMessage / ChatRole（叶子，谁都能依赖）
   card-format/             :core:card-format       纯 JVM  PNG/charx/V2-V3 编解码（入口 PngCard / CharacterCard）
   chat-format/             :core:chat-format       纯 JVM  JSONL 读写（流式）
   prompt/                  :core:prompt            纯 JVM  提示词组装（兼容性心脏）
   lorebook/                :core:lorebook          纯 JVM  世界书激活算法
   tokenizer/               :core:tokenizer         纯 JVM  jtokkit + 模型→编码映射
   preset/                  :core:preset            纯 JVM  预设/采样参数模型
-  ai/                      :core:ai                纯 JVM  provider 适配、SSE、重试
+  ai/                      :core:ai                纯 JVM  provider 适配、SSE、取消（入口 ChatCompletionClient）
 feature/
   chat/ character/ lorebook/ preset/ settings/     Compose 界面
 data/                      :data                    Room、DataStore、SAF、Keystore
@@ -34,8 +35,9 @@ data/                      :data                    Room、DataStore、SAF、Key
 
 - 单向，**反向一律禁止**：`core` 不知道 `data`，`data` 不知道 `feature`。
 - `:feature:*` 之间**不许互相依赖**。需要共享 UI 组件 → 建 `:feature:common`，经 ADR 批准。
-- `:core:*` 之间可以互依，但保持无环。当前唯一的内部依赖是 `:core:prompt → :core:card-format`
-  （提示词要读卡里的字段）。方向不能反：卡片格式不该知道"提示词"这回事。
+- `:core:*` 之间可以互依，但保持无环。当前依赖是：
+  `:core:prompt → :core:card-format`、`:core:prompt → :core:model`、`:core:ai → :core:model`。
+  方向不能反：卡片格式不该知道"提示词"，`ai` 不该知道"角色卡"。
 
 ## 3. 每个模块内部
 
