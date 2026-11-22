@@ -213,8 +213,8 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         onSelect = viewModel::setNavAnimation,
     )
     Text(
-        "进/退二级页的动画。「标准」同一时刻只有一层在动，「层叠」两页一起动，" +
-            "「关闭」直接切换（排查问题时用）。只影响二级页，不影响底部 tab。",
+        "进/退二级页的动画。「标准」新页从右侧滑入、返回时上一页从左侧滑回；" +
+            "「淡入」只做交叉淡化；「关闭」直接切换（排查问题时用）。只影响二级页，不影响底部 tab。",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

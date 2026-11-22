@@ -151,62 +151,44 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // 两层朝同一方向错位滑动 —— 观感就成了"从右下角弹出来"。
                     // 设了 zIndex，返回时深度更大的当前页天然在顶层，才是"把一张卡抽走"。
                     val forward = depthOf(targetState) >= depthOf(initialState)
+                    // ⚠️ 硬约束（2026-11-22 从 Compose 源码 + 逐帧录屏两头确认）：
+                    // AnimatedContent 给**每一个**可见内容套的都是同一个 spec 的
+                    // `ZIndexModifierElement(specOnEnter.targetContentZIndex, ...)`，两层拿到同一个值，
+                    // 于是永远退回"后放置的在上"= **永远是进来的那页在上层**。
+                    // 给 targetContentZIndex 设 0/1/2 或 ±1 都改变不了（真机逐帧验证：246ms 里一个像素没动）。
+                    // 所以：**位移只做在"进来那页"上**，退场那页只负责"活满时长 + 不露底色"。
                     val enter: EnterTransition = when (state.navAnimation) {
-                        // 标准：进去时只有新页在动（上一级不动，被覆盖）
+                        // 进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
                         NavAnimation.Slide ->
                             if (forward) {
                                 slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
                             } else {
-                                EnterTransition.None
-                            }
-
-                        // 层叠：两层同时动
-                        NavAnimation.Stack ->
-                            if (forward) {
-                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
-                            } else {
-                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 }
+                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 3 }
                             }
 
                         NavAnimation.Fade -> fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
                         NavAnimation.None -> EnterTransition.None
                     }
                     val exit: ExitTransition = when (state.navAnimation) {
-                        // 标准：返回时只有当前页在动（向右滑走，露出下面那页）
+                        // 退场那页在上层底下，位移看不见。这里只要求它**别提前被销毁**：
+                        // exit = None 时 AnimatedContent 会在十几毫秒内就把旧页移除（实测 12–14ms），
+                        // 于是动画期间露出来的是窗口底色。用满时长的位移（退 1/4 / 原地 0）把它留住。
                         NavAnimation.Slide ->
-                            if (forward) {
-                                ExitTransition.None
-                            } else {
-                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
-                            }
-
-                        NavAnimation.Stack ->
                             if (forward) {
                                 slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { -it / 4 }
                             } else {
-                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
+                                slideOutHorizontally(tween(Motion.Slow)) { 0 }
                             }
 
                         NavAnimation.Fade -> fadeOut(tween(Motion.Base))
                         NavAnimation.None -> ExitTransition.None
                     }
-                    // 叠放次序：**进二级页时新页在上，返回时退场页在上**。
-                    //
-                    // 这里刻意不用"深度值"（0/1/2）而当二值用：深度值依赖"旧页保留它进来时的 z"
-                    // 这个前提，一旦前提不成立（比如初建时没有 ContentTransform 参与），两层就落到
-                    // 同一个 z 上，而**同 z 时 AnimatedContent 把新进来的放最上层**——返回时
-                    // 上一级（EnterTransition.None、瞬间就位且不透明）直接盖住正在退场的当前页，
-                    // 表现就是"回到一级页面没有动画"（2026-11-22 用户报的）。
-                    // 用 +1/-1 严格保证谁在上，与其它层的 z 无关。
-                    //
-                    // using(null) = 关掉尺寸动画。这是上一轮录屏逐帧查出的病根：
-                    // AnimatedContent 默认带 SizeTransform，会把容器尺寸从旧页弹簧到新页，
-                    // 两个页面在重建瞬间量出的尺寸不一致时容器从 ~0 弹到满屏，里面的 fillMaxSize
-                    // 内容被压在窄框里重排、超出的被裁掉 —— 看着像"内容从屏幕中央长出来"。
+                    // using(null) = 关掉尺寸动画。这是上一轮录屏逐帧查出的另一个病根：
+                    // AnimatedContent 默认带 SizeTransform，容器尺寸会在旧页→新页之间弹簧动画，
+                    // 两页在重建瞬间量出的尺寸不一致时容器从 ~0 弹到满屏，里面的 fillMaxSize 内容
+                    // 被压在窄框里重排、超出的被裁掉 —— 看着像"内容从屏幕中央长出来"。
                     // sizeTransform 的 setter 是 internal，只能 using(null)。
-                    (enter togetherWith exit).apply {
-                        targetContentZIndex = if (forward) 1f else -1f
-                    }.using(null)
+                    (enter togetherWith exit).using(null)
                 },
                 label = "destination",
             ) { target ->

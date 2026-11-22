@@ -24,28 +24,30 @@ sealed interface Destination {
 }
 // depth: Tabs=0, Settings/Detail=1, Chat/CardConfig=2
 // 转场风格可选（NavAnimation，默认「标准」）：
-//   标准：同一时刻只有一层在动 —— 进：新页整屏从右滑入；返回：当前页整屏向右滑出
-//   层叠：两层一起动 —— 进：新页推入 + 旧页左退 1/4；返回：当前页右退 + 上一页回 1/4
-//   淡入 / 关闭：不位移 / 完全不要动画（排查用）
+//   标准：进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
+//   淡入：交叉淡化；关闭：完全不要动画（排查用）
+// 注意：位移**只能做在"进来那页"上**，见下面"永远是 target 在上层"那条。
 ```
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
-### 返回时"谁压着谁"由 zIndex 决定（踩过一次，用户报了两轮）
+### 永远是"进来的那页"在上层：zIndex 救不了（踩了四轮，2026-11-22 结案）
 
-`AnimatedContent` **默认把新进来的内容画在最上层**（官方文档：同 zIndex 时 incoming target 放在最后、
-盖住 outgoing）。所以只改位移方向、不给 zIndex，返回就是"上一级从上层滑进来盖住正在退场的当前页"，
-两层朝同一方向错位滑动 —— 用户看到的就是"从右下角弹出来"。
+现象演进：返回"像从右下角弹出" → 改方向没用 → 改 `targetContentZIndex`（0/1/2）没用 →
+改 ±1 没用 → 录屏逐帧发现"返回时画面 246ms 里一个像素没动，一帧就切完了"。
 
-修法：`targetContentZIndex = if (forward) 1f else -1f`——用**二值**而不是"深度值"：
-深度值依赖"旧页保留它进来时的 z"这一前提，前提不成立时两层落到同一个 z，又变成新页在顶。
-+1/-1 与其它层的 z 无关，谁在上是确定的（进：新页在上；返回：退场页在上）。
+真因（读 Compose `AnimatedContent.kt` 源码确认）：它给**每一个**可见内容套的都是同一个 spec 的
+`ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)`。两层拿到同一个值，
+zIndex 等于没设，只能退回"后放置的在上"，而 target 是最后放置的 —— 所以**永远是进来那页在上**，
+退场那页的位移永远看不见。文档里"能设 zIndex 改变叠放"在这版实现上对**同一过渡内的两层**不成立。
 
-反面判据：**「返回时完全没动画」＝退场那层被盖住了**。因为 pop 的上一级是
-`EnterTransition.None`（瞬间就位、不透明），它一旦在上层，动的那层就整个被遮掉，
-看起来就是"秒切"。这条比"看着别扭"更能直接定位到 z 序。
-出处：[ContentTransform 文档](https://developer.android.com/reference/kotlin/androidx/compose/animation/ContentTransform)
-（官方的嵌套菜单示例用的就是这招，只是它按层级值给）。
+结论与规矩：
+
+1. **位移只做在"进来那页"（enter）上**；返回的观感靠"上一页从左侧滑回"，不要指望"当前页滑出去"。
+2. **退场那页（exit）只负责"活满时长"**。`ExitTransition.None` 会让旧页在 12–14ms 内就被移除
+   （实测日志），动画期间露出来的是窗口底色。所以给它一个满时长、位移为 0 的 slideOut 占位。
+3. 判据：**「返回完全没动画」＝ 动的那层在下层**。先看 `nav ... 页面移除，距上次换页 Nms` 这行日志：
+   ~240ms 说明转场跑了（那就是叠放问题），几十毫秒说明转场没跑（问题在状态层）。
 
 **退场别配比位移更短的淡出**：240ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
 后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
@@ -62,9 +64,7 @@ sealed interface Destination {
 AnimatedContent(
     modifier = Modifier.fillMaxSize(),   // ① 容器钉死，不许自己量尺寸
     transitionSpec = {
-        (enter togetherWith exit)
-            .apply { targetContentZIndex = if (forward) 1f else -1f }
-            .using(null)                 // ② 关掉尺寸弹簧。注意 setter 是 internal，只能 using(null)
+        (enter togetherWith exit).using(null)   // ② 关掉尺寸弹簧。setter 是 internal，只能 using(null)
     },
 )
 ```
