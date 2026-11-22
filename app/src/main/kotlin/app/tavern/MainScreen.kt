@@ -1,5 +1,7 @@
 package app.tavern
 
+import android.graphics.RenderEffect
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
@@ -50,22 +52,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayer
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.tavern.data.log.AppLog
-import dev.chrisbanes.haze.HazeDefaults
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 
 /**
  * 顶层结构：三栏（会话 / 角色 / 设置），其余都是叠在上面的二级页。
@@ -281,7 +294,10 @@ private fun TabsRoot(
         }
     }
 
-    val haze = remember { HazeState() }
+    // 玻璃：内容画一遍录进图层，底栏再把"自己脚下那块"裁出来加模糊画上去（ADR 0005）。
+    val glassLayer = rememberGraphicsLayer()
+    val contentOrigin = remember { mutableStateOf(Offset.Zero) }
+    val glassOn = state.visualEffects == VisualEffects.Glass
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = BarHeight + Space.s + Space.s + navBar
 
@@ -295,7 +311,23 @@ private fun TabsRoot(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = padding.calculateTopPadding())
-                    .hazeSource(state = haze),
+                    .onGloballyPositioned { contentOrigin.value = it.positionInWindow() }
+                    .drawWithContent {
+                        if (glassOn) {
+                            // 录一份完整内容，底栏要用它当"背后的画面"。
+                            // 1.7.6 的 record 要求显式给 density / 方向 / 尺寸，没有无参重载。
+                            glassLayer.record(
+                                density = this,
+                                layoutDirection = layoutDirection,
+                                size = size.toIntSize(),
+                            ) {
+                                this@drawWithContent.drawContent()
+                            }
+                            drawLayer(glassLayer)
+                        } else {
+                            drawContent()
+                        }
+                    },
             ) {
                 AnimatedContent(
                     targetState = state.screen,
@@ -332,8 +364,9 @@ private fun TabsRoot(
             TavernBottomBar(
                 current = state.screen,
                 onSelect = viewModel::showScreen,
-                blur = state.visualEffects == VisualEffects.Glass,
-                haze = haze,
+                blur = glassOn,
+                glassLayer = glassLayer,
+                contentOrigin = { contentOrigin.value },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -352,59 +385,73 @@ private val barItems = listOf(
     BarItem(Screen.Settings, Icons.Filled.Settings, "设置"),
 )
 
+/** 玻璃模糊半径。 */
+private val GlassBlur = 24.dp
+
 /**
  * 悬浮玻璃底栏：**胶囊 + 56dp**。
  *
  * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
  *
- * 叠放顺序（改之前先读这段，已经踩了三次）：
- * 1. **不要套 `Surface`**：它带 elevation 时会自己开一个渲染节点，Haze 按 `positionOnScreen` 算偏移，
- *    两层坐标系一错，模糊就被画成"一条横带"（2026-11-22 用户报的横条）。
- *    改用 `Modifier.shadow + clip + background + border` 手工拼。
- * 2. `blur = false`（设置里的「轻量」）时**完全不加 hazeEffect**，只留半透明底。
- * 3. `this.blurEnabled = blur` 里的参数名不能和 `HazeEffectScope.blurEnabled` 重名——
- *    写成 `= blurEnabled` 会解析成作用域自己的属性，变成自赋值、模糊永远不生效（踩过）。
+ * 玻璃是**自己画的**（ADR 0005，不再用 Haze —— 它在真机上退化成了纯半透明还不报错）：
+ * 1. 内容层每帧把自己录进 `glassLayer`（上面 TabsRoot 里做的）；
+ * 2. 底栏把这块图层按"自己在窗口里的位置"平移、用 `saveLayer + RenderEffect` 做高斯模糊画出来；
+ * 3. 再叠半透明底色（`.background(fill)`）。
+ * 整个坐标系只有"两个兄弟节点的 positionInWindow 相减"，没有第三方内部状态，错不了。
+ *
+ * 还有一个坑：**elevation 阴影不能和半透明底色一起用**。Android 把阴影画在内容后面，
+ * 底色一透明就会透出一道亮度台阶（用户 2026-11-22 报的"白条"）。所以玻璃档不挂 shadow。
  */
 @Composable
 private fun TavernBottomBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
     blur: Boolean,
-    haze: HazeState,
+    glassLayer: GraphicsLayer,
+    contentOrigin: () -> Offset,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
     val surface = MaterialTheme.colorScheme.surface
-    // 轻量档必须**完全不透明**：0.94 的白底挡不住下面 1px 分隔线和黑字，透出来就是一条隐约的灰横带
-    // （用户 2026-11-22 报的"横条"，把截图放大 3 倍对比度就看到了）。玻璃档才允许透。
     val fill = if (blur) surface.copy(alpha = 0.62f) else surface
 
-    val glass = if (blur) {
-        Modifier.hazeEffect(
-            state = haze,
-            style = HazeDefaults.style(
-                backgroundColor = Color.Transparent,
-                blurRadius = 32.dp,
-                noiseFactor = 0f,
-            ),
-        ) {
-            this.blurEnabled = true
+    val density = LocalDensity.current
+    val blurPx = with(density) { GlassBlur.toPx() }
+    val blurPaint = remember(blurPx) {
+        Paint().also { paint ->
+            if (Build.VERSION.SDK_INT >= 31) {
+                paint.asFrameworkPaint().renderEffect = RenderEffect.createBlurEffect(
+                    blurPx,
+                    blurPx,
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+            }
         }
-    } else {
-        Modifier
     }
+    var barOrigin by remember { mutableStateOf(Offset.Zero) }
 
     Row(
         modifier = modifier
             .padding(horizontal = Space.l, vertical = Space.s)
             .navigationBarsPadding()
-            // 阴影只能是**不透明**底色下的阴影：Android 把 elevation 阴影画在内容后面，
-            // 填充一旦半透明就会透出一道亮度台阶（用户 2026-11-22 报的"白条"，逐像素量到 4 级台阶）。
-            // 玻璃档要半透明，所以它不用 elevation 阴影，只靠 1px 描边 + 模糊本身的边缘。
             .then(if (blur) Modifier else Modifier.shadow(elevation = 10.dp, shape = shape, clip = false))
             .clip(shape)
-            .then(glass)
+            .onGloballyPositioned { barOrigin = it.positionInWindow() }
+            .drawWithContent {
+                if (blur && Build.VERSION.SDK_INT >= 31) {
+                    val origin = barOrigin - contentOrigin()
+                    drawIntoCanvas { canvas ->
+                        // saveLayer + RenderEffect：这一层里画的东西都会被模糊
+                        canvas.saveLayer(Rect(Offset.Zero, size), blurPaint)
+                        translate(left = -origin.x, top = -origin.y) {
+                            drawLayer(glassLayer)
+                        }
+                        canvas.restore()
+                    }
+                }
+                drawContent()
+            }
             .background(fill)
             .border(1.dp, palette.cardBorder, shape)
             .height(BarHeight)

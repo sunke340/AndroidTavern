@@ -85,10 +85,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // 玻璃/背景模糊（ADR 0004）。1.5.4 是最后一个依赖 Compose 1.7.3 / Kotlin 2.1.0 的版本；
-    // 1.6+ 要 Compose 1.8，2.x 要 Kotlin 2.3+，升级工具链之前别动。
-    // API < 31 上 blur 自动降级（haze 内部有 fallback）。
-    implementation("dev.chrisbanes.haze:haze:1.5.4")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
