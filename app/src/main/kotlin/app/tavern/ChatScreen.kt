@@ -162,6 +162,100 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 }
 
+/** 输入区总高（含上下留白）：列表底部让位，让最后一条消息停在胶囊上方。 */
+private val ChatInputAreaHeight: Dp = 80.dp
+
+/**
+ * 聊天输入区：玻璃输入胶囊 + 玻璃发送/停止圆钮。
+ *
+ * 由 [GlassDetailScaffold] 的 `bottomOverlay` 画在**录制之外**，所以能拿 [GlassBackdrop] 做真玻璃：
+ * 磨砂采样的是页面内容，消息从胶囊后面滚过去时会被糊掉。
+ */
+@Composable
+private fun ChatInputBar(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    glass: Boolean,
+    backdrop: GlassBackdrop,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        GlassSurface(
+            backdrop = backdrop,
+            glass = glass,
+            shape = RoundedCornerShape(Radius.pill),
+            modifier = Modifier.weight(1f).height(44.dp),
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                BasicTextField(
+                    value = state.input,
+                    onValueChange = viewModel::onInputChange,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
+                    decorationBox = { inner ->
+                        if (state.input.isEmpty()) {
+                            Text(
+                                "说点什么",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        inner()
+                    },
+                )
+            }
+        }
+
+        // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
+        AnimatedContent(
+            targetState = state.isStreaming,
+            transitionSpec = {
+                (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
+                    (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
+            },
+            label = "send-stop",
+        ) { streaming ->
+            GlassSurface(
+                backdrop = backdrop,
+                glass = glass,
+                shape = CircleShape,
+                modifier = Modifier.size(44.dp),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize().clickable(
+                        onClick = if (streaming) viewModel::stop else viewModel::send,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (streaming) {
+                        // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                    RoundedCornerShape(2.dp),
+                                ),
+                        )
+                    } else {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "发送",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /**
  * 消息渲染的唯一入口：样式切换只在这里分叉。
  * 气泡是默认样式，整行卡片保留为可选项（设置 → 外观里能切）。
