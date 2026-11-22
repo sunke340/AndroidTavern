@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -264,7 +265,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     },
                     leadingContent = {
                         Icon(
-                            androidx.compose.material.icons.Icons.Filled.Delete,
+                            Icons.Filled.Delete,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.error,
                         )
