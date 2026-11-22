@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -63,10 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,34 +82,6 @@ import app.tavern.core.model.ChatRole
 @Composable
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
-    val listState = rememberLazyListState()
-
-    val itemCount = state.transcript.size + if (state.streamingText.isNotEmpty()) 1 else 0
-
-    // 用户是否停在底部。串流时只有"本来就在底部"才跟着走，
-    // 否则每来一个 token 都抢滚动，会把正在上翻的人拽回来，也会让列表反复重排（画面闪）。
-    val atBottom by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisible >= info.totalItemsCount - 2
-        }
-    }
-
-    // 消息条数变化（新消息/切会话）→ 动画滚到底
-    LaunchedEffect(itemCount) {
-        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
-    }
-
-    // 流式增长 → 合帧贴底：不用动画（动画追不上 token），并且 60ms 内最多触发一次
-    var lastFollowAt by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(state.streamingText.length) {
-        if (!state.isStreaming || itemCount == 0 || !atBottom) return@LaunchedEffect
-        val now = System.currentTimeMillis()
-        if (now - lastFollowAt < 60L) return@LaunchedEffect
-        lastFollowAt = now
-        listState.scrollToItem(itemCount - 1)
-    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -173,17 +141,28 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 .padding(horizontal = Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
+            // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
+            // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
             LazyColumn(
-                state = listState,
+                reverseLayout = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(Space.s),
             ) {
+                if (state.streamingText.isNotEmpty()) {
+                    item {
+                        MessageRow(
+                            message = ChatMessage(ChatRole.Assistant, state.streamingText),
+                            style = state.effectiveMessageStyle,
+                            showCursor = true,
+                        )
+                    }
+                }
                 if (state.transcript.isEmpty() && state.streamingText.isEmpty()) {
                     item { EmptyHint("还没有消息。发一句开始；点右上「请求」可以看到实际发出去的提示词。") }
                 }
-                items(state.transcript) { message ->
+                items(state.transcript.asReversed()) { message ->
                     MessageRow(
                         message = message,
                         style = state.effectiveMessageStyle,
@@ -195,20 +174,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             fadeOutSpec = tween(Motion.Fast),
                         ),
                     )
-                }
-                if (state.streamingText.isNotEmpty()) {
-                    item {
-                        MessageRow(
-                            message = ChatMessage(ChatRole.Assistant, state.streamingText),
-                            style = state.effectiveMessageStyle,
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(Motion.Fast),
-                                placementSpec = null,
-                                fadeOutSpec = null,
-                            ),
-                            showCursor = true,
-                        )
-                    }
                 }
             }
 

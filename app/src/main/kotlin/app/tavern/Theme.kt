@@ -49,6 +49,42 @@ data class ThemePalette(
 /** 主题预设。以后加新配色只需要在这里加一个枚举项。 */
 enum class ThemePreset(val label: String, val light: ThemePalette, val dark: ThemePalette) {
 
+    Violet(
+        label = "墨紫",
+        light = ThemePalette(
+            // 主色是"墨紫"：低明度低饱和，白字压上去像烫金；比之前的 #6D5BD0 暗很多
+            primary = Color(0xFF3B2E52),
+            onPrimary = Color(0xFFFFFFFF),
+            background = Color(0xFFF8F7F9),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = Color(0xFFEFEDF3),
+            onBackground = Color(0xFF19171E),
+            onSurface = Color(0xFF19171E),
+            onSurfaceVariant = Color(0xFF6E6A76),
+            outline = Color(0xFFD8D2DE),
+            divider = Color(0xFFE6E4EA),
+            cardBorder = Color(0xFFE0DCE4),
+            // 气泡保留一点紫调（#E4DDF3），别让"我"的消息看起来是灰的
+            userBubble = Color(0xFFE4DDF3),
+            onUserBubble = Color(0xFF231B33),
+        ),
+        dark = ThemePalette(
+            primary = Color(0xFFB9A8D8),
+            onPrimary = Color(0xFF1A1426),
+            background = Color(0xFF0D0C10),
+            surface = Color(0xFF151318),
+            surfaceVariant = Color(0xFF1D1926),
+            onBackground = Color(0xFFEDEBF0),
+            onSurface = Color(0xFFEDEBF0),
+            onSurfaceVariant = Color(0xFFA49EAF),
+            outline = Color(0xFF39323F),
+            divider = Color(0xFF1C1922),
+            cardBorder = Color(0xFF241F2C),
+            userBubble = Color(0xFF221C30),
+            onUserBubble = Color(0xFFE7DFF6),
+        ),
+    ),
+
     Forest(
         label = "森林绿",
         light = ThemePalette(
@@ -148,42 +184,6 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFF232B34),
             userBubble = Color(0xFF16222E),
             onUserBubble = Color(0xFFD5E6F5),
-        ),
-    ),
-
-    Violet(
-        label = "墨紫",
-        light = ThemePalette(
-            // 主色是"墨紫"：低明度低饱和，白字压上去像烫金；比之前的 #6D5BD0 暗很多
-            primary = Color(0xFF3B2E52),
-            onPrimary = Color(0xFFFFFFFF),
-            background = Color(0xFFF8F7F9),
-            surface = Color(0xFFFFFFFF),
-            surfaceVariant = Color(0xFFEFEDF3),
-            onBackground = Color(0xFF19171E),
-            onSurface = Color(0xFF19171E),
-            onSurfaceVariant = Color(0xFF6E6A76),
-            outline = Color(0xFFD8D2DE),
-            divider = Color(0xFFE6E4EA),
-            cardBorder = Color(0xFFE0DCE4),
-            // 气泡保留一点紫调（#E4DDF3），别让"我"的消息看起来是灰的
-            userBubble = Color(0xFFE4DDF3),
-            onUserBubble = Color(0xFF231B33),
-        ),
-        dark = ThemePalette(
-            primary = Color(0xFFB9A8D8),
-            onPrimary = Color(0xFF1A1426),
-            background = Color(0xFF0D0C10),
-            surface = Color(0xFF151318),
-            surfaceVariant = Color(0xFF1D1926),
-            onBackground = Color(0xFFEDEBF0),
-            onSurface = Color(0xFFEDEBF0),
-            onSurfaceVariant = Color(0xFFA49EAF),
-            outline = Color(0xFF39323F),
-            divider = Color(0xFF1C1922),
-            cardBorder = Color(0xFF241F2C),
-            userBubble = Color(0xFF221C30),
-            onUserBubble = Color(0xFFE7DFF6),
         ),
     ),
 }

@@ -1,5 +1,7 @@
 package app.tavern
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,23 +20,32 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import app.tavern.data.log.AppLog
 
 /**
  * 设置的二级页面。
@@ -78,7 +89,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 SettingsPage.Sampling -> SamplingPage(state, viewModel)
                 SettingsPage.Appearance -> AppearancePage(state, viewModel)
                 SettingsPage.WorldBook -> WorldBookPage(state, viewModel)
-                SettingsPage.About -> AboutPage(state)
+                SettingsPage.About -> AboutPage(state, viewModel)
             }
             Box(modifier = Modifier.size(1.dp).padding(bottom = Space.xl))
         }
@@ -258,17 +269,75 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
 // ---- 关于 -----------------------------------------------------------------
 
+/**
+ * 关于 + 诊断。
+ *
+ * 「导出日志」是给真机排障用的：应用内日志只记事件与状态码，不含 Key 与消息正文；
+ * 导出走 SAF，落到用户自己选的位置，不需要存储权限。
+ */
 @Composable
-private fun AboutPage(state: ChatViewModel.UiState) {
+private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    val context = LocalContext.current
+    val buildLabel = if (BuildConfig.BUILD_ID.startsWith("local-")) {
+        "local:" + BuildConfig.BUILD_ID.takeLast(7)
+    } else {
+        BuildConfig.BUILD_ID.take(7)
+    }
+
+    var logCount by remember { mutableIntStateOf(AppLog.count()) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = AppLog.exportText("$buildLabel ${BuildConfig.VERSION_NAME}")
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(text.toByteArray(Charsets.UTF_8))
+            } ?: error("打不开输出流")
+        }.isSuccess
+        AppLog.i("diag", "导出日志 ok=$ok chars=${text.length}")
+        Toast.makeText(
+            context,
+            if (ok) "日志已导出（${text.length} 字符）" else "导出失败，换个位置再试",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
     SectionLabel("构建")
-    Text(
-        "构建 ${if (BuildConfig.BUILD_ID.startsWith("local-")) "local:" + BuildConfig.BUILD_ID.takeLast(7) else BuildConfig.BUILD_ID.take(7)}",
-        style = MaterialTheme.typography.bodyMedium,
-    )
+    Text("构建 $buildLabel", style = MaterialTheme.typography.bodyMedium)
     Text(
         "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
         style = MaterialTheme.typography.bodyMedium,
     )
+
+    SectionLabel("诊断")
+    Text(
+        "日志只记事件与状态码（模型名、消息条数、HTTP 状态、崩溃堆栈），不含 API Key 与消息正文。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text(
+        "当前缓存 $logCount 条（内存 800 条上限，另落盘 1MB 滚动）",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+        Button(
+            onClick = {
+                val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                    .format(java.util.Date())
+                exportLauncher.launch("tavern-log-$stamp.txt")
+            },
+        ) { Text("导出日志") }
+        OutlinedButton(
+            onClick = {
+                AppLog.clear()
+                logCount = AppLog.count()
+                Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
+            },
+        ) { Text("清空") }
+    }
 
     SectionLabel("说明")
     Text(

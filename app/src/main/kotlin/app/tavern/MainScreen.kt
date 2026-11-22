@@ -97,20 +97,22 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 transitionSpec = {
                     val forward = depthOf(targetState) >= depthOf(initialState)
                     if (forward) {
+                        // 进二级页：新页整屏从右边推入，旧页往左退 1/4（卡片堆的手感）
                         (
-                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it / 5 } +
-                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it } +
+                                fadeIn(tween(Motion.Base))
                             ) togetherWith (
-                            slideOutHorizontally(tween(Motion.Base)) { -it / 10 } +
-                                fadeOut(tween(Motion.Fast))
+                            slideOutHorizontally(tween(Motion.Slow)) { -it / 4 } +
+                                fadeOut(tween(Motion.Base))
                             )
                     } else {
+                        // 返回：当前页整屏往右退场，露出上一级（从左侧回来 1/4）
                         (
-                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 10 } +
-                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 } +
+                                fadeIn(tween(Motion.Base))
                             ) togetherWith (
-                            slideOutHorizontally(tween(Motion.Base)) { it / 5 } +
-                                fadeOut(tween(Motion.Fast))
+                            slideOutHorizontally(tween(Motion.Slow)) { it } +
+                                fadeOut(tween(Motion.Base))
                             )
                     }
                 },

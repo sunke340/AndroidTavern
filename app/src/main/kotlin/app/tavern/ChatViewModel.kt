@@ -16,6 +16,7 @@ import app.tavern.core.prompt.PromptBuilder
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
+import app.tavern.data.log.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -269,6 +270,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     chatOpen = if (currentGone) false else it.chatOpen,
                 )
             }
+            AppLog.i("card", "删除卡 id=$cardId 连带会话=$removedSessions file=$deletedFile")
             if (deletedFile) {
                 notify("已删除角色卡（连带 $removedSessions 个会话）")
             } else {
@@ -287,12 +289,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             when (result) {
                 is ImportResult.Ok -> {
+                    AppLog.i("card", "导入成功 id=${result.card.id} book=${result.card.bookEntryCount}")
                     val cards = withContext(Dispatchers.IO) { cardRepository.list() }
                     _state.update { it.copy(cards = cards, detailCardId = result.card.id) }
                     notify("已导入：${result.card.name}")
                 }
 
-                is ImportResult.Failed -> notify("导入失败：${result.reason}")
+                is ImportResult.Failed -> {
+                    AppLog.w("card", "导入失败 ${result.reason.take(120)}")
+                    notify("导入失败：${result.reason}")
+                }
             }
         }
     }
@@ -327,6 +333,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) { chatRepository.deleteSession(id) }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
             _state.update { it.copy(sessions = sessions) }
+            AppLog.i("chat", "删除会话 id=$id")
             notify("会话已删除")
 
             if (_state.value.sessionId != id) return@launch
@@ -504,6 +511,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 换主题：预设与深浅模式各自独立保存，互不覆盖。 */
     fun setThemePreset(preset: ThemePreset) {
+        AppLog.i("ui", "主题 preset=${preset.name}")
         _state.update { it.copy(themePreset = preset) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = preset.name, mode = null) }
@@ -511,6 +519,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setThemeMode(mode: ThemeMode) {
+        AppLog.i("ui", "深浅 mode=${mode.name}")
         _state.update { it.copy(themeMode = mode) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = null, mode = mode.name) }
@@ -586,6 +595,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        AppLog.i(
+            "chat",
+            "发送 model=${snapshot.model} messages=${messages.size} repeat=${history.count { it.role == ChatRole.User }}",
+        )
         val client = OpenAiCompatibleClient(baseUrl = snapshot.baseUrl, apiKey = snapshot.apiKey)
         val request = ChatRequest(
             model = snapshot.model,
@@ -680,11 +693,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                         is StreamEvent.Completed -> {
                             settled = true
+                            AppLog.i(
+                                "chat",
+                                "完成 finish=${event.finishReason ?: "null"} chars=${buffer.length}",
+                            )
                             finish(buffer.toString(), "完成（finish_reason=${event.finishReason ?: "null"}）")
                         }
 
                         is StreamEvent.Failed -> {
                             settled = true
+                            AppLog.e(
+                                "chat",
+                                "失败 http=${event.httpCode} msg=${event.message.take(200)}",
+                            )
                             val hint = if (event.httpCode == 401) "｜Key 不对或已失效" else ""
                             fail("失败（HTTP ${event.httpCode}）$hint：${event.message}")
                         }
@@ -701,6 +722,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                AppLog.e("chat", "客户端异常", error)
                 fail("客户端异常：${error.message ?: error::class.simpleName}")
             }
         }

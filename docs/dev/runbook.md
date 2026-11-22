@@ -93,6 +93,18 @@ tag 构建不会覆盖 `apk-latest`，资产长期有效；出问题时回装那
 7. **`Unclosed comment` + 一串莫名其妙的 `Unresolved reference`**：Kotlin 块注释可嵌套，注释里写了 `/*`（比如 `` `assets/cards/*.png` ``）会把后面的代码一起吞掉。`tools/check-kotlin-comments.sh` 守这条。
 8. **`gradle wrapper` 卡在 "Test of distribution url failed"**：`services.gradle.org` 本机不通，用镜像生成再改回官方 URL。
 
+## 6.5 真机日志（应用内）
+
+真机上的偶发问题（闪烁、请求失败、崩溃）不依赖 logcat：应用自己记日志。
+
+- 入口：设置 → 关于 → 「导出日志」，走 SAF 存成 `.txt`，不需要存储权限
+- 内容：事件与状态码（模型名、消息条数、HTTP 状态、崩溃堆栈、主题切换、导入/删除结果），
+  **不含 API Key 与消息正文**
+- 容量：内存 800 条 + `filesDir/logs/app.log` 1MB 滚动
+- 崩溃：`TavernApp` 装了 `UncaughtExceptionHandler`，崩溃栈会先落盘再交给系统
+
+它救不了"进程被系统直接杀掉（OOM/被清理）"的情况——那种看不到日志，只能从行为推测。
+
 ## 7. 交付
 
 - 用户通过 QQ 与我交互。APK 可以用 `qqbot_send_file` 直发，但**必须显式给 target**：`c2c:<openid>`（openid 在 `.secrets/personal.md`）。
