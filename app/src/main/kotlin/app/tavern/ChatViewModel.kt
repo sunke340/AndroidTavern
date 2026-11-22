@@ -58,10 +58,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessions: List<ChatSession> = emptyList(),
         val sessionId: String? = null,
         val requestPreview: String = "",
-        val showSettings: Boolean = true,
         val showRequest: Boolean = false,
-        val showSessions: Boolean = false,
         val importing: Boolean = false,
+        // ---- 界面结构（导航） ----
+        val screen: Screen = Screen.Sessions,
+        val chatOpen: Boolean = false,
+        // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
+        val temperatureText: String = "1.0",
+        val maxTokensText: String = "0",
+        val messageStyle: MessageStyle = MessageStyle.Card,
     )
 
     private val cardRepository = AppGraph.cards(application)
@@ -80,7 +85,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
             _state.update {
-                it.copy(baseUrl = saved.baseUrl, apiKey = saved.apiKey, model = saved.model)
+                it.copy(
+                    baseUrl = saved.baseUrl,
+                    apiKey = saved.apiKey,
+                    model = saved.model,
+                    temperatureText = saved.temperature.toString(),
+                    maxTokensText = saved.maxTokens.toString(),
+                    messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
+                        .getOrDefault(MessageStyle.Card),
+                )
             }
 
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
@@ -92,7 +105,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // 冷启动直接回到最近一次会话（标题里带卡名与时间，一眼能认出来）
             val latest = sessions.firstOrNull()
             if (latest != null) {
-                openSessionInternal(latest.id)
+                // 冷启动停在会话列表，不直接钻进聊天：从哪里来回哪里去
+                openSessionInternal(latest.id, navigate = false)
                 return@launch
             }
 
@@ -156,8 +170,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- 会话 --------------------------------------------------------------
 
-    fun toggleSessions() = _state.update { it.copy(showSessions = !it.showSessions) }
-
     fun newSession() {
         val snapshot = _state.value
         val cardId = snapshot.cardId
@@ -170,7 +182,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openSession(id: String) {
-        viewModelScope.launch { openSessionInternal(id) }
+        viewModelScope.launch { openSessionInternal(id, navigate = true) }
     }
 
     fun deleteSession(id: String) {
@@ -183,7 +195,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             val next = sessions.firstOrNull()
             if (next != null) {
-                openSessionInternal(next.id)
+                openSessionInternal(next.id, navigate = false)
             } else {
                 val cardId = _state.value.cardId
                 if (cardId != null) {
@@ -204,7 +216,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         openSessionInternal(session.id)
     }
 
-    private suspend fun openSessionInternal(id: String) {
+    private suspend fun openSessionInternal(id: String, navigate: Boolean = true) {
         val session = withContext(Dispatchers.IO) {
             chatRepository.sessions().firstOrNull { it.id == id }
         } ?: run {
@@ -230,6 +242,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 streamingText = "",
                 isStreaming = false,
+                chatOpen = navigate,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
@@ -277,8 +290,40 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
-    fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
+    fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+
+    fun closeChat() = _state.update { it.copy(chatOpen = false) }
+
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
+
+    fun onTemperatureChange(value: String) {
+        _state.update { it.copy(temperatureText = value) }
+        persistSampling(value, _state.value.maxTokensText)
+    }
+
+    fun onMaxTokensChange(value: String) {
+        _state.update { it.copy(maxTokensText = value) }
+        persistSampling(_state.value.temperatureText, value)
+    }
+
+    private fun persistSampling(temperatureText: String, maxTokensText: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                // 解析不了就先不存，等用户把数字打完
+                settingsRepository.saveSampling(
+                    temperature = temperatureText.toDoubleOrNull(),
+                    maxTokens = maxTokensText.toIntOrNull(),
+                )
+            }
+        }
+    }
+
+    fun onMessageStyleChange(style: MessageStyle) {
+        _state.update { it.copy(messageStyle = style) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveMessageStyle(style.name) }
+        }
+    }
 
     /**
      * 停止生成。已收到的半截内容**保留**并落库——原版就是这样，
@@ -346,8 +391,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val request = ChatRequest(
             model = snapshot.model,
             messages = messages,
-            temperature = 1.0,
-            maxTokens = 300,
+            temperature = snapshot.temperatureText.toDoubleOrNull() ?: 1.0,
+            // 0 = 不限：不往请求里放 max_tokens（以前硬编码 300，长回复会被截）
+            maxTokens = snapshot.maxTokensText.toIntOrNull()?.takeIf { it > 0 },
             stream = true,
         )
 

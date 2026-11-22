@@ -24,6 +24,10 @@ class PreferencesSettingsRepository(
         baseUrl = prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL,
         apiKey = runCatching { secrets.get(KEY_API_KEY) }.getOrNull().orEmpty(),
         model = prefs.getString(KEY_MODEL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_MODEL,
+        temperature = prefs.getFloat(KEY_TEMPERATURE, DEFAULT_TEMPERATURE.toFloat()).toDouble(),
+        maxTokens = prefs.getInt(KEY_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+        messageStyle = prefs.getString(KEY_MESSAGE_STYLE, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_MESSAGE_STYLE,
     )
 
     override fun saveConnection(baseUrl: String, model: String) {
@@ -31,6 +35,17 @@ class PreferencesSettingsRepository(
             .putString(KEY_BASE_URL, baseUrl)
             .putString(KEY_MODEL, model)
             .apply()
+    }
+
+    override fun saveSampling(temperature: Double?, maxTokens: Int?) {
+        prefs.edit().apply {
+            temperature?.let { putFloat(KEY_TEMPERATURE, it.toFloat()) }
+            maxTokens?.let { putInt(KEY_MAX_TOKENS, it) }
+        }.apply()
+    }
+
+    override fun saveMessageStyle(style: String) {
+        prefs.edit().putString(KEY_MESSAGE_STYLE, style).apply()
     }
 
     override fun saveApiKey(key: String) {
@@ -46,7 +61,13 @@ class PreferencesSettingsRepository(
         const val KEY_BASE_URL = "base_url"
         const val KEY_MODEL = "model"
         const val KEY_API_KEY = "api_key"
+        const val KEY_TEMPERATURE = "temperature"
+        const val KEY_MAX_TOKENS = "max_tokens"
+        const val KEY_MESSAGE_STYLE = "message_style"
         const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
         const val DEFAULT_MODEL = "deepseek-chat"
+        const val DEFAULT_TEMPERATURE = 1.0
+        const val DEFAULT_MAX_TOKENS = 0
+        const val DEFAULT_MESSAGE_STYLE = "Card"
     }
 }
