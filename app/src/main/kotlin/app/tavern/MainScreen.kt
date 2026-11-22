@@ -348,6 +348,10 @@ private fun TabsRoot(
             }
         }.onFailure { AppLog.w("glass", "降采样图层回读失败：${it.message}") }
     }
+    // 图层要先铺一层页面底色：背景画在 Scaffold/祖先上，不在内容节点的 drawContent() 里。
+    // 不铺的话图层里只有文字和头像（实测 544 个采样里只有 9 个不透明），底栏画上去仍是
+    // 「透明磨砂」，背后真实内容照样透出来 —— 看起来就是"没糊"（2026-11-22 就是这个）。
+    val pageBackground = MaterialTheme.colorScheme.background
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = BarHeight + Space.s + Space.s + navBar
 
@@ -373,6 +377,7 @@ private fun TabsRoot(
                             // 四参数成员版 record(density, layoutDirection, size, block) 只改图层自己的
                             // DrawContext，内容会照旧画到主画布 —— 屏幕看着正常、图层是空的（踩过）。
                             glassLayer.record(size = size.toIntSize()) {
+                                drawRect(pageBackground)
                                 this@drawWithContent.drawContent()
                             }
                             drawLayer(glassLayer)

@@ -149,6 +149,9 @@ MainScreen（Destination + AnimatedContent）
   不能用四参数的成员版 `record(density, layoutDirection, size) { }`。前者会把**本 DrawScope 的画布**临时改指到
   图层（官方 KDoc：retarget the underlying canvas），后者只改图层自己的 `DrawContext` —— 结果 `drawContent()`
   照旧画到主画布：屏幕上内容正常、图层是空的，底栏画出来什么都没有。**这个坑很隐蔽：不崩、不报错、看不出异常。**
+- **录图层前先铺页面底色**（`drawRect(pageBackground)`）：背景画在 `Scaffold`/祖先上，不在内容节点的
+  `drawContent()` 里。不铺的话图层只有文字和头像（实测 544 个采样点里 9 个不透明），底栏画上去仍是
+  「透明磨砂」，背后真实内容照样透出来 —— 看着就是"没糊"。判据：`AppLog` 里 `不透明=` 应该接近采样总数。
 - **`renderEffect` / `alpha` / `translation` 是渲染时读的属性**：在 draw 块里
   `renderEffect = …; drawLayer(); renderEffect = null` 会**等于没设**（真机只剩半透明，不报错）。
   要模糊就挂 `Modifier.blur` / `Modifier.graphicsLayer { renderEffect = … }`，让效果跟着节点活到渲染完。
