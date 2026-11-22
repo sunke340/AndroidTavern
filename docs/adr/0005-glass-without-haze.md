@@ -20,14 +20,14 @@ ADR 0004 引了 `dev.chrisbanes.haze:haze:1.5.4` 做背景模糊。真机（vivo
 
 ```
 内容层：Modifier.drawWithContent {
-    glassLayer.record(density, layoutDirection, size) { drawContent() }
-    drawLayer(glassLayer)
+    glassLayer.record(density, layoutDirection, size) { drawContent() }  // 1.7.6 没有无参 record
+    drawLayer(glassLayer)                                                // 正常画（不糊）
 }
 底栏：Modifier.clip(胶囊).drawWithContent {
-    canvas.saveLayer(Rect(0, 0, size), Paint().apply { 模糊 RenderEffect })
+    glassLayer.renderEffect = BlurEffect(24.dp, 24.dp)   // 挂模糊
     translate(-(底栏位置 - 内容位置)) { drawLayer(glassLayer) }
-    canvas.restore()
-    drawContent()   // 背景色 + 描边 + 图标文字
+    glassLayer.renderEffect = null                       // 立刻清掉，别影响内容层自己的绘制
+    drawContent()                                        // 半透明底色 + 描边 + 图标文字
 }
 ```
 

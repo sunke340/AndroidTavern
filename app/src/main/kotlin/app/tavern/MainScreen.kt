@@ -1,6 +1,5 @@
 package app.tavern
 
-import android.graphics.RenderEffect
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -61,12 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.GraphicsLayer
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -418,16 +415,9 @@ private fun TavernBottomBar(
 
     val density = LocalDensity.current
     val blurPx = with(density) { GlassBlur.toPx() }
-    val blurPaint = remember(blurPx) {
-        Paint().also { paint ->
-            if (Build.VERSION.SDK_INT >= 31) {
-                paint.asFrameworkPaint().renderEffect = RenderEffect.createBlurEffect(
-                    blurPx,
-                    blurPx,
-                    android.graphics.Shader.TileMode.CLAMP,
-                )
-            }
-        }
+    val blurEffect = remember(blurPx) {
+        // API < 31 没有 RenderEffect：那个版本上玻璃退化成半透明（和「轻量」一样）
+        if (Build.VERSION.SDK_INT >= 31) BlurEffect(blurPx, blurPx) else null
     }
     var barOrigin by remember { mutableStateOf(Offset.Zero) }
 
@@ -439,16 +429,15 @@ private fun TavernBottomBar(
             .clip(shape)
             .onGloballyPositioned { barOrigin = it.positionInWindow() }
             .drawWithContent {
-                if (blur && Build.VERSION.SDK_INT >= 31) {
+                if (blur && blurEffect != null) {
+                    // 把内容图层按"底栏位置 - 内容位置"平移过来，挂上模糊再画。
+                    // 画完立刻清掉 renderEffect：同一帧里内容层自己已经正常画过一次，别把它也糊了。
                     val origin = barOrigin - contentOrigin()
-                    drawIntoCanvas { canvas ->
-                        // saveLayer + RenderEffect：这一层里画的东西都会被模糊
-                        canvas.saveLayer(Rect(Offset.Zero, size), blurPaint)
-                        translate(left = -origin.x, top = -origin.y) {
-                            drawLayer(glassLayer)
-                        }
-                        canvas.restore()
+                    glassLayer.renderEffect = blurEffect
+                    translate(left = -origin.x, top = -origin.y) {
+                        drawLayer(glassLayer)
                     }
+                    glassLayer.renderEffect = null
                 }
                 drawContent()
             }
