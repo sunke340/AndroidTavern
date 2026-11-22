@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`bf4ab77`（兜底回退点：tag `apk-m17` = 同一 commit 出的包）
+- 代码：`32628d4`（兜底回退点：tag `apk-m18`；上一版 `bf4ab77` = tag `apk-m17`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 34 个单测全绿
-- 已交付 APK：`app-v14-bf4ab77.apk`（签名固定，可覆盖安装）
+- 已交付 APK：`app-v15-32628d4.apk`（签名固定，可覆盖安装；上一版 `app-v14-bf4ab77.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 已经做完的（能装、能日常聊）
@@ -18,7 +18,7 @@
 | 聊天：SSE 流式、开场白（first_mes 作为第一条消息）、气泡/整行卡片、停止保留半截 | ✅ |
 | 持久化：SQLite 会话/消息、会话列表、新建（先选卡弹层）、长按删除（动作单+确认） | ✅ |
 | 设置：一级/二级（模型/采样/外观/世界书/关于）、主题四套色板 + 深浅、Key 加密存储 | ✅ |
-| 导航：`Destination` + `AnimatedContent`，0–2 层，push/pop 动效 | ✅ |
+| 导航：`Destination` + `AnimatedContent`，0–2 层，push/pop 动效（叠放次序按深度给 `targetContentZIndex`，返回才是"抽走一张卡"） | 🟨 待真机确认 |
 | 应用图标：黑猫月色 adaptive icon（前景 63% 安全区 + 模糊插画底） | ✅ |
 | 日志：`AppLog`（内存+落盘）+ 崩溃兜底 + 关于页导出 | ✅ |
 
@@ -40,7 +40,9 @@
   若仍闪，让用户导出日志看请求/完成时间点。
 - `ModalBottomSheet`（选卡、动作单）的 insets 与底栏叠加未在真机确认。
 - 世界书只存"勾选"，**不影响提示词**（引擎未实现）。
-- 日志只到"事件级"：不含 HTTP 响应原文；进程被系统杀掉时抓不到。
+- 日志只到"事件级"：不含 HTTP 响应原文；进程被系统杀掉时抓不到（导航已补 `tag=nav` 打点）。
+- **未接预测式返回**：Android 13+ 的返回手势在松手后才播动画，拖动时看不到上一级预览。
+  要接得用 `PredictiveBackHandler` + 把拖拽进度喂给 `AnimatedContent`（约一轮专门的工作量）。
 - 本机编不了 Android 模块：所有 Compose 改动只能靠 CI 编译 + 真机验。
 
 ## 开发回路（这台机器的现实）
