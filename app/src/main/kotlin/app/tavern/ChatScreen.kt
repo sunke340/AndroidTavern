@@ -50,7 +50,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -73,15 +76,29 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     val itemCount = state.transcript.size + if (state.streamingText.isNotEmpty()) 1 else 0
 
-    // 新内容出现时跟到底部：流式过程中用瞬时滚动，否则动画永远追不上 token 速度
-    LaunchedEffect(itemCount, state.streamingText.length) {
-        if (itemCount > 0) {
-            if (state.isStreaming) {
-                listState.scrollToItem(itemCount - 1)
-            } else {
-                listState.animateScrollToItem(itemCount - 1)
-            }
+    // 用户是否停在底部。串流时只有"本来就在底部"才跟着走，
+    // 否则每来一个 token 都抢滚动，会把正在上翻的人拽回来，也会让列表反复重排（画面闪）。
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisible >= info.totalItemsCount - 2
         }
+    }
+
+    // 消息条数变化（新消息/切会话）→ 动画滚到底
+    LaunchedEffect(itemCount) {
+        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+    }
+
+    // 流式增长 → 合帧贴底：不用动画（动画追不上 token），并且 60ms 内最多触发一次
+    var lastFollowAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(state.streamingText.length) {
+        if (!state.isStreaming || itemCount == 0 || !atBottom) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        if (now - lastFollowAt < 60L) return@LaunchedEffect
+        lastFollowAt = now
+        listState.scrollToItem(itemCount - 1)
     }
 
     Scaffold(
@@ -162,9 +179,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     MessageRow(
                         message = message,
                         style = state.effectiveMessageStyle,
+                        // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
+                        // 位移动画会不断重放，整屏看起来在闪。
                         modifier = Modifier.animateItem(
                             fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
-                            placementSpec = tween(Motion.Slow, easing = Motion.Standard),
+                            placementSpec = null,
                             fadeOutSpec = tween(Motion.Fast),
                         ),
                     )
@@ -174,7 +193,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         MessageRow(
                             message = ChatMessage(ChatRole.Assistant, state.streamingText),
                             style = state.effectiveMessageStyle,
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(Motion.Fast),
+                                placementSpec = null,
+                                fadeOutSpec = null,
+                            ),
                             showCursor = true,
                         )
                     }

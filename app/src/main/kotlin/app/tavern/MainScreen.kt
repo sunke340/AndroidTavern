@@ -5,7 +5,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -102,15 +103,21 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // tab 切换：淡入 + 轻微上移。不用左右滑动——三个 tab 没有方向语义，
-            // 横向滑反而暗示"可以左右滑"，与交互不符。
+            // tab 切换：按"左中右"的顺序做横向位移（新页从对应方向进来，旧页往反方向走）。
+            // 三个 tab 在底栏是水平排列的，横移才符合方向直觉。
             AnimatedContent(
                 targetState = state.screen,
                 transitionSpec = {
+                    val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
                     (
                         fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
-                            slideInVertically(tween(Motion.Base, easing = Motion.Decelerate)) { it / 28 }
-                        ) togetherWith fadeOut(tween(Motion.Fast))
+                            slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
+                                if (forward) w / 8 else -w / 8
+                            }
+                        ) togetherWith (
+                        fadeOut(tween(Motion.Fast)) +
+                            slideOutHorizontally(tween(Motion.Fast)) { w -> if (forward) -w / 8 else w / 8 }
+                        )
                 },
                 label = "screen",
             ) { screen ->
@@ -123,6 +130,9 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         }
     }
 }
+
+/** tab 的左右顺序，用于决定切换动画的方向。 */
+private val screenOrder = listOf(Screen.Sessions, Screen.Characters, Screen.Settings)
 
 /** 底栏的三项。 */
 private data class BarItem(val screen: Screen, val icon: ImageVector, val label: String)
