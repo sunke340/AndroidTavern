@@ -22,7 +22,7 @@ internal class TavernDatabase(context: Context) :
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_SESSIONS)
         db.execSQL(CREATE_MESSAGES)
-        db.execSQL("CREATE INDEX idx_messages_session ON $TABLE_MESSAGES(session_id, id)")
+        db.execSQL(CREATE_MESSAGES_INDEX)
         db.execSQL(CREATE_PROFILES)
     }
 
@@ -37,50 +37,42 @@ internal class TavernDatabase(context: Context) :
         if (version != newVersion) error("没有 $oldVersion → $newVersion 的迁移")
     }
 
-    private companion object {
-        const val CREATE_SESSIONS = """
-            CREATE TABLE $TABLE_SESSIONS (
-                id TEXT PRIMARY KEY NOT NULL,
-                card_id TEXT NOT NULL,
-                card_name TEXT NOT NULL,
-                title TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-        """
-
-        const val CREATE_MESSAGES = """
-            CREATE TABLE $TABLE_MESSAGES (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                is_user INTEGER NOT NULL,
-                is_system INTEGER NOT NULL DEFAULT 0,
-                content TEXT NOT NULL,
-                send_date TEXT NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES $TABLE_SESSIONS(id) ON DELETE CASCADE
-            )
-        """
-
-        // headers 存"一行一条 Name: value"的原始文本（UI 里就是这个形状，存取不用转义）
-        const val CREATE_PROFILES = """
-            CREATE TABLE IF NOT EXISTS $TABLE_PROFILES (
-                id TEXT PRIMARY KEY NOT NULL,
-                name TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                model TEXT NOT NULL,
-                reasoning_effort TEXT,
-                headers TEXT NOT NULL DEFAULT '',
-                is_default INTEGER NOT NULL DEFAULT 0
-            )
-        """
-    }
-
     companion object {
         const val DATABASE_NAME = "tavern.db"
         const val VERSION = 2
         const val TABLE_SESSIONS = "sessions"
         const val TABLE_MESSAGES = "messages"
         const val TABLE_PROFILES = "model_profiles"
+
+        private const val CREATE_SESSIONS = "CREATE TABLE IF NOT EXISTS $TABLE_SESSIONS (" +
+            "id TEXT PRIMARY KEY NOT NULL," +
+            "card_id TEXT NOT NULL," +
+            "card_name TEXT NOT NULL," +
+            "title TEXT NOT NULL," +
+            "created_at INTEGER NOT NULL," +
+            "updated_at INTEGER NOT NULL)"
+
+        private const val CREATE_MESSAGES = "CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "session_id TEXT NOT NULL," +
+            "is_user INTEGER NOT NULL," +
+            "is_system INTEGER NOT NULL DEFAULT 0," +
+            "content TEXT NOT NULL," +
+            "send_date TEXT NOT NULL," +
+            "FOREIGN KEY (session_id) REFERENCES $TABLE_SESSIONS(id) ON DELETE CASCADE)"
+
+        private const val CREATE_MESSAGES_INDEX =
+            "CREATE INDEX IF NOT EXISTS idx_messages_session ON $TABLE_MESSAGES(session_id, id)"
+
+        // headers 存"一行一条 Name: value"的原始文本（UI 里就是这个形状，存取不用转义）
+        private const val CREATE_PROFILES = "CREATE TABLE IF NOT EXISTS $TABLE_PROFILES (" +
+            "id TEXT PRIMARY KEY NOT NULL," +
+            "name TEXT NOT NULL," +
+            "base_url TEXT NOT NULL," +
+            "model TEXT NOT NULL," +
+            "reasoning_effort TEXT," +
+            "headers TEXT NOT NULL DEFAULT ''," +
+            "is_default INTEGER NOT NULL DEFAULT 0)"
     }
 }
 

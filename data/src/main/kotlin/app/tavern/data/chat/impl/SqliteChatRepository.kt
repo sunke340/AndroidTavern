@@ -19,7 +19,8 @@ import java.util.UUID
  */
 class SqliteChatRepository(context: Context) : ChatRepository {
 
-    private val helper = TavernDatabase(context)
+    // 与 alias 共用同一个 helper：两个实例会有两条连接抢锁
+    private val helper = TavernDatabases.of(context)
 
     override fun sessions(): List<ChatSession> {
         val sql = """
