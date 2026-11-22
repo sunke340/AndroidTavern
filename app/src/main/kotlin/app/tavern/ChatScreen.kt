@@ -130,7 +130,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 OutlinedTextField(
                     value = state.apiKey,
                     onValueChange = viewModel::onApiKeyChange,
-                    label = { Text("API Key（只在内存里）") },
+                    label = { Text("API Key（加密保存，重开还在）") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),

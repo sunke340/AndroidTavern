@@ -17,6 +17,7 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,15 +66,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val cardRepository = AppGraph.cards(application)
     private val chatRepository = AppGraph.chats(application)
+    private val settingsRepository = AppGraph.settings(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var card: CharacterCard? = null
     private var job: Job? = null
+    private var keySaveJob: Job? = null
 
     init {
         viewModelScope.launch {
+            // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
+            val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
+            _state.update {
+                it.copy(baseUrl = saved.baseUrl, apiKey = saved.apiKey, model = saved.model)
+            }
+
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
             _state.update { it.copy(cards = cards) }
 
@@ -236,9 +245,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- 输入与请求 --------------------------------------------------------
 
-    fun onBaseUrlChange(value: String) = _state.update { it.copy(baseUrl = value) }
-    fun onApiKeyChange(value: String) = _state.update { it.copy(apiKey = value) }
-    fun onModelChange(value: String) = _state.update { it.copy(model = value) }
+    fun onBaseUrlChange(value: String) {
+        _state.update { it.copy(baseUrl = value) }
+        persistConnection()
+    }
+
+    fun onModelChange(value: String) {
+        _state.update { it.copy(model = value) }
+        persistConnection()
+    }
+
+    /**
+     * Key 逐字符变化，不能每敲一下就做一次 Keystore 加密（还浪费 IO），
+     * 停手 600ms 再落盘。
+     */
+    fun onApiKeyChange(value: String) {
+        _state.update { it.copy(apiKey = value) }
+        keySaveJob?.cancel()
+        keySaveJob = viewModelScope.launch {
+            delay(600)
+            withContext(Dispatchers.IO) { settingsRepository.saveApiKey(value) }
+        }
+    }
+
+    private fun persistConnection() {
+        val current = _state.value
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                settingsRepository.saveConnection(current.baseUrl, current.model)
+            }
+        }
+    }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
     fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
@@ -281,6 +318,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (snapshot.input.isBlank() || snapshot.isStreaming) return
+        if (snapshot.apiKey.isBlank()) {
+            // 以前这里直接发出去，用户只会看到服务端 401，摸不着头脑
+            _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
+            return
+        }
 
         val text = snapshot.input.trim()
         val userMessage = ChatMessage(ChatRole.User, text)
@@ -396,7 +438,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                         is StreamEvent.Failed -> {
                             settled = true
-                            fail("失败（HTTP ${event.httpCode}）：${event.message}")
+                            val hint = if (event.httpCode == 401) "｜Key 不对或已失效" else ""
+                            fail("失败（HTTP ${event.httpCode}）$hint：${event.message}")
                         }
                     }
                 }

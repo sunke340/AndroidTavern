@@ -5,6 +5,8 @@ import app.tavern.data.cards.CardRepository
 import app.tavern.data.cards.impl.CardStore
 import app.tavern.data.chat.ChatRepository
 import app.tavern.data.chat.impl.SqliteChatRepository
+import app.tavern.data.settings.SettingsRepository
+import app.tavern.data.settings.impl.PreferencesSettingsRepository
 
 /**
  * 手写的依赖对象图（[app/AGENTS.md](../../AGENTS.md)：先手写，别上注解处理）。
@@ -20,6 +22,9 @@ object AppGraph {
     @Volatile
     private var chatStore: ChatRepository? = null
 
+    @Volatile
+    private var settingsStore: SettingsRepository? = null
+
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
             cardStore ?: CardStore(context.applicationContext).also { cardStore = it }
@@ -28,5 +33,11 @@ object AppGraph {
     fun chats(context: Context): ChatRepository =
         chatStore ?: synchronized(this) {
             chatStore ?: SqliteChatRepository(context.applicationContext).also { chatStore = it }
+        }
+
+    fun settings(context: Context): SettingsRepository =
+        settingsStore ?: synchronized(this) {
+            settingsStore ?: PreferencesSettingsRepository(context.applicationContext)
+                .also { settingsStore = it }
         }
 }
