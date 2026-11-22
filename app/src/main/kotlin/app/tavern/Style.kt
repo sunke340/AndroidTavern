@@ -152,10 +152,12 @@ fun SettingLinkRow(title: String, value: String, onClick: () -> Unit) {
         title = title,
         subtitle = value,
         trailing = {
-            androidx.compose.material3.Icon(
-                androidx.compose.material.icons.Icons.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            // 用文字箭头而不是图标：material-icons-core 里没有 KeyboardArrowRight
+            // （它在 extended 包里，为一个箭头引 10MB 依赖不值得），自绘一个更省。
+            Text(
+                "›",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         onClick = onClick,

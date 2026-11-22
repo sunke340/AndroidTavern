@@ -41,6 +41,9 @@ MainScreen（Scaffold + NavigationBar）
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
 - 设置要分层：一级只放"去哪儿"（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。
 - 聊天页的排查工具（本次请求）走右上 `⋮` → 全屏弹层，不占消息区版面。
+- 图标只能从 `material-icons-core` 里取（ArrowBack / MoreVert / Send / Person / Settings /
+  List / Close / Delete / Add 等）；**不确定有没有的就用文字或 Canvas 自绘**——
+  引 `material-icons-extended` 会多 10MB 和一轮构建，本机又编不了，不值得。
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 
