@@ -26,8 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -47,13 +47,29 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * 顶层结构：三栏（会话 / 角色 / 设置），聊天是叠在上面的二级页。
+ * 顶层结构：三栏（会话 / 角色 / 设置），其余都是叠在上面的二级页。
  *
- * 为什么聊天不占一个 tab：底部栏放的是**平级目的地**，聊天是从会话进去的详情，
- * 带返回栈才符合安卓返回键。世界书同理不进底部栏——它是跟着卡和会话走的编辑面。
+ * 导航用一个 [Destination] 状态 + `AnimatedContent` 表达，而不是 early return：
+ * 后者在换页时是"整棵树直接替换"，没法做进/出动画。
  *
- * 主题在最外层套：换主题色/深浅时整棵树重绘，二级页也一起变。
+ * 深度决定动画方向：深→更深 从右侧进；变浅 反向退出。
  */
+private sealed interface Destination {
+    data object Tabs : Destination
+    data object Chat : Destination
+    data class Settings(val page: SettingsPage) : Destination
+    data class Detail(val cardId: String) : Destination
+    data class CardConfig(val cardId: String, val page: CardConfigPage) : Destination
+}
+
+private fun depthOf(destination: Destination): Int = when (destination) {
+    Destination.Tabs -> 0
+    is Destination.Settings -> 1
+    is Destination.Detail -> 1
+    Destination.Chat -> 2
+    is Destination.CardConfig -> 2
+}
+
 @Composable
 fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -63,35 +79,73 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            MainContent(state = state, viewModel = viewModel)
+            // 先取到局部变量：state 是委托属性，属性访问不能智能转换
+            val detailId = state.detailCardId
+            val cardConfig = state.cardConfigPage
+            val settingsPage = state.settingsPage
+
+            val destination: Destination = when {
+                state.chatOpen -> Destination.Chat
+                detailId != null && cardConfig != null -> Destination.CardConfig(detailId, cardConfig)
+                detailId != null -> Destination.Detail(detailId)
+                settingsPage != null -> Destination.Settings(settingsPage)
+                else -> Destination.Tabs
+            }
+
+            AnimatedContent(
+                targetState = destination,
+                transitionSpec = {
+                    val forward = depthOf(targetState) >= depthOf(initialState)
+                    if (forward) {
+                        (
+                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it / 5 } +
+                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                            ) togetherWith (
+                            slideOutHorizontally(tween(Motion.Base)) { -it / 10 } +
+                                fadeOut(tween(Motion.Fast))
+                            )
+                    } else {
+                        (
+                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 10 } +
+                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                            ) togetherWith (
+                            slideOutHorizontally(tween(Motion.Base)) { it / 5 } +
+                                fadeOut(tween(Motion.Fast))
+                            )
+                    }
+                },
+                label = "destination",
+            ) { target ->
+                when (target) {
+                    Destination.Tabs -> TabsRoot(state, viewModel)
+                    Destination.Chat -> {
+                        BackHandler { viewModel.closeChat() }
+                        ChatScreen(state = state, viewModel = viewModel)
+                    }
+
+                    is Destination.Settings -> {
+                        BackHandler { viewModel.closeSettingsPage() }
+                        SettingsSubPage(state = state, viewModel = viewModel)
+                    }
+
+                    is Destination.Detail -> {
+                        BackHandler { viewModel.closeDetail() }
+                        CharacterDetailScreen(state = state, viewModel = viewModel)
+                    }
+
+                    is Destination.CardConfig -> {
+                        BackHandler { viewModel.closeCardConfigPage() }
+                        CardConfigPageScreen(state = state, viewModel = viewModel)
+                    }
+                }
+            }
         }
     }
 }
 
+/** 三栏根页：底部导航 + 各 tab 内容（tab 之间的切换另有自己的动画）。 */
 @Composable
-private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    if (state.chatOpen) {
-        // 聊天页全屏：底部导航隐藏，返回键先退聊天而不是退出 App
-        BackHandler { viewModel.closeChat() }
-        ChatScreen(state = state, viewModel = viewModel)
-        return
-    }
-
-    if (state.detailCardId != null) {
-        // 角色详情也是全屏二级页（从角色网格点进来）
-        BackHandler { viewModel.closeDetail() }
-        CharacterDetailScreen(state = state, viewModel = viewModel)
-        return
-    }
-
-    if (state.settingsPage != null) {
-        // 设置的二级页面也是全屏二级页（返回键先退子页）
-        BackHandler { viewModel.closeSettingsPage() }
-        SettingsSubPage(state = state, viewModel = viewModel)
-        return
-    }
-
-    // 导入/删除这类一次性结果用 Snackbar 报，不占页头（页头高度必须固定）
+private fun TabsRoot(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     val notice = state.notice
     LaunchedEffect(notice?.id) {
@@ -105,13 +159,9 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = Modifier.fillMaxSize().imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            TavernBottomBar(current = state.screen, onSelect = viewModel::showScreen)
-        },
+        bottomBar = { TavernBottomBar(current = state.screen, onSelect = viewModel::showScreen) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // tab 切换：按"左中右"的顺序做横向位移（新页从对应方向进来，旧页往反方向走）。
-            // 三个 tab 在底栏是水平排列的，横移才符合方向直觉。
             AnimatedContent(
                 targetState = state.screen,
                 transitionSpec = {
@@ -154,10 +204,7 @@ private val barItems = listOf(
  * 自绘底栏，**56dp**。
  *
  * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp 并带胶囊指示器，压不高（标签会被截）。
- * C 方向要的是紧凑、无胶囊、选中态只靠主色区分。代价是失去它自带的指示器动画，
- * 下一批做动效时自己补一个淡入。
- *
- * insets：背景要铺到系统导航栏底下（否则会露出一条缝），内容用 `navigationBarsPadding()` 让开。
+ * C 方向要的是紧凑、无胶囊、选中态只靠主色区分。
  */
 @Composable
 private fun TavernBottomBar(current: Screen, onSelect: (Screen) -> Unit) {

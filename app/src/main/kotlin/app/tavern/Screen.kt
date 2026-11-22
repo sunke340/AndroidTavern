@@ -17,6 +17,13 @@ enum class SettingsPage(val title: String) {
     About("关于"),
 }
 
+/** 角色卡配置的二级页（从角色详情 → 配置 进入，作用域是"这张卡"）。 */
+enum class CardConfigPage(val title: String) {
+    WorldBook("内嵌世界书"),
+    MessageStyle("对话样式"),
+    Info("关于这张卡"),
+}
+
 /**
  * 消息渲染样式。
  *

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>紫罗兰配色候选</title>
+<style>
+  :root{--font:system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","PingFang SC",sans-serif;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#E9E8EC;font-family:var(--font);padding:24px;color:#1b1b20}
+  h1{font-size:19px;margin-bottom:4px}
+  .note{font-size:12.5px;color:#5f5f68;margin-bottom:18px;max-width:1240px;line-height:1.6}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;max-width:1280px}
+  .case{display:flex;flex-direction:column;gap:8px}
+  .title{font-size:13.5px;font-weight:700}
+  .sub{font-size:11.5px;color:#66666f}
+  .phone{width:296px;height:600px;border-radius:24px;overflow:hidden;box-shadow:0 8px 22px rgba(0,0,0,.13);
+         display:flex;flex-direction:column;border:1px solid rgba(0,0,0,.06)}
+  .status{height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:10.5px;font-weight:600}
+  .bar{display:flex;align-items:center;gap:8px;padding:2px 12px 9px;border-bottom:1px solid var(--divider)}
+  .bar .nm{font-size:13.5px;font-weight:700}
+  .bar .st{font-size:9.5px;color:var(--muted)}
+  .bar .more{margin-left:auto;color:var(--muted)}
+  .msgs{flex:1;padding:10px 12px 0;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+  .msg{max-width:84%}
+  .bub{background:var(--surface);border:1px solid var(--cardBorder);border-radius:12px 12px 12px 4px;
+       padding:8px 10px;font-size:11.5px;line-height:1.5;color:var(--text)}
+  .msg.me{align-self:flex-end}
+  .msg.me .bub{background:var(--bubble);border-color:var(--bubbleBorder);color:var(--bubbleText);
+               border-radius:12px 12px 4px 12px}
+  .inp{margin:8px 12px 14px;background:var(--surface);border:1px solid var(--cardBorder);border-radius:10px;
+       padding:8px 8px 8px 10px;display:flex;align-items:center;justify-content:space-between}
+  .inp span{color:var(--muted);font-size:11.5px}
+  .inp b{background:var(--primary);color:#fff;border-radius:7px;padding:4px 10px;font-size:11.5px}
+  .nav{height:46px;border-top:1px solid var(--divider);display:flex;background:var(--surface)}
+  .nav div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:9.5px;color:var(--muted)}
+  .nav div.on{color:var(--primary);font-weight:700}
+  .sw{display:flex;gap:6px;align-items:center}
+  .dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.12)}
+  .pill{font-size:10px;padding:3px 8px;border-radius:6px;color:#fff}
+  .darkstrip{display:flex;gap:6px;align-items:center;background:#0F0E14;border-radius:8px;padding:6px;margin-top:2px}
+  .darkstrip span{font-size:9.5px;color:#A9A3BC}
+</style>
+</head>
+<body>
+<h1>紫罗兰 · 四个更深的候选</h1>
+<div class="note">
+每个候选给出：浅色聊天页（气泡/发送按钮/底栏选中态）+ 色点（主色、用户气泡）+ 底部深色色条（深色模式底色/卡片/气泡/主色）。
+共同骨架不变，只换紫的"深浅与灰度"。
+</div>
+<div class="grid">
+
+  <!-- 1 -->
+  <div class="case">
+    <div class="title">1 · 暮紫 Nightfall</div>
+    <div class="sub">降饱和、压暗一档，接近图标夜空</div>
+    <div class="phone" style="--primary:#4C3F7A;--divider:#E7E5EE;--cardBorder:#E2DFEA;--surface:#FFFFFF;
+         --bubble:#E6E2F2;--bubbleBorder:#DAD4EC;--bubbleText:#241C3E;--muted:#6F6A80;--text:#1B1926;background:#F7F6FA">
+      <div class="status" style="color:#1B1926"><span>21:40</span><span>5G · 82%</span></div>
+      <div class="bar"><div><div class="nm">Seraphina</div><div class="st">12 条 · 21:32</div></div><div class="more">⋮</div></div>
+      <div class="msgs">
+        <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last.”</div></div>
+        <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div></div>
+        <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest.”</div></div>
+      </div>
+      <div class="inp"><span>说点什么</span><b>发送</b></div>
+      <div class="nav"><div class="on"><span>▤</span>会话</div><div><span>☺</span>角色</div><div><span>⚙</span>设置</div></div>
+    </div>
+    <div class="sw"><div class="dot" style="background:#4C3F7A"></div><div class="dot" style="background:#E6E2F2"></div>
+      <span class="pill" style="background:#4C3F7A">主色</span></div>
+    <div class="darkstrip"><span>深色</span>
+      <div class="dot" style="background:#0F0E14;width:16px;height:16px"></div>
+      <div class="dot" style="background:#17151F;width:16px;height:16px"></div>
+      <div class="dot" style="background:#1E1A2C;width:16px;height:16px"></div>
+      <div class="dot" style="background:#A493E0;width:16px;height:16px"></div></div>
+  </div>
+
+  <!-- 2 -->
+  <div class="case">
+    <div class="title">2 · 葡萄 Grape</div>
+    <div class="sub">偏酒的紫，暖一点，饱和度仍低</div>
+    <div class="phone" style="--primary:#553A6E;--divider:#EAE3EA;--cardBorder:#E4DBE5;--surface:#FFFFFF;
+         --bubble:#EDE2EF;--bubbleBorder:#E1D3E4;--bubbleText:#2C1630;--muted:#736A77;--text:#1D1820;background:#FAF7FA">
+      <div class="status" style="color:#1D1820"><span>21:40</span><span>5G · 82%</span></div>
+      <div class="bar"><div><div class="nm">Seraphina</div><div class="st">12 条 · 21:32</div></div><div class="more">⋮</div></div>
+      <div class="msgs">
+        <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last.”</div></div>
+        <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div></div>
+        <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest.”</div></div>
+      </div>
+      <div class="inp"><span>说点什么</span><b>发送</b></div>
+      <div class="nav"><div class="on"><span>▤</span>会话</div><div><span>☺</span>角色</div><div><span>⚙</span>设置</div></div>
+    </div>
+    <div class="sw"><div class="dot" style="background:#553A6E"></div><div class="dot" style="background:#EDE2EF"></div>
+      <span class="pill" style="background:#553A6E">主色</span></div>
+    <div class="darkstrip"><span>深色</span>
+      <div class="dot" style="background:#100D12;width:16px;height:16px"></div>
+      <div class="dot" style="background:#19151C;width:16px;height:16px"></div>
+      <div class="dot" style="background:#221A27;width:16px;height:16px"></div>
+      <div class="dot" style="background:#C79BD6;width:16px;height:16px"></div></div>
+  </div>
+
+  <!-- 3 -->
+  <div class="case">
+    <div class="title">3 · 靛夜 Indigo Night</div>
+    <div class="sub">往蓝偏，最"冷"、最不像常见紫色</div>
+    <div class="phone" style="--primary:#3A3A6B;--divider:#E3E5EC;--cardBorder:#DBDEE8;--surface:#FFFFFF;
+         --bubble:#E2E6F3;--bubbleBorder:#D5DAEC;--bubbleText:#1B2140;--muted:#6A6F80;--text:#181B26;background:#F5F6FA">
+      <div class="status" style="color:#181B26"><span>21:40</span><span>5G · 82%</span></div>
+      <div class="bar"><div><div class="nm">Seraphina</div><div class="st">12 条 · 21:32</div></div><div class="more">⋮</div></div>
+      <div class="msgs">
+        <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last.”</div></div>
+        <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div></div>
+        <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest.”</div></div>
+      </div>
+      <div class="inp"><span>说点什么</span><b>发送</b></div>
+      <div class="nav"><div class="on"><span>▤</span>会话</div><div><span>☺</span>角色</div><div><span>⚙</span>设置</div></div>
+    </div>
+    <div class="sw"><div class="dot" style="background:#3A3A6B"></div><div class="dot" style="background:#E2E6F3"></div>
+      <span class="pill" style="background:#3A3A6B">主色</span></div>
+    <div class="darkstrip"><span>深色</span>
+      <div class="dot" style="background:#0E0F14;width:16px;height:16px"></div>
+      <div class="dot" style="background:#15161D;width:16px;height:16px"></div>
+      <div class="dot" style="background:#1B1E2B;width:16px;height:16px"></div>
+      <div class="dot" style="background:#9AA3E8;width:16px;height:16px"></div></div>
+  </div>
+
+  <!-- 4 -->
+  <div class="case">
+    <div class="title">4 · 墨紫 Ink Violet</div>
+    <div class="sub">接近黑紫，最"神秘"、对比最强</div>
+    <div class="phone" style="--primary:#3B2E52;--divider:#E6E4EA;--cardBorder:#E0DCE4;--surface:#FFFFFF;
+         --bubble:#E9E5EE;--bubbleBorder:#DED9E4;--bubbleText:#231B33;--muted:#6E6A76;--text:#19171E;background:#F8F7F9">
+      <div class="status" style="color:#19171E"><span>21:40</span><span>5G · 82%</span></div>
+      <div class="bar"><div><div class="nm">Seraphina</div><div class="st">12 条 · 21:32</div></div><div class="more">⋮</div></div>
+      <div class="msgs">
+        <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last.”</div></div>
+        <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div></div>
+        <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest.”</div></div>
+      </div>
+      <div class="inp"><span>说点什么</span><b>发送</b></div>
+      <div class="nav"><div class="on"><span>▤</span>会话</div><div><span>☺</span>角色</div><div><span>⚙</span>设置</div></div>
+    </div>
+    <div class="sw"><div class="dot" style="background:#3B2E52"></div><div class="dot" style="background:#E9E5EE"></div>
+      <span class="pill" style="background:#3B2E52">主色</span></div>
+    <div class="darkstrip"><span>深色</span>
+      <div class="dot" style="background:#0D0C10;width:16px;height:16px"></div>
+      <div class="dot" style="background:#151318;width:16px;height:16px"></div>
+      <div class="dot" style="background:#1D1926;width:16px;height:16px"></div>
+      <div class="dot" style="background:#B9A8D8;width:16px;height:16px"></div></div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -218,7 +218,30 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     }
 
                     DetailTab.Config -> ScrollArea {
-                        ConfigTab(detail = detail, cardId = cardId, viewModel = viewModel)
+                        val bookCount = detail?.bookEntries?.size ?: 0
+                        val disabledCount = detail?.disabledEntries?.size ?: 0
+                        val globalStyle = if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
+                        val styleLabel = when (detail?.messageStyle) {
+                            null -> "跟随全局（$globalStyle）"
+                            MessageStyle.Bubble -> "气泡"
+                            MessageStyle.Card -> "整行卡片"
+                        }
+
+                        SettingLinkRow(
+                            title = "内嵌世界书",
+                            value = if (bookCount == 0) {
+                                "这张卡没有内嵌书"
+                            } else {
+                                "$bookCount 条 · 已关闭 $disabledCount 条"
+                            },
+                        ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
+
+                        SettingLinkRow("对话样式", styleLabel) {
+                            viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
+                        }
+                        SettingLinkRow("关于这张卡", "作者 / 版本 / 规格 / 标签") {
+                            viewModel.openCardConfigPage(CardConfigPage.Info)
+                        }
                     }
                 }
             }
@@ -337,105 +360,3 @@ private fun GreetingTab(detail: CardDetail?) {
         }
     }
 }
-
-@Composable
-private fun ConfigTab(detail: CardDetail?, cardId: String, viewModel: ChatViewModel) {
-    val entries = detail?.bookEntries.orEmpty()
-    val disabled = detail?.disabledEntries.orEmpty()
-
-    SectionTitle("卡内世界书（${entries.size} 条）")
-    if (entries.isEmpty()) {
-        Text("这张卡没有内嵌世界书", style = MaterialTheme.typography.bodySmall)
-    } else {
-        entries.forEach { entry ->
-            val enabled = entry.index !in disabled
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { viewModel.setBookEntryEnabled(cardId, entry.index, !enabled) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(
-                    checked = enabled,
-                    onCheckedChange = { viewModel.setBookEntryEnabled(cardId, entry.index, it) },
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(entry.comment, style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        entry.keys.joinToString("、").ifBlank { "（没有关键字）" },
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-        }
-        Text(
-            "世界书引擎还没实现（P1）：勾选会先存下来，等激活算法做好后才影响提示词。",
-            style = MaterialTheme.typography.labelSmall,
-        )
-    }
-
-    SectionTitle("额外世界书")
-    Text(
-        "暂不支持：需要先有世界书库与激活引擎（P1）。",
-        style = MaterialTheme.typography.bodySmall,
-    )
-
-    SectionTitle("消息展示（这张卡）")
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = detail?.messageStyle == null,
-            onClick = { viewModel.setCardMessageStyle(cardId, null) },
-            label = { Text("跟随默认") },
-        )
-        FilterChip(
-            selected = detail?.messageStyle == MessageStyle.Card,
-            onClick = { viewModel.setCardMessageStyle(cardId, MessageStyle.Card) },
-            label = { Text("整行卡片") },
-        )
-        FilterChip(
-            selected = detail?.messageStyle == MessageStyle.Bubble,
-            onClick = { viewModel.setCardMessageStyle(cardId, MessageStyle.Bubble) },
-            label = { Text("气泡（实验）") },
-        )
-    }
-    if (detail?.messageStyle == MessageStyle.Bubble) {
-        Text(
-            "气泡样式还没实现，暂时按整行卡片显示。",
-            style = MaterialTheme.typography.labelSmall,
-        )
-    }
-
-    SectionTitle("卡信息")
-    InfoLine("作者", detail?.creator.orEmpty().ifBlank { "（未填）" })
-    InfoLine("版本", detail?.characterVersion.orEmpty().ifBlank { "（未填）" })
-    InfoLine(
-        "规格",
-        listOfNotNull(detail?.spec, detail?.specVersion).joinToString(" / ").ifBlank { "（V1 扁平卡）" },
-    )
-    InfoLine("标签", detail?.tags.orEmpty().joinToString("、").ifBlank { "（无）" })
-    InfoLine("人格", fieldState(detail?.personality))
-    InfoLine("场景", fieldState(detail?.scenario))
-    InfoLine("示例对话", fieldState(detail?.messageExample))
-    InfoLine("备选开场白", "${detail?.alternateGreetings?.size ?: 0} 条")
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium)
-}
-
-@Composable
-private fun InfoLine(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.size(width = 72.dp, height = 18.dp),
-        )
-        Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-    }
-}
-
-/** 空字段说明白一点：很多卡把内容全写进描述，这里是空的其实是作者的写法。 */
-private fun fieldState(value: String?): String =
-    if (value.isNullOrBlank()) "（空 —— 作者可能写进了描述）" else "${value.length} 字"

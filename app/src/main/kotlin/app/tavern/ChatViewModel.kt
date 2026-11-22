@@ -71,6 +71,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val settingsPage: SettingsPage? = null,
         /** 新建会话前先选卡：true 时显示角色卡选择弹层。 */
         val showCardPicker: Boolean = false,
+        /** 角色卡配置的二级页（作用域：当前详情页那张卡）。 */
+        val cardConfigPage: CardConfigPage? = null,
         /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
         val detailCardId: String? = null,
         /** 详情页的完整卡信息；打开详情后异步填上。 */
@@ -157,7 +159,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeDetail() {
-        _state.update { it.copy(detailCardId = null, detail = null) }
+        _state.update { it.copy(detailCardId = null, detail = null, cardConfigPage = null) }
     }
 
     private suspend fun loadDetail(cardId: String) {
@@ -446,6 +448,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
     fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+
+    fun openCardConfigPage(page: CardConfigPage) = _state.update { it.copy(cardConfigPage = page) }
+
+    fun closeCardConfigPage() = _state.update { it.copy(cardConfigPage = null) }
 
     fun openCardPicker() = _state.update { it.copy(showCardPicker = true) }
 
