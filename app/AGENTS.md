@@ -145,6 +145,10 @@ MainScreen（Destination + AnimatedContent）
 - 底栏玻璃是自绘的（[ADR 0005](../docs/adr/0005-glass-without-haze.md) /
   [ADR 0006](../docs/adr/0006-glass-blur-on-node.md)）：内容层 `glassLayer.record{}` 录一份自己，
   底栏把图层平移过去、塞进挂 `Modifier.blur` 的节点里画，最后叠半透明底 + 描边 + 图标。
+- **把内容录进图层必须用 DrawScope 的 `record` 扩展**（`layer.record(size) { this@drawWithContent.drawContent() }`），
+  不能用四参数的成员版 `record(density, layoutDirection, size) { }`。前者会把**本 DrawScope 的画布**临时改指到
+  图层（官方 KDoc：retarget the underlying canvas），后者只改图层自己的 `DrawContext` —— 结果 `drawContent()`
+  照旧画到主画布：屏幕上内容正常、图层是空的，底栏画出来什么都没有。**这个坑很隐蔽：不崩、不报错、看不出异常。**
 - **`renderEffect` / `alpha` / `translation` 是渲染时读的属性**：在 draw 块里
   `renderEffect = …; drawLayer(); renderEffect = null` 会**等于没设**（真机只剩半透明，不报错）。
   要模糊就挂 `Modifier.blur` / `Modifier.graphicsLayer { renderEffect = … }`，让效果跟着节点活到渲染完。

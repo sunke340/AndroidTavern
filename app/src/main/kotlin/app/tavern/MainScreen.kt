@@ -1,5 +1,6 @@
 package app.tavern
 
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -329,6 +330,8 @@ private fun TabsRoot(
         runCatching {
             withTimeout(2_000) {
                 val base = frostLayer.toImageBitmap().asAndroidBitmap()
+                    // toImageBitmap 返回的是 HARDWARE 位图，getPixel 会被拒绝，先落到软件位图。
+                    .copy(Bitmap.Config.ARGB_8888, false)!!
                 var opaque = 0
                 var sampled = 0
                 var x = 0
@@ -365,20 +368,17 @@ private fun TabsRoot(
                     .drawWithContent {
                         if (glassOn) {
                             // 录一份完整内容，底栏要用它当"背后的画面"。
-                            // 1.7.6 的 record 要求显式给 density / 方向 / 尺寸，没有无参重载。
-                            glassLayer.record(
-                                density = this,
-                                layoutDirection = layoutDirection,
-                                size = size.toIntSize(),
-                            ) {
+                            // 必须用 **DrawScope 的 record 扩展**（只传 size 的那个）：它会把本 DrawScope
+                            // 的画布临时改指到图层上，`drawContent()` 才画进图层。
+                            // 四参数成员版 record(density, layoutDirection, size, block) 只改图层自己的
+                            // DrawContext，内容会照旧画到主画布 —— 屏幕看着正常、图层是空的（踩过）。
+                            glassLayer.record(size = size.toIntSize()) {
                                 this@drawWithContent.drawContent()
                             }
                             drawLayer(glassLayer)
                             // 再把这份图层按 1/FrostScale 录进小层：降采样本身就是"糊"，
                             // 底栏放大画回去即可。降采样一次的成本只跟小层像素数有关。
                             frostLayer.record(
-                                density = this,
-                                layoutDirection = layoutDirection,
                                 size = IntSize(
                                     (size.width / FrostScale).toInt().coerceAtLeast(1),
                                     (size.height / FrostScale).toInt().coerceAtLeast(1),
