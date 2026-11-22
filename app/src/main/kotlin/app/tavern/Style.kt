@@ -35,11 +35,14 @@ object Space {
     val xl: Dp = 24.dp
 }
 
-/** 圆角阶梯。 */
+/** 圆角阶梯。玻璃风格上来以后，大件（底栏胶囊、弹层）用 [pill]。 */
 object Radius {
     val button: Dp = 10.dp
     val card: Dp = 12.dp
     val bubble: Dp = 14.dp
+
+    /** 悬浮胶囊：底栏、弹层、卡片容器。 */
+    val pill: Dp = 26.dp
 }
 
 /** 列表行最小高度（含触控区）。 */

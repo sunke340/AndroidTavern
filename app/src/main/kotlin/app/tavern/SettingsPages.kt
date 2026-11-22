@@ -228,6 +228,14 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         onSelect = viewModel::onMessageStyleChange,
     )
 
+    SectionLabel("视觉效果")
+    SegmentedRow(
+        options = VisualEffects.entries,
+        selected = state.visualEffects,
+        label = { it.label },
+        onSelect = viewModel::setVisualEffects,
+    )
+
     SectionLabel("页面转场")
     SegmentedRow(
         options = NavAnimation.entries,

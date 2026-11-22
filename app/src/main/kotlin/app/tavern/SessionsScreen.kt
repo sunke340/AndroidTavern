@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.tavern.data.chat.ChatSession
 
@@ -45,6 +46,8 @@ fun SessionsScreen(
     viewModel: ChatViewModel,
     // 滚动位置由上层持有：从二级页返回时列表不该回到顶部。
     listState: LazyListState = rememberLazyListState(),
+    // 悬浮底栏压在内容上，列表底部要让出它的高度，否则最后一行被胶囊压住。
+    bottomPadding: Dp = 0.dp,
 ) {
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
@@ -61,7 +64,7 @@ fun SessionsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
-                contentPadding = PaddingValues(top = Space.s, bottom = Space.l),
+                contentPadding = PaddingValues(top = Space.s, bottom = Space.l + bottomPadding),
                 verticalArrangement = Arrangement.Top,
             ) {
                 items(state.sessions, key = { it.id }) { session ->

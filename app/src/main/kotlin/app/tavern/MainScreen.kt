@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,17 +24,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -47,12 +52,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.tavern.data.log.AppLog
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * 顶层结构：三栏（会话 / 角色 / 设置），其余都是叠在上面的二级页。
@@ -242,7 +253,16 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     }
 }
 
-/** 三栏根页：底部导航 + 各 tab 内容（tab 之间的切换另有自己的动画）。 */
+/** 悬浮胶囊底栏的高度（不含外留白）。 */
+private val BarHeight = 56.dp
+
+/**
+ * 三栏根页：**悬浮玻璃底栏** + 各 tab 内容（tab 之间的切换另有自己的动画）。
+ *
+ * 布局要点：底栏不再是 Scaffold 的 bottomBar（那样内容不会滚到它底下，模糊就无内容可透），
+ * 而是浮在内容之上；内容盒标记 `hazeSource` 提供"背后的画面"，胶囊用 `hazeEffect` 取来模糊。
+ * 列表底部要留出 [contentBottomPadding]，否则最后一行会被胶囊压住。
+ */
 @Composable
 private fun TabsRoot(
     state: ChatViewModel.UiState,
@@ -259,41 +279,61 @@ private fun TabsRoot(
         }
     }
 
+    val haze = remember { HazeState() }
+    val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val contentBottom = BarHeight + Space.s + Space.s + navBar
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = Modifier.fillMaxSize().imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { TavernBottomBar(current = state.screen, onSelect = viewModel::showScreen) },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            AnimatedContent(
-                targetState = state.screen,
-                // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
-                    (
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = padding.calculateTopPadding())
+                    .hazeSource(state = haze),
+            ) {
+                AnimatedContent(
+                    targetState = state.screen,
+                    // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
                         (
-                            fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
-                                slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
-                                    if (forward) w / 8 else -w / 8
-                                }
-                            ) togetherWith (
-                            fadeOut(tween(Motion.Fast)) +
-                                slideOutHorizontally(tween(Motion.Fast)) { w ->
-                                    if (forward) -w / 8 else w / 8
-                                }
-                            )
-                        ).using(null)
-                },
-                label = "screen",
-            ) { screen ->
-                when (screen) {
-                    Screen.Sessions -> SessionsScreen(state, viewModel, sessionsList)
-                    Screen.Characters -> CharactersScreen(state, viewModel, charactersGrid)
-                    Screen.Settings -> SettingsScreen(state, viewModel)
+                            (
+                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                                    slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
+                                        if (forward) w / 8 else -w / 8
+                                    }
+                                ) togetherWith (
+                                fadeOut(tween(Motion.Fast)) +
+                                    slideOutHorizontally(tween(Motion.Fast)) { w ->
+                                        if (forward) -w / 8 else w / 8
+                                    }
+                                )
+                            ).using(null)
+                    },
+                    label = "screen",
+                ) { screen ->
+                    when (screen) {
+                        Screen.Sessions -> SessionsScreen(state, viewModel, sessionsList, contentBottom)
+                        Screen.Characters ->
+                            CharactersScreen(state, viewModel, charactersGrid, contentBottom)
+
+                        Screen.Settings -> SettingsScreen(state, viewModel)
+                    }
                 }
             }
+
+            TavernBottomBar(
+                current = state.screen,
+                onSelect = viewModel::showScreen,
+                blurEnabled = state.visualEffects == VisualEffects.Glass,
+                haze = haze,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -311,47 +351,80 @@ private val barItems = listOf(
 )
 
 /**
- * 自绘底栏，**56dp**。
+ * 悬浮玻璃底栏：**胶囊 + 56dp**。
  *
- * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp 并带胶囊指示器，压不高（标签会被截）。
- * C 方向要的是紧凑、无胶囊、选中态只靠主色区分。
+ * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
+ * 这里要的是"浮在内容上的胶囊"：圆角 26dp、1px 描边、投影，选中项是一个淡紫胶囊块。
+ *
+ * 模糊走 Haze（ADR 0004）：`hazeEffect` 把 `hazeSource` 那层（页面内容）裁到胶囊里做高斯模糊；
+ * `blurEnabled = false`（设置里的「轻量」）时只留半透明底，低端机滚动更稳。
  */
 @Composable
-private fun TavernBottomBar(current: Screen, onSelect: (Screen) -> Unit) {
+private fun TavernBottomBar(
+    current: Screen,
+    onSelect: (Screen) -> Unit,
+    blurEnabled: Boolean,
+    haze: HazeState,
+    modifier: Modifier = Modifier,
+) {
     val palette = LocalTavernPalette.current
+    val shape = RoundedCornerShape(Radius.pill)
+    val surface = MaterialTheme.colorScheme.surface
+    val fill = if (blurEnabled) surface.copy(alpha = 0.58f) else surface
 
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column(modifier = Modifier.navigationBarsPadding()) {
-            HorizontalDivider(color = palette.divider)
-            Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                barItems.forEach { item ->
-                    val selected = current == item.screen
-                    val tint = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable { onSelect(item.screen) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(
-                            item.icon,
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(20.dp),
+    Surface(
+        modifier = modifier
+            .padding(horizontal = Space.l, vertical = Space.s)
+            .navigationBarsPadding()
+            .clip(shape)
+            .hazeEffect(
+                state = haze,
+                style = HazeDefaults.style(
+                    backgroundColor = fill,
+                    blurRadius = 24.dp,
+                    noiseFactor = 0f,
+                ),
+            ) {
+                this.blurEnabled = blurEnabled
+            },
+        shape = shape,
+        color = Color.Transparent,
+        shadowElevation = 10.dp,
+        border = BorderStroke(1.dp, palette.cardBorder),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().height(BarHeight).padding(Space.xs)) {
+            barItems.forEach { item ->
+                val selected = current == item.screen
+                val tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(Radius.pill))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                            else Color.Transparent,
                         )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = item.label,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = tint,
-                        )
-                    }
+                        .clickable { onSelect(item.screen) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        item.icon,
+                        contentDescription = item.label,
+                        tint = tint,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = tint,
+                    )
                 }
             }
         }

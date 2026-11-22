@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -38,6 +39,8 @@ fun CharactersScreen(
     viewModel: ChatViewModel,
     // 滚动位置由上层持有：从角色详情返回时网格不该回到顶部。
     gridState: LazyGridState = rememberLazyGridState(),
+    // 悬浮底栏压在内容上，网格底部要让出它的高度。
+    bottomPadding: Dp = 0.dp,
 ) {
     val pickCard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importCard(uri)
@@ -58,7 +61,12 @@ fun CharactersScreen(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
             state = gridState,
-            contentPadding = PaddingValues(Space.l),
+            contentPadding = PaddingValues(
+                start = Space.l,
+                end = Space.l,
+                top = Space.l,
+                bottom = Space.l + bottomPadding,
+            ),
             horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
             verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
         ) {

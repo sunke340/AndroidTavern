@@ -125,6 +125,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val themeMode: ThemeMode = ThemeMode.Follow,
         /** 二级页转场风格；见 [NavAnimation]。 */
         val navAnimation: NavAnimation = NavAnimation.Slide,
+        /** 视觉效果档位；见 [VisualEffects]。 */
+        val visualEffects: VisualEffects = VisualEffects.Glass,
         /** 全部模型档案（只在"模型"页与发送时用）。 */
         val profiles: List<ModelProfile> = emptyList(),
         /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
@@ -188,6 +190,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         .getOrDefault(ThemeMode.Follow),
                     navAnimation = runCatching { NavAnimation.valueOf(saved.navAnimation) }
                         .getOrDefault(NavAnimation.Slide),
+                    visualEffects = runCatching { VisualEffects.valueOf(saved.visualEffects) }
+                        .getOrDefault(VisualEffects.Glass),
                 )
             }
 
@@ -740,6 +744,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(themeMode = mode) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = null, mode = mode.name) }
+        }
+    }
+
+    /** 换视觉效果档位（低端机滚不动时关掉模糊）。 */
+    fun setVisualEffects(effects: VisualEffects) {
+        AppLog.i("ui", "视觉效果 effect=${effects.name}")
+        _state.update { it.copy(visualEffects = effects) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveVisualEffects(effects.name) }
         }
     }
 

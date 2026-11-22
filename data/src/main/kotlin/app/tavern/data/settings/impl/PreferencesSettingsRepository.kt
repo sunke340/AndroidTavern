@@ -54,6 +54,8 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_THEME_MODE,
         navAnimation = prefs.getString(KEY_NAV_ANIMATION, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_NAV_ANIMATION,
+        visualEffects = prefs.getString(KEY_VISUAL_EFFECTS, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_VISUAL_EFFECTS,
     )
 
     override fun saveConnection(baseUrl: String, model: String) {
@@ -83,6 +85,10 @@ class PreferencesSettingsRepository(
 
     override fun saveNavAnimation(name: String) {
         prefs.edit().putString(KEY_NAV_ANIMATION, name).apply()
+    }
+
+    override fun saveVisualEffects(name: String) {
+        prefs.edit().putString(KEY_VISUAL_EFFECTS, name).apply()
     }
 
     override fun disabledBookEntries(cardId: String): Set<Int> =
@@ -126,6 +132,7 @@ class PreferencesSettingsRepository(
         const val KEY_THEME_PRESET = "theme_preset"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_NAV_ANIMATION = "nav_animation"
+        const val KEY_VISUAL_EFFECTS = "visual_effects"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
         const val KEY_CARD_STYLE_PREFIX = "card_style:"
@@ -137,5 +144,6 @@ class PreferencesSettingsRepository(
         const val DEFAULT_THEME_PRESET = "Violet"
         const val DEFAULT_THEME_MODE = "Follow"
         const val DEFAULT_NAV_ANIMATION = "Slide"
+        const val DEFAULT_VISUAL_EFFECTS = "Glass"
     }
 }

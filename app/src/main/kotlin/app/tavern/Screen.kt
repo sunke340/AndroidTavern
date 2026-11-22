@@ -52,3 +52,14 @@ enum class NavAnimation(val label: String) {
     Fade("淡入"),
     None("关闭"),
 }
+
+/**
+ * 视觉效果档位（ADR 0004）。
+ *
+ * [Glass] 用 Haze 对底栏背后的内容做真模糊（Android 12+ 才有；更低版本 haze 自动退化）；
+ * [Off] 关掉模糊只留半透明 —— 低端机滚动掉帧时用这个，观感差别不大但省 GPU。
+ */
+enum class VisualEffects(val label: String) {
+    Glass("玻璃"),
+    Off("轻量"),
+}

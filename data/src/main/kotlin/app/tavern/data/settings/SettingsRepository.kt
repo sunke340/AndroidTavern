@@ -15,6 +15,8 @@ data class AppSettings(
     val themeMode: String,
     /** 二级页转场风格，取值见 app 层 `NavAnimation`（这里只存字符串，data 不关心 UI 枚举）。 */
     val navAnimation: String,
+    /** 视觉效果档位，取值见 app 层 `VisualEffects`（`Glass` / `Off`）。 */
+    val visualEffects: String,
 )
 
 /**
@@ -40,6 +42,9 @@ interface SettingsRepository {
 
     /** 保存二级页转场风格（字符串，由 UI 层定义取值）。 */
     fun saveNavAnimation(name: String)
+
+    /** 保存视觉效果档位（字符串，由 UI 层定义取值）。 */
+    fun saveVisualEffects(name: String)
 
     /**
      * 这张卡里被手动关掉的内嵌世界书条目（按 `character_book.entries` 下标）。
