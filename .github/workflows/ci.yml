@@ -69,6 +69,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # gradle.properties 的 `-Xmx896m -XX:MaxMetaspaceSize=320m` 是给本机（1.7 GiB）调的，
+      # runner 有 7 GB 却照这套跑：加一个依赖就会 OutOfMemoryError: Metaspace（2026-11-22 真踩）。
+      - name: 放宽编译内存（runner 比本机富）
+        run: |
+          sed -i 's/-Xmx896m -XX:MaxMetaspaceSize=320m/-Xmx3g -XX:MaxMetaspaceSize=1g/' gradle.properties
+          grep '^org.gradle.jvmargs' gradle.properties
+
       - name: 单测
         run: |
           set -o pipefail
@@ -118,6 +125,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         if: steps.probe.outputs.ready == 'true'
+
+      # gradle.properties 的 `-Xmx896m -XX:MaxMetaspaceSize=320m` 是给本机（1.7 GiB）调的，
+      # runner 有 7 GB 却照这套跑：加一个依赖就会 OutOfMemoryError: Metaspace（2026-11-22 真踩）。
+      - name: 放宽编译内存（runner 比本机富）
+        run: |
+          sed -i 's/-Xmx896m -XX:MaxMetaspaceSize=320m/-Xmx3g -XX:MaxMetaspaceSize=1g/' gradle.properties
+          grep '^org.gradle.jvmargs' gradle.properties
 
       # versionCode 必须单调递增，否则手机会把新包当降级直接拒装。
       # run_number 在整个仓库生命周期内只增不减，正好当 versionCode 用。
