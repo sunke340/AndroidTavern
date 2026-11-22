@@ -30,6 +30,21 @@ interface SettingsRepository {
     /** 保存消息展示样式（字符串，由 UI 层定义取值）。 */
     fun saveMessageStyle(style: String)
 
+    /**
+     * 这张卡里被手动关掉的内嵌世界书条目（按 `character_book.entries` 下标）。
+     *
+     * ST 是把 `enabled` 写进卡文件里的；我们先存在应用内，**不动卡文件**——
+     * 写回卡属于"卡编辑"，要单独一批（备份 + 校验）。等世界书引擎（P1）落地后再决定要不要同步回卡。
+     */
+    fun disabledBookEntries(cardId: String): Set<Int>
+
+    fun saveDisabledBookEntries(cardId: String, disabled: Set<Int>)
+
+    /** 这张卡的消息样式覆盖；null = 跟随全局默认。 */
+    fun cardMessageStyle(cardId: String): String?
+
+    fun saveCardMessageStyle(cardId: String, style: String?)
+
     /** 保存 API Key（加密后落盘；空串表示清除）。 */
     fun saveApiKey(key: String)
 }

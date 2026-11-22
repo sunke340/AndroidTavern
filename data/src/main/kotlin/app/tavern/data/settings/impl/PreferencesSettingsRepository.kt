@@ -48,6 +48,28 @@ class PreferencesSettingsRepository(
         prefs.edit().putString(KEY_MESSAGE_STYLE, style).apply()
     }
 
+    override fun disabledBookEntries(cardId: String): Set<Int> =
+        prefs.getStringSet(KEY_BOOK_DISABLED_PREFIX + cardId, emptySet())
+            .orEmpty()
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+
+    override fun saveDisabledBookEntries(cardId: String, disabled: Set<Int>) {
+        prefs.edit()
+            .putStringSet(KEY_BOOK_DISABLED_PREFIX + cardId, disabled.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    override fun cardMessageStyle(cardId: String): String? =
+        prefs.getString(KEY_CARD_STYLE_PREFIX + cardId, null)
+
+    override fun saveCardMessageStyle(cardId: String, style: String?) {
+        prefs.edit().apply {
+            if (style.isNullOrBlank()) remove(KEY_CARD_STYLE_PREFIX + cardId)
+            else putString(KEY_CARD_STYLE_PREFIX + cardId, style)
+        }.apply()
+    }
+
     override fun saveApiKey(key: String) {
         if (key.isBlank()) {
             secrets.remove(KEY_API_KEY)
@@ -64,6 +86,8 @@ class PreferencesSettingsRepository(
         const val KEY_TEMPERATURE = "temperature"
         const val KEY_MAX_TOKENS = "max_tokens"
         const val KEY_MESSAGE_STYLE = "message_style"
+        const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
+        const val KEY_CARD_STYLE_PREFIX = "card_style:"
         const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
         const val DEFAULT_MODEL = "deepseek-chat"
         const val DEFAULT_TEMPERATURE = 1.0

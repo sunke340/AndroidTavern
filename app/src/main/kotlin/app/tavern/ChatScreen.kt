@@ -113,13 +113,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                 }
                 items(state.transcript) { message ->
-                    MessageRow(message = message, style = state.messageStyle)
+                    MessageRow(message = message, style = state.effectiveMessageStyle)
                 }
                 if (state.streamingText.isNotEmpty()) {
                     item {
                         MessageRow(
                             message = ChatMessage(ChatRole.Assistant, state.streamingText),
-                            style = state.messageStyle,
+                            style = state.effectiveMessageStyle,
                         )
                     }
                 }

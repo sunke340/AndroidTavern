@@ -9,6 +9,7 @@ import app.tavern.core.ai.OpenAiCompatibleClient
 import app.tavern.core.ai.StreamEvent
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.card.PngCard
+import app.tavern.core.card.bookEntries
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.core.prompt.PromptBuilder
@@ -65,11 +66,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val chatOpen: Boolean = false,
         /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
         val detailCardId: String? = null,
+        /** 详情页的完整卡信息；打开详情后异步填上。 */
+        val detail: CardDetail? = null,
+        /** 当前会话所属卡的样式覆盖；null = 跟随全局。 */
+        val cardMessageStyle: MessageStyle? = null,
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
         val messageStyle: MessageStyle = MessageStyle.Card,
-    )
+    ) {
+        /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
+        val effectiveMessageStyle: MessageStyle
+            get() = cardMessageStyle ?: messageStyle
+    }
 
     private val cardRepository = AppGraph.cards(application)
     private val chatRepository = AppGraph.chats(application)
@@ -128,11 +137,71 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ---- 卡 ----------------------------------------------------------------
 
     fun openDetail(cardId: String) {
-        _state.update { it.copy(detailCardId = cardId) }
+        _state.update { it.copy(detailCardId = cardId, detail = null) }
+        viewModelScope.launch { loadDetail(cardId) }
     }
 
     fun closeDetail() {
-        _state.update { it.copy(detailCardId = null) }
+        _state.update { it.copy(detailCardId = null, detail = null) }
+    }
+
+    private suspend fun loadDetail(cardId: String) {
+        val card = loadCard(cardId) ?: run {
+            _state.update { it.copy(status = "读卡失败：$cardId") }
+            return
+        }
+        val imported = _state.value.cards.firstOrNull { it.id == cardId }?.imported ?: false
+        val disabled = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(cardId) }
+        val style = withContext(Dispatchers.IO) { settingsRepository.cardMessageStyle(cardId) }
+            ?.let { name -> runCatching { MessageStyle.valueOf(name) }.getOrNull() }
+
+        val detail = CardDetail(
+            id = cardId,
+            name = card.name.ifBlank { cardId },
+            imported = imported,
+            description = card.description,
+            personality = card.personality,
+            scenario = card.scenario,
+            firstMessage = card.firstMessage,
+            messageExample = card.messageExample,
+            alternateGreetings = card.alternateGreetings,
+            creator = card.creator,
+            characterVersion = card.characterVersion,
+            spec = card.spec,
+            specVersion = card.specVersion,
+            tags = card.tags,
+            bookEntries = card.bookEntries(),
+            disabledEntries = disabled,
+            messageStyle = style,
+        )
+
+        _state.update { current ->
+            if (current.detailCardId == cardId) current.copy(detail = detail) else current
+        }
+    }
+
+    /** 勾选/取消卡内嵌世界书的某一条。世界书引擎（P1）还没做，这里先把选择存下来。 */
+    fun setBookEntryEnabled(cardId: String, entryIndex: Int, enabled: Boolean) {
+        val detail = _state.value.detail ?: return
+        val next = if (enabled) detail.disabledEntries - entryIndex else detail.disabledEntries + entryIndex
+
+        _state.update { it.copy(detail = it.detail?.copy(disabledEntries = next)) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveDisabledBookEntries(cardId, next) }
+        }
+    }
+
+    /** 卡级消息样式；传 null 表示跟随全局默认。 */
+    fun setCardMessageStyle(cardId: String, style: MessageStyle?) {
+        _state.update {
+            it.copy(
+                detail = it.detail?.copy(messageStyle = style),
+                cardMessageStyle = if (it.cardId == cardId) style else it.cardMessageStyle,
+            )
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveCardMessageStyle(cardId, style?.name) }
+        }
     }
 
     /**
@@ -289,6 +358,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val stored = withContext(Dispatchers.IO) { chatRepository.messages(id) }
+        val cardStyle = withContext(Dispatchers.IO) {
+            settingsRepository.cardMessageStyle(session.cardId)
+        }?.let { name -> runCatching { MessageStyle.valueOf(name) }.getOrNull() }
         val loadedCard = loadCard(session.cardId)
         card = loadedCard
         if (loadedCard != null) cardRepository.selectedId = session.cardId
@@ -307,6 +379,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 streamingText = "",
                 isStreaming = false,
                 chatOpen = navigate,
+                cardMessageStyle = cardStyle,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
