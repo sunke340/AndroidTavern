@@ -456,10 +456,10 @@ private val barItems = listOf(
 )
 
 /** 玻璃模糊半径（有 RenderEffect 时用来把放大后的色块再磨一遍；没有也不影响观感下限）。 */
-private val GlassBlur = 24.dp
+private val GlassBlur = 12.dp
 
 /** 降采样倍数：内容层按 1/[FrostScale] 录一份小层，底栏放大画回去 —— 放大时的线性插值就是"糊"。 */
-private const val FrostScale = 10f
+private const val FrostScale = 8f
 
 /**
  * 让节点比父给它的大小每边多出 [pad]，并把它往左上挪同样的距离。
@@ -509,7 +509,9 @@ private fun TavernBottomBar(
     val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
     val surface = MaterialTheme.colorScheme.surface
-    val fill = if (glass) surface.copy(alpha = 0.62f) else surface
+    // 这块白底是「玻璃本体」的浓度：越高越像奶白塑料，越低越透。
+    // 0.62 那次被判定"太不透明"，收到 0.34 —— 磨砂画面自己承担观感，白底只做提亮。
+    val fill = if (glass) surface.copy(alpha = 0.34f) else surface
     val blurPad = with(LocalDensity.current) { GlassBlur.roundToPx() }
 
     // 外壳只负责"离屏幕边缘多远"和阴影；胶囊本体在里面那层，坐标才是准的。
