@@ -1,5 +1,12 @@
 package app.tavern
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -166,51 +173,63 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 }
             }
 
-            val current = DetailTab.entries[tabIndex]
-            when (current) {
-                DetailTab.Description -> ScrollArea {
-                    Text(
-                        detail?.description?.ifBlank { "（这张卡没有描述）" } ?: "读取中…",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-
-                DetailTab.Greeting -> ScrollArea { GreetingTab(detail) }
-
-                DetailTab.Sessions -> ScrollArea {
-                    if (sessions.isEmpty()) {
-                        Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall)
+            AnimatedContent(
+                targetState = tabIndex,
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    (
+                        fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                            slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
+                                if (forward) w / 10 else -w / 10
+                            }
+                        ) togetherWith (
+                        fadeOut(tween(Motion.Fast)) +
+                            slideOutHorizontally(tween(Motion.Fast)) { w -> if (forward) -w / 10 else w / 10 }
+                        )
+                },
+                label = "detail-tab",
+            ) { index ->
+                when (DetailTab.entries[index]) {
+                    DetailTab.Description -> ScrollArea {
+                        Text(
+                            detail?.description?.ifBlank { "（这张卡没有描述）" } ?: "读取中…",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
-                    sessions.forEach { session ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                                .clickable { viewModel.openSession(session.id) },
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+
+                    DetailTab.Greeting -> ScrollArea { GreetingTab(detail) }
+
+                    DetailTab.Sessions -> ScrollArea {
+                        if (sessions.isEmpty()) {
+                            Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall)
+                        }
+                        sessions.forEach { session ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                                    .clickable { viewModel.openSession(session.id) },
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(session.title, style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        "${session.messageCount} 条",
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(session.title, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            "${session.messageCount} 条",
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                    TextButton(onClick = { pendingDeleteSession = session }) { Text("删") }
                                 }
-                                TextButton(onClick = { pendingDeleteSession = session }) { Text("删") }
                             }
                         }
                     }
-                }
 
-                DetailTab.Config -> ScrollArea {
-                    ConfigTab(
-                        detail = detail,
-                        cardId = cardId,
-                        viewModel = viewModel,
-                    )
+                    DetailTab.Config -> ScrollArea {
+                        ConfigTab(detail = detail, cardId = cardId, viewModel = viewModel)
+                    }
                 }
             }
         }

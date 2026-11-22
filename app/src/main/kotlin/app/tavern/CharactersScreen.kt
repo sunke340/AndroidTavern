@@ -1,6 +1,7 @@
 package app.tavern
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.core.tween
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +58,11 @@ fun CharactersScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 val shape = RoundedCornerShape(Radius.card)
                 Column(
                     modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                            placementSpec = tween(Motion.Slow, easing = Motion.Standard),
+                            fadeOutSpec = tween(Motion.Fast),
+                        )
                         .fillMaxWidth()
                         .clip(shape)
                         .background(MaterialTheme.colorScheme.surface)

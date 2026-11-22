@@ -1,6 +1,12 @@
 package app.tavern
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -96,10 +102,23 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (state.screen) {
-                Screen.Sessions -> SessionsScreen(state, viewModel)
-                Screen.Characters -> CharactersScreen(state, viewModel)
-                Screen.Settings -> SettingsScreen(state, viewModel)
+            // tab 切换：淡入 + 轻微上移。不用左右滑动——三个 tab 没有方向语义，
+            // 横向滑反而暗示"可以左右滑"，与交互不符。
+            AnimatedContent(
+                targetState = state.screen,
+                transitionSpec = {
+                    (
+                        fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                            slideInVertically(tween(Motion.Base, easing = Motion.Decelerate)) { it / 28 }
+                        ) togetherWith fadeOut(tween(Motion.Fast))
+                },
+                label = "screen",
+            ) { screen ->
+                when (screen) {
+                    Screen.Sessions -> SessionsScreen(state, viewModel)
+                    Screen.Characters -> CharactersScreen(state, viewModel)
+                    Screen.Settings -> SettingsScreen(state, viewModel)
+                }
             }
         }
     }

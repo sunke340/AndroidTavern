@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 图标底板色：取自插画边缘的深紫，让自适应图标放大时边缘不突兀 -->
+    <color name="ic_launcher_background">#2A1B3D</color>
+</resources>

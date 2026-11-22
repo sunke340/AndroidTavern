@@ -8,12 +8,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -47,11 +50,18 @@ fun CardAvatar(cardId: String, fallbackText: String, modifier: Modifier = Modifi
     }
 
     val image = bitmap
+    // 解码是异步的：图出来时淡入，避免网格里"啪"地跳出图片
+    val alpha by animateFloatAsState(
+        targetValue = if (image != null) 1f else 0f,
+        animationSpec = tween(Motion.Base, easing = Motion.Decelerate),
+        label = "avatar-alpha",
+    )
+
     if (image != null) {
         Image(
             bitmap = image,
             contentDescription = null,
-            modifier = modifier,
+            modifier = modifier.alpha(alpha),
             contentScale = ContentScale.Crop,
         )
     } else {

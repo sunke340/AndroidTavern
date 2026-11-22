@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon：前景是满幅插画（108dp），启动器按自己的形状（圆形/圆角方/水滴）裁切。
+  插画四角本来就是透明的、且落在遮罩之外，所以不会露出底板颜色；
+  background 仍给一个与画面同色系的深紫，避免某些启动器放大前景时露出别的颜色。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

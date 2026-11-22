@@ -1,5 +1,6 @@
 package app.tavern
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,6 +52,11 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ) {
                 items(state.sessions, key = { it.id }) { session ->
                     ListRow(
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                            placementSpec = tween(Motion.Slow, easing = Motion.Standard),
+                            fadeOutSpec = tween(Motion.Fast),
+                        ),
                         title = session.cardName,
                         subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
                         leading = {

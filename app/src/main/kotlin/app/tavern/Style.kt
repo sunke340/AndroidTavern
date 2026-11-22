@@ -53,13 +53,14 @@ val PageHeaderHeight: Dp = 56.dp
 fun ListRow(
     title: String,
     subtitle: String? = null,
+    modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val palette = LocalTavernPalette.current
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -15,3 +15,17 @@
 以真机为准。样张里没有引入任何第三方 UI 库，全部是 Material 3 能表达的效果。
 
 生成方式：改 `mock.html` → `python3 -m http.server 8765` → 浏览器截图。
+
+## 应用图标（2026-11-22 定）
+
+用户给了两张同款插画（白猫日光 / 黑猫月色），**选深色那张**作图标：
+
+- 48dp 下轮廓仍清楚（深底 + 亮月亮/气泡形成对比）；浅色版细节会糊在一起
+- 在浅色/深色桌面壁纸上都站得住；浅绿版在白底启动器上几乎融掉
+- 深夜使用的场景更贴
+
+实现：`mipmap-anydpi-v26/` 的 adaptive icon（前景=满幅插画 108dp，四角透明且落在遮罩外），
+`values/colors.xml` 的 `ic_launcher_background` 取插画边缘的深紫 `#2A1B3D`，
+另外生成了 5 档传统 mipmap（圆角方形，22% 圆角）给个别老启动器。
+
+源图与圈形遮罩对照图在本目录：`icon/source-*.{jpg,webp}`、`icon/preview-circle.png`。
