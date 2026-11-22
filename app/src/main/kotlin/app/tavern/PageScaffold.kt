@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
@@ -38,13 +39,13 @@ fun PageScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 16.dp),
+                .height(PageHeaderHeight)
+                .padding(horizontal = Space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
@@ -56,7 +57,7 @@ fun PageScaffold(
             }
         }
 
-        HorizontalDivider()
+        HorizontalDivider(color = LocalTavernPalette.current.divider)
 
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) { content() }
     }

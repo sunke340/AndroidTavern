@@ -10,6 +10,9 @@ data class AppSettings(
     val maxTokens: Int,
     /** 消息展示样式，见 app 层 `MessageStyle`（这里只存字符串，data 不关心 UI 枚举）。 */
     val messageStyle: String,
+    /** 主题预设名（如 `Forest`）与深浅模式（`Follow` / `Light` / `Dark`）。 */
+    val themePreset: String,
+    val themeMode: String,
 )
 
 /**
@@ -29,6 +32,9 @@ interface SettingsRepository {
 
     /** 保存消息展示样式（字符串，由 UI 层定义取值）。 */
     fun saveMessageStyle(style: String)
+
+    /** 保存主题；传 null 表示这一项不动。 */
+    fun saveTheme(preset: String?, mode: String?)
 
     /**
      * 这张卡里被手动关掉的内嵌世界书条目（按 `character_book.entries` 下标）。

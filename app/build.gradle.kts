@@ -75,6 +75,9 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
+    // 图标：只用 core 这一小套（ArrowBack/MoreVert/Send/Person/Settings/List 等），
+    // 不引 material-icons-extended（那个包很大，编译时间也长）
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")

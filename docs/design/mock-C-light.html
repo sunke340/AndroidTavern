@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>C · Dense Ink 浅色版</title>
+<style>
+  :root{
+    --font: system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","PingFang SC",sans-serif;
+    --bg:#F8F8F5; --surface:#FFFFFF; --line:#E6E5DF; --line-weak:#EFEEE9;
+    --text:#17191D; --muted:#6E7278; --faint:#9AA0A6;
+    --accent:#2E7D5B; --accent-weak:#E3F1E8; --user-bubble:#E3F1E8; --user-text:#133620;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#EDEBE7;font-family:var(--font);padding:28px;color:#222;}
+  h1{font-size:20px;margin-bottom:6px;}
+  .note{font-size:13px;color:#666;margin-bottom:20px;max-width:1180px;line-height:1.6;}
+  .row{display:flex;gap:20px;align-items:flex-start;}
+  .phone{width:360px;height:760px;border-radius:26px;overflow:hidden;position:relative;
+         background:var(--bg);color:var(--text);display:flex;flex-direction:column;
+         box-shadow:0 8px 26px rgba(0,0,0,.12); border:1px solid #DFDED8;}
+  .status{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+          font-size:12px;font-weight:600;color:var(--text);}
+  .cap{text-align:center;font-size:12px;color:#666;margin-top:8px;}
+
+  /* header (共享) */
+  .hdr{display:flex;align-items:center;justify-content:space-between;padding:2px 16px 10px;}
+  .hdr h3{font-size:21px;font-weight:700;letter-spacing:-.2px;}
+  .btn{font-size:12.5px;font-weight:700;color:#fff;background:var(--accent);padding:7px 13px;border-radius:10px;}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid #C9DED2;}
+
+  /* 列表 */
+  .list{border-top:1px solid var(--line);}
+  .item{display:flex;gap:11px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line-weak);height:64px;}
+  .av{width:40px;height:40px;border-radius:12px;flex:none;border:1px solid rgba(0,0,0,.06);}
+  .t1{font-size:14.5px;font-weight:650;}
+  .t2{font-size:12.5px;color:var(--muted);margin-top:1px;}
+  .right{margin-left:auto;text-align:right;}
+  .time{font-size:11px;color:var(--faint);}
+  .count{display:inline-block;margin-top:4px;background:var(--accent-weak);color:var(--accent);
+         font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;}
+
+  /* 底部导航 */
+  .nav{margin-top:auto;height:60px;border-top:1px solid var(--line);display:flex;background:var(--surface);}
+  .nav div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+           font-size:10.5px;color:var(--muted);}
+  .nav div.on{color:var(--accent);font-weight:700;}
+  .nav .ic{font-size:15px;}
+
+  /* 角色网格 */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 16px;}
+  .card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .card .img{aspect-ratio:3/4;background:linear-gradient(150deg,#F2C4CE,#8E6BA8);}
+  .card .meta{padding:8px 9px 9px;}
+  .card .nm{font-size:13px;font-weight:650;}
+  .card .de{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35;
+            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
+  /* 聊天 */
+  .chat{display:flex;flex-direction:column;height:100%;}
+  .chat .bar{display:flex;align-items:center;gap:10px;padding:4px 14px 10px;border-bottom:1px solid var(--line);}
+  .chat .bar .nm{font-size:15px;font-weight:700;}
+  .chat .bar .st{font-size:10.5px;color:var(--muted);}
+  .chat .bar .more{margin-left:auto;color:var(--muted);font-size:16px;}
+  .chat .bar .back{font-size:18px;color:var(--text);}
+  .msgs{flex:1;padding:12px 14px 0;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
+  .msg{max-width:84%;}
+  .bub{background:var(--surface);border:1px solid var(--line);border-radius:14px 14px 14px 5px;
+       padding:10px 12px;font-size:13.5px;line-height:1.55;color:#242A31;}
+  .msg.me{align-self:flex-end;}
+  .msg.me .bub{background:var(--user-bubble);border-color:#CFE6D8;color:var(--user-text);
+               border-radius:14px 14px 5px 14px;font-weight:500;}
+  .meta{font-size:10px;color:var(--faint);margin-top:3px;}
+  .inp{margin:10px 14px 18px;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+       padding:10px 10px 10px 12px;display:flex;align-items:center;justify-content:space-between;}
+  .inp span{color:var(--faint);font-size:13.5px;}
+  .inp b{background:var(--accent);color:#fff;border-radius:8px;padding:5px 11px;font-size:12.5px;font-weight:700;}
+</style>
+</head>
+<body>
+<h1>C · Dense Ink — 浅色版</h1>
+<div class="note">
+同样的骨架（64dp 行高、1px 分隔线、12px 圆角、实心按钮），只换色板：底色 #F8F8F5、卡片白、强调色深绿 #2E7D5B。
+浅色下“用户气泡”用淡绿底 + 深绿字，避免白底上用亮绿造成的对比度问题。
+</div>
+<div class="row">
+
+  <!-- 会话列表 -->
+  <div>
+    <div class="phone">
+      <div class="status"><span>14:20</span><span>5G · 84%</span></div>
+      <div class="hdr"><h3>会话</h3><div class="btn">＋ 新建</div></div>
+      <div class="list">
+        <div class="item"><div class="av" style="background:linear-gradient(150deg,#F2C4CE,#8E6BA8)"></div>
+          <div><div class="t1">Seraphina</div><div class="t2">我在森林边缘等你，别走太远。</div></div>
+          <div class="right"><div class="time">14:12</div><div class="count">12</div></div></div>
+        <div class="item"><div class="av" style="background:linear-gradient(150deg,#A8DCCF,#3F7F74)"></div>
+          <div><div class="t1">Librarian</div><div class="t2">那本书在第三层，靠窗。</div></div>
+          <div class="right"><div class="time">昨天</div><div class="count">4</div></div></div>
+        <div class="item"><div class="av" style="background:linear-gradient(150deg,#E8C79A,#9B6B3E)"></div>
+          <div><div class="t1">Synthetic</div><div class="t2">测试卡：只用来验证链路。</div></div>
+          <div class="right"><div class="time">11-20</div><div class="count">2</div></div></div>
+      </div>
+      <div class="nav"><div class="on"><span class="ic">◫</span>会话</div><div><span class="ic">☖</span>角色</div><div><span class="ic">⚙</span>设置</div></div>
+    </div>
+    <div class="cap">会话列表</div>
+  </div>
+
+  <!-- 角色网格 -->
+  <div>
+    <div class="phone">
+      <div class="status"><span>14:20</span><span>5G · 84%</span></div>
+      <div class="hdr"><h3>角色卡</h3><div class="btn ghost">导入</div></div>
+      <div class="grid">
+        <div class="card"><div class="img"></div><div class="meta"><div class="nm">Seraphina</div><div class="de">森林的守护者，粉发琥珀眼，会治愈魔法。</div></div></div>
+        <div class="card"><div class="img" style="background:linear-gradient(150deg,#A8DCCF,#3F7F74)"></div><div class="meta"><div class="nm">Librarian</div><div class="de">沉默的图书管理员，知道每一本书的位置。</div></div></div>
+        <div class="card"><div class="img" style="background:linear-gradient(150deg,#E8C79A,#9B6B3E)"></div><div class="meta"><div class="nm">Synthetic</div><div class="de">测试卡，只用来验证链路。</div></div></div>
+        <div class="card"><div class="img" style="background:linear-gradient(150deg,#C7CBE8,#5A5F8E)"></div><div class="meta"><div class="nm">待导入</div><div class="de">从手机选择 PNG 角色卡。</div></div></div>
+      </div>
+      <div class="nav"><div><span class="ic">◫</span>会话</div><div class="on"><span class="ic">☖</span>角色</div><div><span class="ic">⚙</span>设置</div></div>
+    </div>
+    <div class="cap">角色卡网格</div>
+  </div>
+
+  <!-- 聊天 -->
+  <div>
+    <div class="phone">
+      <div class="status"><span>14:20</span><span>5G · 84%</span></div>
+      <div class="chat">
+        <div class="bar"><div class="back">←</div><div><div class="nm">Seraphina</div><div class="st">12 条 · 14:12</div></div><div class="more">⋮</div></div>
+        <div class="msgs">
+          <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last. I was so worried.”</div><div class="meta">14:02</div></div>
+          <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div><div class="meta" style="text-align:right">14:03</div></div>
+          <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest — I've healed your wounds as best I could with my magic.”</div><div class="meta">14:03</div></div>
+        </div>
+        <div class="inp"><span>说点什么</span><b>发送</b></div>
+      </div>
+    </div>
+    <div class="cap">聊天页</div>
+  </div>
+
+</div>
+</body>
+</html>

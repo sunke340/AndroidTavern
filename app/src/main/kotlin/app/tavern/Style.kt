@@ -1,0 +1,156 @@
+package app.tavern
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/** 间距阶梯。只允许用这里的值，避免 12/14/16 混着来。 */
+object Space {
+    val xs: Dp = 4.dp
+    val s: Dp = 8.dp
+    val m: Dp = 12.dp
+    val l: Dp = 16.dp
+    val xl: Dp = 24.dp
+}
+
+/** 圆角阶梯。 */
+object Radius {
+    val button: Dp = 10.dp
+    val card: Dp = 12.dp
+    val bubble: Dp = 14.dp
+}
+
+/** 列表行最小高度（含触控区）。 */
+val ListRowHeight: Dp = 64.dp
+
+/** 页头高度：左右 16、上下 8，标题垂直居中。 */
+val PageHeaderHeight: Dp = 56.dp
+
+/**
+ * 列表行：左边可放头像、右边可放操作，底部自带 1px 分隔线。
+ *
+ * 与「卡片列表」的区别：C 方向用线不用影，所以列表页不要再用 Card 包一层，
+ * 否则屏幕上会出现"卡片叠分隔线"的双重分隔。
+ */
+@Composable
+fun ListRow(
+    title: String,
+    subtitle: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    val palette = LocalTavernPalette.current
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = ListRowHeight)
+                .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+                .padding(horizontal = Space.l, vertical = Space.s + 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leading != null) {
+                Box(modifier = Modifier.padding(end = Space.m)) { leading() }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                }
+            }
+            if (trailing != null) {
+                Box(modifier = Modifier.padding(start = Space.s)) { trailing() }
+            }
+        }
+        HorizontalDivider(color = palette.divider)
+    }
+}
+
+/** 分节标题（设置页、配置标签里用）。 */
+@Composable
+fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = Space.l, bottom = Space.xs),
+    )
+}
+
+/** 页头右边的实心按钮（新建 / 发送这类主操作）。 */
+@Composable
+fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(Radius.button),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = Space.m + 2.dp,
+            vertical = Space.s - 1.dp,
+        ),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** 页头右边的次要按钮（导入这类）。 */
+@Composable
+fun SecondaryAction(text: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(Radius.button),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = Space.m + 2.dp,
+            vertical = Space.s - 1.dp,
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.primary,
+        ),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** 空态提示：居中一段说明，不要做成"空白页"。 */
+@Composable
+fun EmptyHint(text: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(Space.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

@@ -28,6 +28,10 @@ class PreferencesSettingsRepository(
         maxTokens = prefs.getInt(KEY_MAX_TOKENS, DEFAULT_MAX_TOKENS),
         messageStyle = prefs.getString(KEY_MESSAGE_STYLE, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_MESSAGE_STYLE,
+        themePreset = prefs.getString(KEY_THEME_PRESET, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_THEME_PRESET,
+        themeMode = prefs.getString(KEY_THEME_MODE, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_THEME_MODE,
     )
 
     override fun saveConnection(baseUrl: String, model: String) {
@@ -46,6 +50,13 @@ class PreferencesSettingsRepository(
 
     override fun saveMessageStyle(style: String) {
         prefs.edit().putString(KEY_MESSAGE_STYLE, style).apply()
+    }
+
+    override fun saveTheme(preset: String?, mode: String?) {
+        prefs.edit().apply {
+            preset?.let { putString(KEY_THEME_PRESET, it) }
+            mode?.let { putString(KEY_THEME_MODE, it) }
+        }.apply()
     }
 
     override fun disabledBookEntries(cardId: String): Set<Int> =
@@ -86,6 +97,8 @@ class PreferencesSettingsRepository(
         const val KEY_TEMPERATURE = "temperature"
         const val KEY_MAX_TOKENS = "max_tokens"
         const val KEY_MESSAGE_STYLE = "message_style"
+        const val KEY_THEME_PRESET = "theme_preset"
+        const val KEY_THEME_MODE = "theme_mode"
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
         const val KEY_CARD_STYLE_PREFIX = "card_style:"
         const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
@@ -93,5 +106,7 @@ class PreferencesSettingsRepository(
         const val DEFAULT_TEMPERATURE = 1.0
         const val DEFAULT_MAX_TOKENS = 0
         const val DEFAULT_MESSAGE_STYLE = "Card"
+        const val DEFAULT_THEME_PRESET = "Forest"
+        const val DEFAULT_THEME_MODE = "Follow"
     }
 }

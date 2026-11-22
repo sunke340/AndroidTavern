@@ -77,6 +77,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
         val messageStyle: MessageStyle = MessageStyle.Card,
+        val themePreset: ThemePreset = ThemePreset.Forest,
+        val themeMode: ThemeMode = ThemeMode.Follow,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -109,6 +111,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     maxTokensText = saved.maxTokens.toString(),
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
+                    themePreset = runCatching { ThemePreset.valueOf(saved.themePreset) }
+                        .getOrDefault(ThemePreset.Forest),
+                    themeMode = runCatching { ThemeMode.valueOf(saved.themeMode) }
+                        .getOrDefault(ThemeMode.Follow),
                 )
             }
 
@@ -465,6 +471,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     maxTokens = maxTokensText.toIntOrNull(),
                 )
             }
+        }
+    }
+
+    /** 换主题：预设与深浅模式各自独立保存，互不覆盖。 */
+    fun setThemePreset(preset: ThemePreset) {
+        _state.update { it.copy(themePreset = preset) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = preset.name, mode = null) }
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        _state.update { it.copy(themeMode = mode) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = null, mode = mode.name) }
         }
     }
 

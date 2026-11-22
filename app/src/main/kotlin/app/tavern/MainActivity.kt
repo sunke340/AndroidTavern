@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.Surface
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,11 +13,8 @@ class MainActivity : ComponentActivity() {
         // 表现就是点输入框时画面先抽一下再落回原位。
         enableEdgeToEdge()
         setContent {
-            TavernTheme {
-                Surface {
-                    MainScreen()
-                }
-            }
+            // 主题在 MainScreen 里套（要靠 UiState 的 themePreset/themeMode）
+            MainScreen()
         }
     }
 }
