@@ -3,6 +3,7 @@ package app.tavern
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +34,9 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     }
 
     Scaffold(
+        // 三栏页面的状态栏/导航栏留白由 Scaffold 的 contentWindowInsets 负责；
+        // imePadding 让键盘弹出时底部导航和内容一起上移，而不是把输入框盖住
+        modifier = Modifier.fillMaxSize().imePadding(),
         bottomBar = {
             NavigationBar {
                 // 用文字当图标：不引 material-icons-extended，少一个依赖少一次 CI 风险
