@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`a7419a7`（兜底回退点：tag `apk-m26`；上一版 `3c47202` = tag `apk-m24`）
+- 代码：`311a1e2`（兜底回退点：tag `apk-m27`；上一版 `a7419a7` = tag `apk-m26`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 34 个单测全绿
-- 已交付 APK：`app-v21-a7419a7.apk`（签名固定，可覆盖安装；上一版 `app-v20-3c47202.apk`）
+- 已交付 APK：`app-v22-311a1e2.apk`（签名固定，可覆盖安装；上一版 `app-v21-a7419a7.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 已经做完的（能装、能日常聊）
