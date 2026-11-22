@@ -34,7 +34,7 @@ public class FileWorldBookRepository(context: Context) : WorldBookRepository {
 
         // 先解析：不是世界书的文件不该进目录（否则设置页会列出一个 0 条的空书）
         val book = parseWorldBook(name, json)
-        require(book.entries.isNotEmpty()) { "这个文件里没有世界书条目（看 \`entries\` 字段）" }
+        require(book.entries.isNotEmpty()) { "这个文件里没有世界书条目（看 entries 字段）" }
 
         File(dir, "$name.json").writeText(json, Charsets.UTF_8)
         return WorldBookRef(name = name, entryCount = book.entries.size, enabled = name in enabledSet())
