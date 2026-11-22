@@ -14,10 +14,16 @@
         android:theme="@style/Theme.AndroidTavern"
         android:usesCleartextTraffic="true">
 
+        <!--
+          windowSoftInputMode=adjustResize：配合 Activity 里的 enableEdgeToEdge()，
+          键盘弹出时只让 insets 变化（由 Compose 的 imePadding 做动画），
+          而不是系统缩放窗口 + Compose 动画同时发生——那会看到画面先抽一下再落回。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -25,3 +25,11 @@ MainScreen（Scaffold + NavigationBar）
 - **世界书不占底部 tab**：它是跟着卡/会话走的编辑面，入口挂在角色详情、聊天 ⋮、设置三处（P1 再做）。
 - 消息渲染收敛在 `ChatScreen.kt` 的 `MessageRow(message, style)`；`MessageStyle` 现在只有 `Card`，
   `Bubble` 是留好的接口（设置里能选，暂时回落到卡片）。
+
+## 窗口 insets 的规矩（踩过两次）
+
+- `MainActivity` 必须调 `enableEdgeToEdge()`，Manifest 里钉死 `windowSoftInputMode="adjustResize"`。
+  **两者缺一就会出现"点输入框时画面先抽一下再落回"**——系统缩放窗口和 Compose 的 `imePadding()`
+  动画各走一套，位移叠了两次。
+- 页面用 `Scaffold`（含 `TopAppBar`）拿状态栏/导航栏留白；聊天页不许再用裸 `Column` 当根。
+- 键盘遮挡用 `Modifier.imePadding()`，别用 `adjustPan`；`values-night/themes.xml` 要跟着维护窗口底色。

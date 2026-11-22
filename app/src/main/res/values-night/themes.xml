@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      深色模式下的窗口底色。缺这个文件时，系统是深色、窗口却按浅色画，
+      启动瞬间会闪一下白，系统栏图标的对比度也会算错。
+      底色取 Material3 深色 surface（#141218）。
+    -->
+    <style name="Theme.AndroidTavern" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#141218</item>
+    </style>
+</resources>

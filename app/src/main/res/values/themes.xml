@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 用平台主题，避免为了一个主题引 AppCompat -->
+    <!--
+      用平台主题，避免为了一个主题引 AppCompat。
+      颜色最终由 Compose 的 TavernTheme 决定（Android 12+ 动态取色）；
+      这里只管窗口底色和"没有 ActionBar"。
+    -->
     <style name="Theme.AndroidTavern" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">#FFFBFE</item>
     </style>
