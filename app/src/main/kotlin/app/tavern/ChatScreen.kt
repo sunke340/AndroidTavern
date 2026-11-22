@@ -33,9 +33,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -54,7 +68,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -129,8 +142,24 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                 },
                 actions = {
-                    TextButton(onClick = viewModel::toggleRequest) {
-                        Text(if (state.showRequest) "收请求" else "请求")
+                    var menuOpen by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        // 三级继承的会话配置在下一批；先占位但明确标注，不做假按钮
+                        DropdownMenuItem(
+                            text = { Text("会话配置（下一批）") },
+                            enabled = false,
+                            onClick = {},
+                        )
+                        DropdownMenuItem(
+                            text = { Text("查看本次请求") },
+                            onClick = {
+                                menuOpen = false
+                                viewModel.toggleRequest()
+                            },
+                        )
                     }
                 },
             )
@@ -144,28 +173,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 .padding(horizontal = Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            if (state.showRequest) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(Radius.card),
-                    border = BorderStroke(1.dp, palette.cardBorder),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .heightIn(max = 240.dp)
-                            .verticalScroll(rememberScrollState())
-                            .padding(Space.m),
-                    ) {
-                        Text("这次实际发出去的内容", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            state.requestPreview.ifEmpty { "（还没发过）" },
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -281,6 +288,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
         }
     }
+
+    // 请求面板：全屏弹层，可选中复制。以前内嵌在消息上方，白占一块地方。
+    if (state.showRequest) {
+        RequestDialog(state = state, onClose = viewModel::toggleRequest)
+    }
 }
 
 /**
@@ -375,4 +387,63 @@ private fun StreamingCursor() {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.alpha(alpha),
     )
+}
+
+/**
+ * 「本次请求」全屏弹层：把实际发出去的 messages 原样列出来，可全选复制。
+ *
+ * 这是排查兼容性最常用的工具——卡有没有注入、世界书有没有进来，一眼能看出。
+ * 放在弹层里而不是嵌在消息区，是因为它只在排查时需要，不该常驻占版面。
+ */
+@Composable
+private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    val text = state.requestPreview.ifEmpty { "（还没发过请求）" }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(start = Space.s)) {
+                        Text("本次请求", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "共 ${text.count { it == '\n' } + 1} 行 · ${text.length} 字",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }) {
+                        Text("复制")
+                    }
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.Close, contentDescription = "关闭")
+                    }
+                }
+
+                HorizontalDivider(color = LocalTavernPalette.current.divider)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(Space.l),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

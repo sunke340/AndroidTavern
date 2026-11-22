@@ -67,6 +67,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // ---- 界面结构（导航） ----
         val screen: Screen = Screen.Sessions,
         val chatOpen: Boolean = false,
+        /** 设置里的二级页面；null = 一级列表。 */
+        val settingsPage: SettingsPage? = null,
         /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
         val detailCardId: String? = null,
         /** 详情页的完整卡信息；打开详情后异步填上。 */
@@ -438,6 +440,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
     fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+
+    fun openSettingsPage(page: SettingsPage) = _state.update { it.copy(settingsPage = page) }
+
+    fun closeSettingsPage() = _state.update { it.copy(settingsPage = null) }
 
     private fun notify(text: String) {
         noticeSeq += 1

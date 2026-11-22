@@ -3,6 +3,7 @@ package app.tavern.data.cards.impl
 import android.content.Context
 import android.net.Uri
 import app.tavern.core.card.PngCard
+import app.tavern.core.card.bookEntries
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.CardRepository
 import app.tavern.data.cards.ImportResult
@@ -62,6 +63,7 @@ class CardStore(context: Context) : CardRepository {
                     name = cardName,
                     imported = file.name !in seeded,
                     description = parsed?.description.orEmpty(),
+                    bookEntryCount = parsed?.bookEntries()?.size ?: 0,
                 )
             }
     }
@@ -110,6 +112,7 @@ class CardStore(context: Context) : CardRepository {
                 name = card.name.ifBlank { base },
                 imported = true,
                 description = card.description,
+                bookEntryCount = card.bookEntries().size,
             ),
         )
     }

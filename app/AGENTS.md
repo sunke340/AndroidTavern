@@ -18,7 +18,8 @@
 MainScreen（Scaffold + NavigationBar）
 ├── SessionsScreen    会话列表 → 点一行进 ChatScreen（全屏，底部栏隐藏）
 ├── CharactersScreen  角色卡列表（头像网格在批次 2）
-└── SettingsScreen    连接 / 采样 / 外观 / 关于
+└── SettingsScreen    一级列表：模型 / 采样 / 外观 / 世界书 / 关于
+    └── SettingsSubPage  二级页（全屏，顶栏返回）；每行右侧显示当前生效值
 ```
 
 - **聊天不占底部 tab**：它是二级页，带返回栈才符合安卓返回键。
@@ -37,6 +38,9 @@ MainScreen（Scaffold + NavigationBar）
 - 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色）：
   Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
+- 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
+- 设置要分层：一级只放"去哪儿"（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。
+- 聊天页的排查工具（本次请求）走右上 `⋮` → 全屏弹层，不占消息区版面。
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 

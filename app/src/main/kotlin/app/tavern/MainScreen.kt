@@ -84,6 +84,13 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         return
     }
 
+    if (state.settingsPage != null) {
+        // 设置的二级页面也是全屏二级页（返回键先退子页）
+        BackHandler { viewModel.closeSettingsPage() }
+        SettingsSubPage(state = state, viewModel = viewModel)
+        return
+    }
+
     // 导入/删除这类一次性结果用 Snackbar 报，不占页头（页头高度必须固定）
     val snackbarHostState = remember { SnackbarHostState() }
     val notice = state.notice

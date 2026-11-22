@@ -1,11 +1,14 @@
 package app.tavern
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -89,6 +93,73 @@ fun ListRow(
         }
         HorizontalDivider(color = palette.divider)
     }
+}
+
+/**
+ * 等宽分段选择器：**每个选项 weight(1f)**，无论几个都均分铺满整行。
+ *
+ * 之前用 FilterChip，宽度跟文字走（"跟随系统"比"浅色"宽一倍），一排看着参差。
+ */
+@Composable
+fun <T> SegmentedRow(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalTavernPalette.current
+    val shape = RoundedCornerShape(Radius.button)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .border(1.dp, palette.cardBorder, shape),
+    ) {
+        options.forEach { option ->
+            val isSelected = option == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else androidx.compose.ui.graphics.Color.Transparent,
+                    )
+                    .clickable { onSelect(option) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label(option),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** 设置一级列表里的一行：左边标题，右边当前值 + 箭头。 */
+@Composable
+fun SettingLinkRow(title: String, value: String, onClick: () -> Unit) {
+    ListRow(
+        title = title,
+        subtitle = value,
+        trailing = {
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 /** 分节标题（设置页、配置标签里用）。 */
