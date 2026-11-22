@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,8 +22,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,32 +44,19 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val draft = state.profileDraft ?: return
     var confirmDelete by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = viewModel::closeProfileEditor) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                title = {
-                    Text(
-                        text = if (draft.isNew) "新建档案" else "编辑档案",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                },
-                actions = {
-                    TextButton(onClick = viewModel::saveProfileDraft, enabled = draft.canSave) {
-                        Text("保存")
-                    }
-                },
-            )
+    GlassDetailScaffold(
+        title = if (draft.isNew) "新建档案" else "编辑档案",
+        onBack = viewModel::closeProfileEditor,
+        glass = state.visualEffects == VisualEffects.Glass,
+        actions = {
+            CapsuleIcon(
+                icon = Icons.Filled.Check,
+                contentDescription = "保存",
+                enabled = draft.canSave,
+            ) { viewModel.saveProfileDraft() }
         },
     ) { padding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()

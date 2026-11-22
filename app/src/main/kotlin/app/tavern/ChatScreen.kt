@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -59,8 +60,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -83,55 +82,32 @@ import app.tavern.core.model.ChatRole
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = viewModel::closeChat) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                title = {
-                    Column {
-                        Text(
-                            state.cardName.ifBlank { "聊天" },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            state.status,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                },
-                actions = {
-                    var menuOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
-                    }
-                    val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        // 只是"看清现在用的哪套连接"，点击应该去哪儿（编辑档案）留到 D 批
-                        DropdownMenuItem(
-                            text = { Text("模型档案：${activeProfile?.name ?: "未配置"}") },
-                            enabled = false,
-                            onClick = {},
-                        )
-                        DropdownMenuItem(
-                            text = { Text("查看本次请求") },
-                            onClick = {
-                                menuOpen = false
-                                viewModel.toggleRequest()
-                            },
-                        )
-                    }
-                },
-            )
+    GlassDetailScaffold(
+        title = state.cardName.ifBlank { "聊天" },
+        subtitle = state.status,
+        onBack = viewModel::closeChat,
+        glass = state.visualEffects == VisualEffects.Glass,
+        // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
+        contentTopInset = 0.dp,
+        actions = {
+            var menuOpen by remember { mutableStateOf(false) }
+            CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
+            val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                // 只是"看清现在用的哪套连接"，点击应该去哪儿（编辑档案）留到 D 批
+                DropdownMenuItem(
+                    text = { Text("模型档案：${activeProfile?.name ?: "未配置"}") },
+                    enabled = false,
+                    onClick = {},
+                )
+                DropdownMenuItem(
+                    text = { Text("查看本次请求") },
+                    onClick = {
+                        menuOpen = false
+                        viewModel.toggleRequest()
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(
@@ -149,6 +125,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
+                contentPadding = PaddingValues(top = DetailHeaderHeight),
                 verticalArrangement = Arrangement.spacedBy(Space.s),
             ) {
                 if (state.streamingText.isNotEmpty()) {

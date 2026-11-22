@@ -41,8 +41,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,46 +80,29 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     val sessions = state.sessions.filter { it.cardId == cardId }
 
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
-    var menuOpen by remember { mutableStateOf(false) }
     var confirmDeleteCard by remember { mutableStateOf(false) }
     var actionTargetSession by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDeleteSession by remember { mutableStateOf<ChatSession?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = viewModel::closeDetail) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                // 顶栏只说明"这是哪一页"；卡名在下面的卡头里出现一次就够
-                title = {
-                    Text(
-                        "角色详情",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = {
-                                Text("删除这张卡", color = MaterialTheme.colorScheme.error)
-                            },
-                            onClick = {
-                                menuOpen = false
-                                confirmDeleteCard = true
-                            },
-                        )
-                    }
-                },
-            )
+    GlassDetailScaffold(
+        // 顶栏只说明"这是哪一页"；卡名在下面的卡头里出现一次就够
+        title = "角色详情",
+        onBack = viewModel::closeDetail,
+        glass = state.visualEffects == VisualEffects.Glass,
+        actions = {
+            var menuOpen by remember { mutableStateOf(false) }
+            CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = {
+                        Text("删除这张卡", color = MaterialTheme.colorScheme.error)
+                    },
+                    onClick = {
+                        menuOpen = false
+                        confirmDeleteCard = true
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {

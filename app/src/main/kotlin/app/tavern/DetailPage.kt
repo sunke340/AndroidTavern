@@ -1,0 +1,223 @@
+package app.tavern
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toIntSize
+
+/** 二级/三级页的页头高度（不含状态栏）。 */
+val DetailHeaderHeight: Dp = 68.dp
+
+/** 页头圆形返回钮的直径。 */
+val DetailBackSize: Dp = 44.dp
+
+/**
+ * 二级/三级页骨架：**内容录图层 + 玻璃页头浮层**。
+ *
+ * 页头形状参考系统相机那种：左边一个**圆形玻璃返回钮**，跟着是大标题（可带一行副标题），
+ * 右边一个**玻璃胶囊**装图标动作。
+ *
+ * 为什么每个二级页要自己录一份图层：这些页在 `TabsRoot` 之外，一级页那份图层到这里就没有了。
+ * 反过来说这正好避免了切页时两页抢同一个图层 —— 每页只采样自己的内容。
+ *
+ * 页头仍然是浮层（画在录制之外），理由同一级页：画在里面胶囊会采样到上一帧的自己。
+ */
+@Composable
+fun GlassDetailScaffold(
+    title: String,
+    onBack: () -> Unit,
+    glass: Boolean,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    /** 内容区顶部让位。传 0 表示页面自己用 `contentPadding` 让位，这样内容能滚到玻璃页头下面。 */
+    contentTopInset: Dp = DetailHeaderHeight,
+    actions: (@Composable () -> Unit)? = null,
+    snackbarHost: @Composable () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    val background = MaterialTheme.colorScheme.background
+    val layer = rememberGraphicsLayer()
+    val frost = rememberGraphicsLayer()
+    val origin = remember { mutableStateOf(Offset.Zero) }
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = background,
+        snackbarHost = snackbarHost,
+        bottomBar = bottomBar,
+        // 页头自己吃状态栏留白（它画在录制层上面），这里不让 Scaffold 再加一层。
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { inner ->
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .onGloballyPositioned { origin.value = it.positionInWindow() }
+                    .drawWithContent {
+                        if (glass) {
+                            layer.record(size = size.toIntSize()) {
+                                drawRect(background)
+                                this@drawWithContent.drawContent()
+                            }
+                            drawLayer(layer)
+                            recordFrost(frost, layer, size.toIntSize())
+                        } else {
+                            drawContent()
+                        }
+                    },
+            ) {
+                content(
+                    PaddingValues(
+                        top = contentTopInset,
+                        bottom = inner.calculateBottomPadding() + navBottom,
+                    ),
+                )
+            }
+
+            DetailHeader(
+                title = title,
+                subtitle = subtitle,
+                onBack = onBack,
+                glass = glass,
+                frost = frost,
+                contentOrigin = { origin.value },
+                actions = actions,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            )
+        }
+    }
+}
+
+/** 圆形返回钮 + 大标题 + 玻璃胶囊动作。 */
+@Composable
+private fun DetailHeader(
+    title: String,
+    subtitle: String?,
+    onBack: () -> Unit,
+    glass: Boolean,
+    frost: GraphicsLayer,
+    contentOrigin: () -> Offset,
+    actions: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val background = MaterialTheme.colorScheme.background
+
+    Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight)) {
+        // 内容从下面滚过去时淡出，标题不会和内容叠在一起
+        Box(
+            Modifier
+                .matchParentSize()
+                .drawBehind {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                background,
+                                background.copy(alpha = 0.92f),
+                                background.copy(alpha = 0f),
+                            ),
+                        ),
+                    )
+                },
+        )
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = Space.l),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GlassSurface(
+                frost = frost,
+                contentOrigin = contentOrigin,
+                glass = glass,
+                shape = CircleShape,
+                modifier = Modifier.size(DetailBackSize),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize().clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(Space.m))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+
+            if (actions != null) {
+                GlassSurface(
+                    frost = frost,
+                    contentOrigin = contentOrigin,
+                    glass = glass,
+                    shape = RoundedCornerShape(Radius.pill),
+                    modifier = Modifier.height(HeaderActionHeight),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxHeight().padding(horizontal = Space.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { actions() }
+                }
+            }
+        }
+    }
+}

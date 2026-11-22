@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,8 +30,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,30 +57,14 @@ import app.tavern.data.log.AppLog
 fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val page = state.settingsPage ?: return
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = viewModel::closeSettingsPage) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                title = {
-                    Text(page.title, style = MaterialTheme.typography.titleMedium)
-                },
-                actions = {
-                    if (page == SettingsPage.Model) {
-                        PrimaryAction(
-                            text = "＋ 新建",
-                            onClick = { viewModel.openProfileEditor(null) },
-                        )
-                    }
-                },
-            )
+    GlassDetailScaffold(
+        title = page.title,
+        onBack = viewModel::closeSettingsPage,
+        glass = state.visualEffects == VisualEffects.Glass,
+        actions = if (page == SettingsPage.Model) {
+            { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建档案") { viewModel.openProfileEditor(null) } }
+        } else {
+            null
         },
     ) { padding ->
         Column(

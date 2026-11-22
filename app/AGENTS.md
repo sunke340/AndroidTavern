@@ -147,6 +147,18 @@ MainScreen（Destination + AnimatedContent）
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 
+## 二级/三级页：`GlassDetailScaffold`
+
+二级页（聊天 / 设置二级 / 角色详情 / 角色配置 / 档案编辑）统一用 `GlassDetailScaffold`，
+不要再用 `Scaffold` + `TopAppBar`：
+
+- 页头形状：左边**圆形玻璃返回钮**（`GlassSurface` + `CircleShape`）+ 大标题（可带一行副标题），
+  右边**玻璃胶囊**装图标动作（`CapsuleIcon`），底下压一层底色→透明渐变；
+- 每个二级页**自己录一份内容图层**（它在一级页的录制范围之外）。好处是切页时两页各采各的，
+  不会抢同一个图层；代价是同一时刻最多两份全屏图层（过渡 240ms）。
+- 内容顶部让位：默认 `contentTopInset = DetailHeaderHeight`；需要内容**滚到玻璃页头下面**的页面
+  （聊天）传 `0.dp`，改用列表的 `contentPadding` 让位 —— `contentPadding` 不会裁内容，滚动时会从玻璃底下过。
+
 ## 玻璃模糊：效果挂在节点上（踩过一次，两台真机都中）
 
 - 底栏玻璃是自绘的（[ADR 0005](../docs/adr/0005-glass-without-haze.md) /
