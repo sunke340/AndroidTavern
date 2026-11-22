@@ -140,6 +140,21 @@ MainScreen（Destination + AnimatedContent）
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 
+## 玻璃模糊：效果挂在节点上（踩过一次，两台真机都中）
+
+- 底栏玻璃是自绘的（[ADR 0005](../docs/adr/0005-glass-without-haze.md) /
+  [ADR 0006](../docs/adr/0006-glass-blur-on-node.md)）：内容层 `glassLayer.record{}` 录一份自己，
+  底栏把图层平移过去、塞进挂 `Modifier.blur` 的节点里画，最后叠半透明底 + 描边 + 图标。
+- **`renderEffect` / `alpha` / `translation` 是渲染时读的属性**：在 draw 块里
+  `renderEffect = …; drawLayer(); renderEffect = null` 会**等于没设**（真机只剩半透明，不报错）。
+  要模糊就挂 `Modifier.blur` / `Modifier.graphicsLayer { renderEffect = … }`，让效果跟着节点活到渲染完。
+- **糊谁就把那个节点放大一圈**：离屏缓冲边缘按 clamp 收敛，节点和被糊区域一样大时会出直纹。
+  `expandForBlur(pad)` 负责这个，多出来的由外层胶囊 `clip` 裁掉。
+- **`positionInWindow` 量在没有 padding 的那层上**：同一个 LayoutNode 上带 padding 时报的是外框，
+  坐标会偏。外壳管留白/阴影，胶囊本体单独一层。
+- 判据：切到玻璃看胶囊里的字 —— **还认得出字 = 没糊；一片糊只剩色块 = 糊上了**。
+  真机没 logcat，先看 `AppLog` tag `glass` 那两行（sdk / 硬件加速 / 半径，底栏 / 内容 / 尺寸）。
+
 ## 窗口 insets 的规矩（踩过两次）
 
 - `MainActivity` 必须调 `enableEdgeToEdge()`，Manifest 里钉死 `windowSoftInputMode="adjustResize"`。
