@@ -52,6 +52,8 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_THEME_PRESET,
         themeMode = prefs.getString(KEY_THEME_MODE, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_THEME_MODE,
+        navAnimation = prefs.getString(KEY_NAV_ANIMATION, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_NAV_ANIMATION,
     )
 
     override fun saveConnection(baseUrl: String, model: String) {
@@ -77,6 +79,10 @@ class PreferencesSettingsRepository(
             preset?.let { putString(KEY_THEME_PRESET, it) }
             mode?.let { putString(KEY_THEME_MODE, it) }
         }.apply()
+    }
+
+    override fun saveNavAnimation(name: String) {
+        prefs.edit().putString(KEY_NAV_ANIMATION, name).apply()
     }
 
     override fun disabledBookEntries(cardId: String): Set<Int> =
@@ -119,6 +125,7 @@ class PreferencesSettingsRepository(
         const val KEY_MESSAGE_STYLE = "message_style"
         const val KEY_THEME_PRESET = "theme_preset"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_NAV_ANIMATION = "nav_animation"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
         const val KEY_CARD_STYLE_PREFIX = "card_style:"
@@ -129,5 +136,6 @@ class PreferencesSettingsRepository(
         const val DEFAULT_MESSAGE_STYLE = "Card"
         const val DEFAULT_THEME_PRESET = "Violet"
         const val DEFAULT_THEME_MODE = "Follow"
+        const val DEFAULT_NAV_ANIMATION = "Slide"
     }
 }

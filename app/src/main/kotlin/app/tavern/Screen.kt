@@ -32,3 +32,21 @@ enum class CardConfigPage(val title: String) {
  * 不动消息模型、数据库、提示词。
  */
 enum class MessageStyle { Card, Bubble }
+
+/**
+ * 二级页的转场风格。
+ *
+ * 为什么做成选项：返回的观感很主观，用户报了三轮都没对上，与其继续猜，不如让他自己拨一下。
+ * 选定之后可以固化成默认，再把这个开关删掉。
+ *
+ * - [Slide]  标准安卓：**同一时刻只有一层在动**（进去时新页从右滑入、返回时当前页向右滑出，另一层不动）
+ * - [Stack]  层叠：两层同时动（新页推入、旧页退 1/4），"卡片堆"的手感
+ * - [Fade]   淡入淡出：不位移，最不容易晕
+ * - [None]   直接切换：没有任何过渡（排查时当对照组用）
+ */
+enum class NavAnimation(val label: String) {
+    Slide("标准"),
+    Stack("层叠"),
+    Fade("淡入"),
+    None("关闭"),
+}

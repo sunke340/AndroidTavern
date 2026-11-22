@@ -13,6 +13,8 @@ data class AppSettings(
     /** 主题预设名（如 `Forest`）与深浅模式（`Follow` / `Light` / `Dark`）。 */
     val themePreset: String,
     val themeMode: String,
+    /** 二级页转场风格，取值见 app 层 `NavAnimation`（这里只存字符串，data 不关心 UI 枚举）。 */
+    val navAnimation: String,
 )
 
 /**
@@ -35,6 +37,9 @@ interface SettingsRepository {
 
     /** 保存主题；传 null 表示这一项不动。 */
     fun saveTheme(preset: String?, mode: String?)
+
+    /** 保存二级页转场风格（字符串，由 UI 层定义取值）。 */
+    fun saveNavAnimation(name: String)
 
     /**
      * 这张卡里被手动关掉的内嵌世界书条目（按 `character_book.entries` 下标）。

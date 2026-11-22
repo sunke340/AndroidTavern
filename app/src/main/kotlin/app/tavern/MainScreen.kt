@@ -2,6 +2,8 @@ package app.tavern
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -123,7 +125,10 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     depth < previous -> "pop"
                     else -> "switch"
                 }
-                AppLog.i("nav", "${labelOf(destination)} depth=$depth $direction")
+                AppLog.i(
+                    "nav",
+                    "${labelOf(destination)} depth=$depth $direction anim=${state.navAnimation.name}",
+                )
                 lastDepth[0] = depth
             }
 
@@ -139,18 +144,50 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // 两层朝同一方向错位滑动 —— 观感就成了"从右下角弹出来"。
                     // 设了 zIndex，返回时深度更大的当前页天然在顶层，才是"把一张卡抽走"。
                     val forward = depthOf(targetState) >= depthOf(initialState)
-                    val transform = if (forward) {
-                        // 进二级页：新页整屏从右推入，旧页左退 1/4
-                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it } togetherWith
-                            slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { -it / 4 }
-                    } else {
-                        // 返回：当前页（顶层）整屏右退，上一级从左侧回来 1/4
-                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 } togetherWith
-                            slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
+                    val enter: EnterTransition = when (state.navAnimation) {
+                        // 标准：进去时只有新页在动（上一级不动，被覆盖）
+                        NavAnimation.Slide ->
+                            if (forward) {
+                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
+                            } else {
+                                EnterTransition.None
+                            }
+
+                        // 层叠：两层同时动
+                        NavAnimation.Stack ->
+                            if (forward) {
+                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
+                            } else {
+                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 }
+                            }
+
+                        NavAnimation.Fade -> fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                        NavAnimation.None -> EnterTransition.None
                     }
-                    // 不再配淡入淡出：退场用 240ms 位移、180ms 淡出的组合时，退场页会提前
-                    // 变透明，后面露出的是窗口底色 —— 看着像"闪一下"。只留纯位移。
-                    transform.apply { targetContentZIndex = depthOf(targetState).toFloat() }
+                    val exit: ExitTransition = when (state.navAnimation) {
+                        // 标准：返回时只有当前页在动（向右滑走，露出下面那页）
+                        NavAnimation.Slide ->
+                            if (forward) {
+                                ExitTransition.None
+                            } else {
+                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
+                            }
+
+                        NavAnimation.Stack ->
+                            if (forward) {
+                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { -it / 4 }
+                            } else {
+                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
+                            }
+
+                        NavAnimation.Fade -> fadeOut(tween(Motion.Base))
+                        NavAnimation.None -> ExitTransition.None
+                    }
+                    // 页面切换不叠 fade（位移未走完就透明 → 露窗口底色，像闪一下）。
+                    // zIndex 按深度给：返回时当前页压在上一级之上。
+                    (enter togetherWith exit).apply {
+                        targetContentZIndex = depthOf(targetState).toFloat()
+                    }
                 },
                 label = "destination",
             ) { target ->

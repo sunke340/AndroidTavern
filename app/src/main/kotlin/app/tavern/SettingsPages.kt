@@ -204,6 +204,20 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+
+    SectionLabel("页面转场")
+    SegmentedRow(
+        options = NavAnimation.entries,
+        selected = state.navAnimation,
+        label = { it.label },
+        onSelect = viewModel::setNavAnimation,
+    )
+    Text(
+        "进/退二级页的动画。「标准」同一时刻只有一层在动，「层叠」两页一起动，" +
+            "「关闭」直接切换（排查问题时用）。只影响二级页，不影响底部 tab。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** 主题色圆点：用浅色版 primary 作为识别色，选中加一圈描边。 */

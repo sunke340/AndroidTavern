@@ -86,6 +86,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val messageStyle: MessageStyle = MessageStyle.Card,
         val themePreset: ThemePreset = ThemePreset.Violet,
         val themeMode: ThemeMode = ThemeMode.Follow,
+        /** 二级页转场风格；见 [NavAnimation]。 */
+        val navAnimation: NavAnimation = NavAnimation.Slide,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -122,6 +124,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         .getOrDefault(ThemePreset.Violet),
                     themeMode = runCatching { ThemeMode.valueOf(saved.themeMode) }
                         .getOrDefault(ThemeMode.Follow),
+                    navAnimation = runCatching { NavAnimation.valueOf(saved.navAnimation) }
+                        .getOrDefault(NavAnimation.Slide),
                 )
             }
 
@@ -523,6 +527,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(themeMode = mode) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveTheme(preset = null, mode = mode.name) }
+        }
+    }
+
+    /** 换二级页转场风格（返回观感是主观的，交给用户自己拨）。 */
+    fun setNavAnimation(animation: NavAnimation) {
+        AppLog.i("ui", "转场 animation=${animation.name}")
+        _state.update { it.copy(navAnimation = animation) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveNavAnimation(animation.name) }
         }
     }
 
