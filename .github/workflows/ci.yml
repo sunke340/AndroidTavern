@@ -30,6 +30,11 @@ jobs:
       - name: Kotlin 块注释不得嵌套/未闭合
         run: bash tools/check-kotlin-comments.sh
 
+      # 重复 import 只有在编译期才报错，而这台机器编不了 Android 模块。
+      # 放到铁律检查里，10 秒挡住，不用等 6 分钟的构建。
+      - name: Kotlin 没有重复 import
+        run: bash tools/check-kotlin-imports.sh
+
       - name: 文档相对链接必须可解析
         run: |
           python3 - <<'PY'
