@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`28f56ba`（兜底回退点：tag `apk-m22`；上一版 `07a5739` = tag `apk-m21`）
+- 代码：`3c47202`（兜底回退点：tag `apk-m24`；上一版 `28f56ba` = tag `apk-m22`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 34 个单测全绿
-- 已交付 APK：`app-v19-28f56ba.apk`（签名固定，可覆盖安装；上一版 `app-v18-07a5739.apk`）
+- 已交付 APK：`app-v20-3c47202.apk`（签名固定，可覆盖安装；上一版 `app-v19-28f56ba.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 已经做完的（能装、能日常聊）
@@ -24,10 +24,11 @@
 
 ## 正在做的 / 下一步（按顺序）
 
-1. **C 批：模型档案**（未开始）
-   - DB 表 `model_profiles`（显示名 / baseUrl / 模型 id / 思考强度 / 自定义请求头 / 是否默认）
-   - Key 仍走 Keystore，按 profile id 存；**迁移现有单套配置成"默认模型"，不能丢 Key**
-   - 请求头合并进 OkHttp；思考强度映射 `reasoning_effort`
+1. **C 批：模型档案**（C1 数据层已落地，C2 界面待做）
+   - ✅ 表 `model_profiles` + DB v1→v2 迁移（只增表）+ Key 按档案 id 存 + 幂等种默认档案
+   - ✅ 请求层：自定义头跟着档案走，思考强度映射 `reasoning_effort`
+   - ⬜ C2：设置→模型 改成"档案列表 → 编辑页"（要加第 3 层导航：`Destination.ProfileEdit`），
+     支持切换默认 / 新建 / 删除；聊天页 ⋮ 显示当前档案
 2. **D 批：三级继承**（依赖 C）
    - `会话 > 角色卡 > 全局`，每项可"跟随"；解析器放 `:core` 并用单测覆盖
    - 会话配置页（聊天页 `⋮` 里那个置灰入口）；覆盖项最小集：模型 / 温度·maxTokens / 对话样式 / 世界书
