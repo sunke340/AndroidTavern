@@ -76,3 +76,61 @@ PNG 里可能同时有 `tEXt` 的 `chara`（V2）和 `ccv3`（V3），**读的�
 - 世界书注入的位置、顺序、格式（`P1-1-prompt-lorebook` 已录，未分析）。
 - token 预算不够时先砍谁（需要一份超长上下文的夹具）。
 - 群聊的成员名前缀与 `group_nudge_prompt`。
+
+---
+
+## 世界书
+
+### 扫描输入带名字前缀，且是倒序的
+
+扫的是 `coreChat.map(x => `${x.name}: ${x.mes}`).reverse()`（`public/script.js:4626`），
+**每条消息前面有 `名字: `**，数组从最新往最旧。全局扫描深度默认 2（`world-info.js:69`），
+即只看最后两条。这也是为什么条目里写 `alpha` 能匹配到用户刚发的那句话。
+证据：`P1-2-logic`（用户说 `alpha beta delta`，四条逻辑条目都按这个缓冲判定）。
+
+### 卡内嵌书：`enabled` 缺字段 = 关
+
+`convertCharacterBook()` 写的是 `disable: !entry.enabled`（`world-info.js:5640`），
+所以卡里没写 `enabled` 的条目在原版里是**关着的**。不是"默认打开"。
+证据：`P1-1` 的卡 4 条都显式 `enabled: true`；对照 `CardLorebook.kt` 的实现。
+
+### 只导入不挂载 = 一条都不注入
+
+原版把内嵌书导入成独立世界书文件后，还要挂到卡（`character.data.extensions.world`）
+或全局激活列表（`selected_world_info`）才会被 `getCharacterLore` / `getGlobalLore` 读到。
+证据：第一次录 `P1-2` 时只导入不挂载，请求体里一条世界书都没有；补上 `--select-world` 后才有。
+
+### 落地顺序：同序号的条目，注入时是**反序**
+
+`[...allActivatedEntries.values()].sort(sortFn)`（`sortFn` 是 order 降序，稳定排序）后
+逐条 `unshift` 进 `WIBeforeEntries`（`world-info.js:5203-5214`）。
+所以同 `insertion_order` 的条目，在提示词里出现的次序与书里的次序相反。
+证据：`P1-1` 书里是 eldoria/shadowfang/glade/power，注入出来是 power/shadowfang/eldoria。
+
+### 预算数的是"一条消息"的 token，不是裸文本
+
+世界书预算 `budget = round(world_info_budget% × maxContext / 100)`（`world-info.js:4736`），
+但计 `getTokenCountAsync(text)` 时走 openai 分支（`tokenizers.js:566`）→
+server `/api/tokenizers/openai/count` 按 OpenAI 消息规则算 **3 + 内容 + 3**（`src/endpoints/tokenizers.js:1000-1016`）。
+也就是**裸计数 + 6**。按裸计数算预算会差出一条（我第一版就是这么错的）。
+证据：`P1-4-budget`（5% 预算，6 条等长条目只进 3 条）；`P1-6-tokens`（10 条计数逐条相等）。
+
+### 递归只在"有新的成功条目"时继续
+
+`nextScanState = RECURSION` 的条件是 `world_info_recursive && !token_budget_overflowed && successfulNewEntriesForRecursion.length`
+（`world-info.js:5097`）。`delayUntilRecursion` 的条目在初次扫描被压掉，只有进入递归轮才放行。
+证据：`P1-3-recursion`（初始只有 hook 命中，递归轮才带出 wombat 条目与延后条目）。
+
+### sticky / cooldown / delay 以"聊天条数"计时
+
+效果的 `start = chat.length`、`end = start + 轮数`（`world-info.js:604`），存在
+`chat_metadata.timedWorldInfo` 里跟着聊天落盘。sticky 结束时若条目有 cooldown，会立刻挂上冷却
+（`world-info.js:518`）。`delay` 则是"聊天少于 N 条时压住"（`world-info.js:666`）。
+证据：`P1-3-sticky`（关键字消失仍在）/ `P1-3-cooldown`（关键字在却被压住）/ `P1-3-delay` + `P1-3-delay-passed`。
+
+### 包含组：先按 sticky 淘汰，再按关键字分数，最后按权重抽
+
+`filterByInclusionGroups`（`world-info.js:5388`）三段：sticky 独占 → `getScore()` 比主/次键命中数
+（`world-info.js:428`）→ 上一轮已激活则整组让位 → 否则 `groupWeight` 加权随机。
+证据：`P1-3-groups`（`alpha`+`beta` 命中 2 个键的条目把只命中 1 个的挤掉）。
+
