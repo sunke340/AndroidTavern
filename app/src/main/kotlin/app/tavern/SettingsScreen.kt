@@ -19,72 +19,75 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
-/** 设置页：连接、采样、外观、关于。所有改动即时落盘（见 ViewModel 的 onXxxChange）。 */
+/**
+ * 设置页：连接、采样、外观、关于。所有改动即时落盘（见 ViewModel 的 onXxxChange）。
+ *
+ * 页头用共用的 [PageScaffold]（无动作按钮），内容自己滚动——与「会话」「角色卡」同一套留白。
+ */
 @Composable
 fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text("设置", style = MaterialTheme.typography.titleLarge)
-
-        Text("连接", style = MaterialTheme.typography.labelMedium)
-        OutlinedTextField(
-            value = state.baseUrl,
-            onValueChange = viewModel::onBaseUrlChange,
-            label = { Text("Base URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.apiKey,
-            onValueChange = viewModel::onApiKeyChange,
-            label = { Text("API Key（加密保存，重开还在）") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.model,
-            onValueChange = viewModel::onModelChange,
-            label = { Text("模型") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text("采样", style = MaterialTheme.typography.labelMedium)
-        OutlinedTextField(
-            value = state.temperatureText,
-            onValueChange = viewModel::onTemperatureChange,
-            label = { Text("temperature") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.maxTokensText,
-            onValueChange = viewModel::onMaxTokensChange,
-            label = { Text("max_tokens（0 = 不限）") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text("外观", style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = state.messageStyle == MessageStyle.Card,
-                onClick = { viewModel.onMessageStyleChange(MessageStyle.Card) },
-                label = { Text("整行卡片") },
+    PageScaffold(title = "设置") {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("连接", style = MaterialTheme.typography.labelMedium)
+            OutlinedTextField(
+                value = state.baseUrl,
+                onValueChange = viewModel::onBaseUrlChange,
+                label = { Text("Base URL") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
-            FilterChip(
-                selected = state.messageStyle == MessageStyle.Bubble,
-                onClick = { viewModel.onMessageStyleChange(MessageStyle.Bubble) },
-                label = { Text("气泡（实验）") },
+            OutlinedTextField(
+                value = state.apiKey,
+                onValueChange = viewModel::onApiKeyChange,
+                label = { Text("API Key（加密保存，重开还在）") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
             )
+            OutlinedTextField(
+                value = state.model,
+                onValueChange = viewModel::onModelChange,
+                label = { Text("模型") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text("采样", style = MaterialTheme.typography.labelMedium)
+            OutlinedTextField(
+                value = state.temperatureText,
+                onValueChange = viewModel::onTemperatureChange,
+                label = { Text("temperature") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.maxTokensText,
+                onValueChange = viewModel::onMaxTokensChange,
+                label = { Text("max_tokens（0 = 不限）") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text("外观", style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.messageStyle == MessageStyle.Card,
+                    onClick = { viewModel.onMessageStyleChange(MessageStyle.Card) },
+                    label = { Text("整行卡片") },
+                )
+                FilterChip(
+                    selected = state.messageStyle == MessageStyle.Bubble,
+                    onClick = { viewModel.onMessageStyleChange(MessageStyle.Bubble) },
+                    label = { Text("气泡（实验）") },
+                )
         }
         if (state.messageStyle == MessageStyle.Bubble) {
             Text(
@@ -99,5 +102,6 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 "｜版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
             style = MaterialTheme.typography.labelSmall,
         )
+        }
     }
 }

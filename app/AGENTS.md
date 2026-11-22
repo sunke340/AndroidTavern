@@ -26,6 +26,17 @@ MainScreen（Scaffold + NavigationBar）
 - 消息渲染收敛在 `ChatScreen.kt` 的 `MessageRow(message, style)`；`MessageStyle` 现在只有 `Card`，
   `Bubble` 是留好的接口（设置里能选，暂时回落到卡片）。
 
+## 页头的规矩（踩过一次）
+
+三个底部页面（会话 / 角色卡 / 设置）**必须用 `PageScaffold`**，不要各自手写页头：
+
+- 页头固定 56dp（左右 16 / 上下 8），标题垂直居中，右侧动作按钮槽 40dp；
+- **没有副标题**：数量、空态这类信息交给内容区；
+- 页头下面一条分隔线，三页内容从同一条线开始；
+- 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
+
+当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
+
 ## 窗口 insets 的规矩（踩过两次）
 
 - `MainActivity` 必须调 `enableEdgeToEdge()`，Manifest 里钉死 `windowSoftInputMode="adjustResize"`。

@@ -44,6 +44,9 @@ import java.util.Locale
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
+    /** 一次性提示（导入/删除的结果），用 Snackbar 显示；`id` 保证同一条不会重复弹。 */
+    data class Notice(val id: Long, val text: String)
+
     data class UiState(
         val baseUrl: String = "https://api.deepseek.com/v1",
         val apiKey: String = "",
@@ -74,6 +77,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
         val messageStyle: MessageStyle = MessageStyle.Card,
+        val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
         val effectiveMessageStyle: MessageStyle
@@ -87,6 +91,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    private var noticeSeq = 0L
     private var card: CharacterCard? = null
     private var job: Job? = null
     private var keySaveJob: Job? = null
@@ -250,12 +255,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     sessionId = if (currentGone) null else it.sessionId,
                     transcript = if (currentGone) emptyList() else it.transcript,
                     chatOpen = if (currentGone) false else it.chatOpen,
-                    status = if (deletedFile) {
-                        "已删除角色卡（连带 $removedSessions 个会话）"
-                    } else {
-                        "删卡失败：文件可能已经不在了"
-                    },
                 )
+            }
+            if (deletedFile) {
+                notify("已删除角色卡（连带 $removedSessions 个会话）")
+            } else {
+                notify("删卡失败：文件可能已经不在了")
             }
         }
     }
@@ -271,13 +276,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             when (result) {
                 is ImportResult.Ok -> {
                     val cards = withContext(Dispatchers.IO) { cardRepository.list() }
-                    _state.update {
-                        it.copy(cards = cards, detailCardId = result.card.id, status = "已导入：${result.card.name}")
-                    }
+                    _state.update { it.copy(cards = cards, detailCardId = result.card.id) }
+                    notify("已导入：${result.card.name}")
                 }
 
-                is ImportResult.Failed ->
-                    _state.update { it.copy(status = "导入失败：${result.reason}") }
+                is ImportResult.Failed -> notify("导入失败：${result.reason}")
             }
         }
     }
@@ -292,7 +295,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun newSession() {
         val cardId = _state.value.cardId
         if (cardId == null) {
-            _state.update { it.copy(screen = Screen.Characters, status = "先从「角色」里选一张卡") }
+            _state.update { it.copy(screen = Screen.Characters) }
+            notify("先从「角色」里选一张卡")
             return
         }
         startSessionForCard(cardId)
@@ -306,7 +310,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { chatRepository.deleteSession(id) }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
-            _state.update { it.copy(sessions = sessions, status = "会话已删除") }
+            _state.update { it.copy(sessions = sessions) }
+            notify("会话已删除")
 
             if (_state.value.sessionId != id) return@launch
 
@@ -322,7 +327,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         streamingText = "",
                         isStreaming = false,
                         chatOpen = false,
-                        status = "会话已删除。去「角色」里开新会话。",
                     )
                 }
             }
@@ -428,6 +432,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
     fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+
+    private fun notify(text: String) {
+        noticeSeq += 1
+        _state.update { it.copy(notice = Notice(noticeSeq, text)) }
+    }
+
+    fun consumeNotice(id: Long) {
+        _state.update { if (it.notice?.id == id) it.copy(notice = null) else it }
+    }
 
     fun closeChat() = _state.update { it.copy(chatOpen = false) }
 

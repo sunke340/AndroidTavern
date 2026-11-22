@@ -8,9 +8,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,7 +44,18 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
         return
     }
 
+    // 导入/删除这类一次性结果用 Snackbar 报，不占页头（页头高度必须固定）
+    val snackbarHostState = remember { SnackbarHostState() }
+    val notice = state.notice
+    LaunchedEffect(notice?.id) {
+        if (notice != null) {
+            snackbarHostState.showSnackbar(notice.text)
+            viewModel.consumeNotice(notice.id)
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         // 三栏页面的状态栏/导航栏留白由 Scaffold 的 contentWindowInsets 负责；
         // imePadding 让键盘弹出时底部导航和内容一起上移，而不是把输入框盖住
         modifier = Modifier.fillMaxSize().imePadding(),

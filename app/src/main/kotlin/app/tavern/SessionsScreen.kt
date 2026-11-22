@@ -3,6 +3,7 @@ package app.tavern
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,53 +31,42 @@ import app.tavern.data.chat.ChatSession
 fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text("会话", style = MaterialTheme.typography.titleLarge)
+    PageScaffold(
+        title = "会话",
+        action = { OutlinedButton(onClick = viewModel::newSession) { Text("新会话") } },
+    ) {
+        if (state.sessions.isEmpty()) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 Text(
-                    state.status.ifBlank { "共 ${state.sessions.size} 个会话" },
-                    style = MaterialTheme.typography.labelSmall,
+                    "还没有会话。去「角色」里选一张卡，进详情后开新会话。",
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            OutlinedButton(onClick = viewModel::newSession) { Text("新会话") }
-        }
-
-        if (state.sessions.isEmpty()) {
-            Text(
-                "还没有会话。去「角色」里选一张卡，进详情后开新会话。",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 24.dp),
-            )
-            return@Column
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(state.sessions, key = { it.id }) { session ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.openSession(session.id) },
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(state.sessions, key = { it.id }) { session ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.openSession(session.id) },
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(session.title, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "${session.cardName}｜${session.messageCount} 条",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(session.title, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "${session.cardName}｜${session.messageCount} 条",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                            TextButton(onClick = { pendingDelete = session }) { Text("删") }
                         }
-                        TextButton(onClick = { pendingDelete = session }) { Text("删") }
                     }
                 }
             }
