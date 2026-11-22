@@ -28,6 +28,24 @@ sealed interface Destination {
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
+### 返回时"谁压着谁"由 zIndex 决定（踩过一次，用户报了两轮）
+
+`AnimatedContent` **默认把新进来的内容画在最上层**（官方文档：同 zIndex 时 incoming target 放在最后、
+盖住 outgoing）。所以只改位移方向、不给 zIndex，返回就是"上一级从上层滑进来盖住正在退场的当前页"，
+两层朝同一方向错位滑动 —— 用户看到的就是"从右下角弹出来"。
+
+修法：`transitionSpec` 末尾按深度给 `targetContentZIndex = depthOf(targetState).toFloat()`
+（0 / 1 / 2）。返回时当前页深度更大，天然压在上一级之上，才是"把一张卡抽走"。
+出处：[ContentTransform 文档](https://developer.android.com/reference/kotlin/androidx/compose/animation/ContentTransform)
+（里面有官方的嵌套菜单示例，用的就是这招）。
+
+**退场别配比位移更短的淡出**：240ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
+后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
+
+**列表滚动位置要提到 `MainScreen`**：换二级页时 Tabs 整棵子树被销毁重建，`remember` 在
+`TabsRoot`/页面里的 `LazyListState`/`LazyGridState` 会丢（真机表现：从二级页返回后列表回到顶部）。
+`sessionsList` / `charactersGrid` 现在在 `MainScreen` 里 `remember`，再传下去。
+
 ```
 MainScreen（Destination + AnimatedContent）
 ├── TabsRoot（Scaffold + 自绘底栏）
@@ -55,6 +73,9 @@ MainScreen（Destination + AnimatedContent）
 - 崩溃：`TavernApp` 已装 `UncaughtExceptionHandler`，会先落盘再交还系统。
 - 导出：设置 → 关于 →「导出日志」（SAF 写 txt）。
 - 关键路径（发送/完成/失败/异常/导入/删除/主题切换）都要留一行；否则出了问题只能猜。
+- **导航也打点**：`MainScreen` 里 `LaunchedEffect(destination)` 打 `tag=nav`，
+  记 `目标 depth=N push/pop/switch`。2026-11-22 那次用户的日志只有一行启动记录，
+  返回动画的问题完全没法从日志定位 —— 宁可多一行，不要再"只能靠描述猜"。
 
 ## 页头的规矩（踩过一次）
 

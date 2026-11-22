@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,7 +33,12 @@ import androidx.compose.ui.unit.dp
  * 点卡片 → 角色详情；开会话是详情页里的显式动作。
  */
 @Composable
-fun CharactersScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun CharactersScreen(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    // 滚动位置由上层持有：从角色详情返回时网格不该回到顶部。
+    gridState: LazyGridState = rememberLazyGridState(),
+) {
     val pickCard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importCard(uri)
     }
@@ -50,6 +57,7 @@ fun CharactersScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
+            state = gridState,
             contentPadding = PaddingValues(Space.l),
             horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
             verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),

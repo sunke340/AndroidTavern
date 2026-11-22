@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -38,7 +40,12 @@ import app.tavern.data.chat.ChatSession
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun SessionsScreen(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    // 滚动位置由上层持有：从二级页返回时列表不该回到顶部。
+    listState: LazyListState = rememberLazyListState(),
+) {
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
@@ -53,6 +60,7 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(top = Space.s, bottom = Space.l),
                 verticalArrangement = Arrangement.Top,
             ) {

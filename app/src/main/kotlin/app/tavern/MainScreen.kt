@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -45,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.tavern.data.log.AppLog
 
 /**
  * 顶层结构：三栏（会话 / 角色 / 设置），其余都是叠在上面的二级页。
@@ -70,6 +75,15 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     is Destination.CardConfig -> 2
 }
 
+/** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
+private fun labelOf(destination: Destination): String = when (destination) {
+    Destination.Tabs -> "tabs"
+    Destination.Chat -> "chat"
+    is Destination.Settings -> "settings/${destination.page.name}"
+    is Destination.Detail -> "detail"
+    is Destination.CardConfig -> "card-config/${destination.page.name}"
+}
+
 @Composable
 fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -92,34 +106,56 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 else -> Destination.Tabs
             }
 
+            // 列表滚动位置提到这一层：换二级页时 Tabs 整棵子树会被销毁重建，
+            // 状态留在 TabsRoot 里就会丢（真机上表现为"返回后列表回到顶部"）。
+            val sessionsList = rememberLazyListState()
+            val charactersGrid = rememberLazyGridState()
+
+            // 导航打点：每次换页留一行。日志是唯一的真机证据来源，没这行就只能靠猜
+            // （2026-11-22 那次导出的日志只有一行启动记录，什么都没法定位）。
+            val lastDepth = remember { intArrayOf(-1) }
+            LaunchedEffect(destination) {
+                val depth = depthOf(destination)
+                val previous = lastDepth[0]
+                val direction = when {
+                    previous < 0 -> "init"
+                    depth > previous -> "push"
+                    depth < previous -> "pop"
+                    else -> "switch"
+                }
+                AppLog.i("nav", "${labelOf(destination)} depth=$depth $direction")
+                lastDepth[0] = depth
+            }
+
             AnimatedContent(
                 targetState = destination,
                 transitionSpec = {
+                    // 叠放次序由深度决定：深的总在上面。
+                    //
+                    // 不设 zIndex 时 AnimatedContent 默认把**新进来的内容放在最上层**
+                    // （官方文档原话：among content with the same zIndex, the incoming
+                    // target content will be on top, as it will be placed last），
+                    // 于是"返回"变成：上一级（浅的那页）从上层滑进来，盖住正在退场的当前页，
+                    // 两层朝同一方向错位滑动 —— 观感就成了"从右下角弹出来"。
+                    // 设了 zIndex，返回时深度更大的当前页天然在顶层，才是"把一张卡抽走"。
                     val forward = depthOf(targetState) >= depthOf(initialState)
-                    if (forward) {
-                        // 进二级页：新页整屏从右边推入，旧页往左退 1/4（卡片堆的手感）
-                        (
-                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it } +
-                                fadeIn(tween(Motion.Base))
-                            ) togetherWith (
-                            slideOutHorizontally(tween(Motion.Slow)) { -it / 4 } +
-                                fadeOut(tween(Motion.Base))
-                            )
+                    val transform = if (forward) {
+                        // 进二级页：新页整屏从右推入，旧页左退 1/4
+                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it } togetherWith
+                            slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { -it / 4 }
                     } else {
-                        // 返回：当前页整屏往右退场，露出上一级（从左侧回来 1/4）
-                        (
-                            slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 } +
-                                fadeIn(tween(Motion.Base))
-                            ) togetherWith (
-                            slideOutHorizontally(tween(Motion.Slow)) { it } +
-                                fadeOut(tween(Motion.Base))
-                            )
+                        // 返回：当前页（顶层）整屏右退，上一级从左侧回来 1/4
+                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 } togetherWith
+                            slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
                     }
+                    // 不再配淡入淡出：退场用 240ms 位移、180ms 淡出的组合时，退场页会提前
+                    // 变透明，后面露出的是窗口底色 —— 看着像"闪一下"。只留纯位移。
+                    transform.apply { targetContentZIndex = depthOf(targetState).toFloat() }
                 },
                 label = "destination",
             ) { target ->
                 when (target) {
-                    Destination.Tabs -> TabsRoot(state, viewModel)
+                    Destination.Tabs -> TabsRoot(state, viewModel, sessionsList, charactersGrid)
                     Destination.Chat -> {
                         BackHandler { viewModel.closeChat() }
                         ChatScreen(state = state, viewModel = viewModel)
@@ -147,7 +183,12 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
 
 /** 三栏根页：底部导航 + 各 tab 内容（tab 之间的切换另有自己的动画）。 */
 @Composable
-private fun TabsRoot(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun TabsRoot(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    sessionsList: LazyListState,
+    charactersGrid: LazyGridState,
+) {
     val snackbarHostState = remember { SnackbarHostState() }
     val notice = state.notice
     LaunchedEffect(notice?.id) {
@@ -181,8 +222,8 @@ private fun TabsRoot(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 label = "screen",
             ) { screen ->
                 when (screen) {
-                    Screen.Sessions -> SessionsScreen(state, viewModel)
-                    Screen.Characters -> CharactersScreen(state, viewModel)
+                    Screen.Sessions -> SessionsScreen(state, viewModel, sessionsList)
+                    Screen.Characters -> CharactersScreen(state, viewModel, charactersGrid)
                     Screen.Settings -> SettingsScreen(state, viewModel)
                 }
             }
