@@ -1,23 +1,26 @@
 package app.tavern
 
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,12 +31,15 @@ import androidx.compose.ui.unit.dp
 import app.tavern.data.chat.ChatSession
 
 /**
- * 会话列表：最近活动排在最上面。点一行进聊天。
+ * 会话列表：最近活动在最上面。
  *
- * 视觉按 C 方向：用 1px 分隔线的列表行，不再给每条套卡片（卡片叠分隔线会造成双重分隔）。
+ * 删除走**长按**：行尾不再放删除按钮（那会让每行都很挤）。
+ * 长按 → 动作单 → 删除 → 二次确认：动作单以后还能放"重命名 / 导出"。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
     PageScaffold(
@@ -42,7 +48,7 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     ) {
         if (state.sessions.isEmpty()) {
             Column(modifier = Modifier.fillMaxSize().padding(Space.l)) {
-                EmptyHint("还没有会话。去「角色」里选一张卡，进详情后开新会话。")
+                EmptyHint("还没有会话。点右上「新建」，选一张卡开始。")
             }
         } else {
             LazyColumn(
@@ -53,9 +59,15 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 items(state.sessions, key = { it.id }) { session ->
                     ListRow(
                         modifier = Modifier.animateItem(
-                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
-                            placementSpec = tween(Motion.Slow, easing = Motion.Standard),
-                            fadeOutSpec = tween(Motion.Fast),
+                            fadeInSpec = androidx.compose.animation.core.tween(
+                                Motion.Base,
+                                easing = Motion.Decelerate,
+                            ),
+                            placementSpec = androidx.compose.animation.core.tween(
+                                Motion.Slow,
+                                easing = Motion.Standard,
+                            ),
+                            fadeOutSpec = androidx.compose.animation.core.tween(Motion.Fast),
                         ),
                         title = session.cardName,
                         subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
@@ -66,18 +78,47 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 modifier = Modifier.size(40.dp),
                             )
                         },
-                        trailing = {
-                            IconButton(onClick = { pendingDelete = session }) {
-                                Icon(
-                                    Icons.Filled.Delete,
-                                    contentDescription = "删除会话",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
                         onClick = { viewModel.openSession(session.id) },
+                        onLongClick = { actionTarget = session },
                     )
                 }
+            }
+        }
+    }
+
+    // 选卡弹层（新建会话前必须先选卡）
+    CardPickerSheet(state = state, viewModel = viewModel)
+
+    // 长按动作单：现在只有删除，以后可以加"重命名 / 导出"
+    actionTarget?.let { session ->
+        ModalBottomSheet(
+            onDismissRequest = { actionTarget = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.background,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    session.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
+                )
+                ListItem(
+                    headlineContent = {
+                        Text("删除会话", color = MaterialTheme.colorScheme.error)
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    modifier = Modifier.padding(bottom = Space.xl).clickable {
+                        pendingDelete = session
+                        actionTarget = null
+                    },
+                )
             }
         }
     }

@@ -3,6 +3,7 @@ package app.tavern
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ val PageHeaderHeight: Dp = 56.dp
  * 否则屏幕上会出现"卡片叠分隔线"的双重分隔。
  */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun ListRow(
     title: String,
     subtitle: String? = null,
@@ -61,6 +63,7 @@ fun ListRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val palette = LocalTavernPalette.current
 
@@ -69,7 +72,17 @@ fun ListRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = ListRowHeight)
-                .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+                .then(
+                    when {
+                        onClick != null && onLongClick != null -> Modifier.combinedClickable(
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                        )
+
+                        onClick != null -> Modifier.clickable { onClick() }
+                        else -> Modifier
+                    },
+                )
                 .padding(horizontal = Space.l, vertical = Space.s + 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

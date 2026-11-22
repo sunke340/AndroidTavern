@@ -20,6 +20,26 @@ class PreferencesSettingsRepository(
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    init {
+        migrateThemeDefault()
+    }
+
+    /**
+     * 一次性迁移：v1 的默认主题是森林绿，品牌色改成紫罗兰后老设备应该跟着走。
+     *
+     * 只搬 **Forest**（也就是旧默认值）：真选过 Amber / Slate 的用户保持原样，
+     * 用 flag 保证只做一次，之后再切回森林绿不会被改回去。
+     */
+    private fun migrateThemeDefault() {
+        if (prefs.getBoolean(KEY_THEME_MIGRATED, false)) return
+        val current = prefs.getString(KEY_THEME_PRESET, null)
+        val editor = prefs.edit().putBoolean(KEY_THEME_MIGRATED, true)
+        if (current == null || current == "Forest") {
+            editor.putString(KEY_THEME_PRESET, DEFAULT_THEME_PRESET)
+        }
+        editor.apply()
+    }
+
     override fun load(): AppSettings = AppSettings(
         baseUrl = prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL,
         apiKey = runCatching { secrets.get(KEY_API_KEY) }.getOrNull().orEmpty(),
@@ -99,6 +119,7 @@ class PreferencesSettingsRepository(
         const val KEY_MESSAGE_STYLE = "message_style"
         const val KEY_THEME_PRESET = "theme_preset"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
         const val KEY_CARD_STYLE_PREFIX = "card_style:"
         const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
@@ -106,7 +127,7 @@ class PreferencesSettingsRepository(
         const val DEFAULT_TEMPERATURE = 1.0
         const val DEFAULT_MAX_TOKENS = 0
         const val DEFAULT_MESSAGE_STYLE = "Card"
-        const val DEFAULT_THEME_PRESET = "Forest"
+        const val DEFAULT_THEME_PRESET = "Violet"
         const val DEFAULT_THEME_MODE = "Follow"
     }
 }

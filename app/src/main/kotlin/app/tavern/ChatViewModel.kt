@@ -69,6 +69,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val chatOpen: Boolean = false,
         /** 设置里的二级页面；null = 一级列表。 */
         val settingsPage: SettingsPage? = null,
+        /** 新建会话前先选卡：true 时显示角色卡选择弹层。 */
+        val showCardPicker: Boolean = false,
         /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
         val detailCardId: String? = null,
         /** 详情页的完整卡信息；打开详情后异步填上。 */
@@ -79,7 +81,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
         val messageStyle: MessageStyle = MessageStyle.Card,
-        val themePreset: ThemePreset = ThemePreset.Forest,
+        val themePreset: ThemePreset = ThemePreset.Violet,
         val themeMode: ThemeMode = ThemeMode.Follow,
         val notice: Notice? = null,
     ) {
@@ -114,7 +116,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
                     themePreset = runCatching { ThemePreset.valueOf(saved.themePreset) }
-                        .getOrDefault(ThemePreset.Forest),
+                        .getOrDefault(ThemePreset.Violet),
                     themeMode = runCatching { ThemeMode.valueOf(saved.themeMode) }
                         .getOrDefault(ThemeMode.Follow),
                 )
@@ -300,14 +302,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- 会话 --------------------------------------------------------------
 
+    /**
+     * 新建会话：**先选卡**，不再默认上次那张。
+     *
+     * 以前直接拿当前卡建会话，很容易在"想换人聊"时建错地方；
+     * 现在先弹角色卡网格，必须点一张才建。
+     */
     fun newSession() {
-        val cardId = _state.value.cardId
-        if (cardId == null) {
-            _state.update { it.copy(screen = Screen.Characters) }
-            notify("先从「角色」里选一张卡")
+        if (_state.value.cards.isEmpty()) {
+            notify("还没有角色卡：先去「角色」导入一张")
             return
         }
-        startSessionForCard(cardId)
+        openCardPicker()
     }
 
     fun openSession(id: String) {
@@ -440,6 +446,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
     fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+
+    fun openCardPicker() = _state.update { it.copy(showCardPicker = true) }
+
+    fun closeCardPicker() = _state.update { it.copy(showCardPicker = false) }
+
+    /** 选卡弹层里点了某张卡：关弹层 + 用它开新会话。 */
+    fun pickCardAndStart(cardId: String) {
+        _state.update { it.copy(showCardPicker = false) }
+        startSessionForCard(cardId)
+    }
 
     fun openSettingsPage(page: SettingsPage) = _state.update { it.copy(settingsPage = page) }
 

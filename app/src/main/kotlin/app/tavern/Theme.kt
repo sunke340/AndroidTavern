@@ -150,15 +150,50 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             onUserBubble = Color(0xFFD5E6F5),
         ),
     ),
+
+    Violet(
+        label = "紫罗兰",
+        light = ThemePalette(
+            primary = Color(0xFF6D5BD0),
+            onPrimary = Color(0xFFFFFFFF),
+            background = Color(0xFFFAF9FC),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = Color(0xFFF1EFF8),
+            onBackground = Color(0xFF1A1723),
+            onSurface = Color(0xFF1A1723),
+            onSurfaceVariant = Color(0xFF6E6880),
+            outline = Color(0xFFD9D3EE),
+            divider = Color(0xFFE9E5F2),
+            cardBorder = Color(0xFFE4DFF1),
+            userBubble = Color(0xFFEDE9FB),
+            onUserBubble = Color(0xFF2B2050),
+        ),
+        dark = ThemePalette(
+            primary = Color(0xFFB4A6FF),
+            onPrimary = Color(0xFF1B1430),
+            background = Color(0xFF0F0E14),
+            surface = Color(0xFF17151F),
+            surfaceVariant = Color(0xFF232030),
+            onBackground = Color(0xFFEFEDF5),
+            onSurface = Color(0xFFEFEDF5),
+            onSurfaceVariant = Color(0xFFA9A3BC),
+            outline = Color(0xFF3A3450),
+            divider = Color(0xFF1E1B27),
+            cardBorder = Color(0xFF262233),
+            userBubble = Color(0xFF201B33),
+            onUserBubble = Color(0xFFE4DDFF),
+        ),
+    ),
 }
 
+
 /** 当前生效的色板（组件里取 `LocalTavernPalette.current.divider` 之类）。 */
-val LocalTavernPalette = staticCompositionLocalOf { ThemePreset.Forest.light }
+val LocalTavernPalette = staticCompositionLocalOf { ThemePreset.Violet.light }
 
 @Composable
 fun TavernTheme(
     mode: ThemeMode = ThemeMode.Follow,
-    preset: ThemePreset = ThemePreset.Forest,
+    preset: ThemePreset = ThemePreset.Violet,
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {

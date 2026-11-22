@@ -231,32 +231,26 @@ private fun ThemeSwatch(preset: ThemePreset, selected: Boolean, onClick: () -> U
 
 // ---- 世界书 ---------------------------------------------------------------
 
+/**
+ * 只讲**全局世界书**。
+ *
+ * 卡内嵌世界书属于那张卡，勾选入口只在角色详情 → 配置里；
+ * 在这里再列一遍会让同一个东西有两个入口、语义还不一样。
+ */
 @Composable
 private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    val withBooks = state.cards.filter { it.bookEntryCount > 0 }
-
-    SectionLabel("卡内嵌世界书")
+    SectionLabel("全局世界书")
     Text(
-        "世界书引擎（条目激活、递归、预算）还没实现，所以现在只能看和勾选，不影响提示词。",
+        "跨角色共用的世界书。世界书引擎（条目激活、递归、预算）还没实现，所以现在还不能导入。",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    if (withBooks.isEmpty()) {
-        EmptyHint("没有角色卡内嵌世界书。")
-    } else {
-        withBooks.forEach { card ->
-            ListRow(
-                title = card.name,
-                subtitle = "${card.bookEntryCount} 条 · 点开在「配置」里勾选",
-                onClick = { viewModel.openDetail(card.id) },
-            )
-        }
-    }
+    EmptyHint("还没有全局世界书。等世界书引擎（P1）实现后，这里会支持导入 ST 的世界书 JSON 并绑定到会话。")
 
-    SectionLabel("全局世界书")
+    SectionLabel("角色卡自带的世界书呢？")
     Text(
-        "暂不支持：需要先有世界书库与激活引擎（P1）。",
+        "它属于那张卡，入口在：角色详情 → 配置 → 内嵌世界书。不在设置里重复出现。",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

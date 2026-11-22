@@ -33,6 +33,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -81,6 +83,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmDeleteCard by remember { mutableStateOf(false) }
+    var actionTargetSession by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDeleteSession by remember { mutableStateOf<ChatSession?>(null) }
 
     Scaffold(
@@ -204,26 +207,12 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                             Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall)
                         }
                         sessions.forEach { session ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp)
-                                    .clickable { viewModel.openSession(session.id) },
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(session.title, style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            "${session.messageCount} 条",
-                                            style = MaterialTheme.typography.labelSmall,
-                                        )
-                                    }
-                                    TextButton(onClick = { pendingDeleteSession = session }) { Text("删") }
-                                }
-                            }
+                            ListRow(
+                                title = session.cardName,
+                                subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
+                                onClick = { viewModel.openSession(session.id) },
+                                onLongClick = { actionTargetSession = session },
+                            )
                         }
                     }
 
@@ -254,6 +243,41 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 TextButton(onClick = { confirmDeleteCard = false }) { Text("取消") }
             },
         )
+    }
+
+    actionTargetSession?.let { session ->
+        ModalBottomSheet(
+            onDismissRequest = { actionTargetSession = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.background,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    session.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
+                )
+                androidx.compose.material3.ListItem(
+                    headlineContent = {
+                        Text("删除会话", color = MaterialTheme.colorScheme.error)
+                    },
+                    leadingContent = {
+                        Icon(
+                            androidx.compose.material.icons.Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    modifier = Modifier
+                        .padding(bottom = Space.xl)
+                        .clickable {
+                            pendingDeleteSession = session
+                            actionTargetSession = null
+                        },
+                )
+            }
+        }
     }
 
     pendingDeleteSession?.let { session ->
