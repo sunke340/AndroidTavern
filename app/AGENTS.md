@@ -178,8 +178,9 @@ MainScreen（Destination + AnimatedContent）
   `expandForBlur(pad)` 负责这个，多出来的由外层胶囊 `clip` 裁掉。
 - **`positionInWindow` 量在没有 padding 的那层上**：同一个 LayoutNode 上带 padding 时报的是外框，
   坐标会偏。外壳管留白/阴影，胶囊本体单独一层。
-- **边缘是渐变描边，不是纯色**：上边 `Color.White`（受光）→ 下边 `cardBorder`/主题色，
-  两端再叠一层主题色横向渐变（圆角处带环境色）。一圈均匀的 1px 灰线读起来像塑料壳，没有厚度感。
+- **边缘高光是一圈"宽带"，不是一条线**：`RimLayers` 由外向内叠 4 层白（1dp@0.95 / 2.5dp@0.45 /
+  5dp@0.22 / 8dp@0.10），叠出来是"边缘最亮、往内渐淡"的 3~5dp 亮带；外半圈压在底色上当光溢出。
+  只画 1dp 会被读成描边，不是玻璃（2026-11-22 对比参考图后改的）。两侧再叠一层低透明度主题色。
 - **投影自己画**：模糊的黑胶囊往下压几像素（`Modifier.blur(…, BlurredEdgeTreatment.Unbounded)`）；
   不能用 `Modifier.shadow` —— elevation 阴影在内容后面，配半透明底会透出亮度台阶。`Unbounded` 不能省，
   默认的 Rectangle 会把模糊结果裁在节点边界内，光晕直接没了。

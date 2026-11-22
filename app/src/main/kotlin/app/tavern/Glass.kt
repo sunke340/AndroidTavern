@@ -46,8 +46,20 @@ private const val FrostScale = 8f
 /** 玻璃白底浓度：越高越像奶白塑料，越低越透。手感调这里。 */
 private const val GlassFillAlpha = 0.34f
 
-/** 描边宽度：液体玻璃的边缘是一圈"光"，1dp 就够，粗了像塑料壳。 */
-private val RimWidth = 1.2.dp
+/**
+ * 边缘高光是**一圈宽带**，不是一条线 —— 参考系统相机那种：上下一整片白，宽 3~5dp。
+ * 由外向内叠几层（宽度, 透明度），叠加后就是"边缘最亮、往内渐淡"的厚度感。
+ */
+private val RimLayers = listOf(
+    1.0.dp to 0.95f,
+    2.5.dp to 0.45f,
+    5.0.dp to 0.22f,
+    8.0.dp to 0.10f,
+)
+
+/** 两侧再压一点主题色（顶部/底部中间保持纯白，跟参考图一致）。 */
+private val RimSideWidth = 1.5.dp
+private const val RimSideAlpha = 0.18f
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
 private val ShadowBlur = 18.dp
@@ -158,43 +170,54 @@ fun GlassSurface(
             )
         }
 
-        // 边缘：玻璃档是"上亮下暗 + 两端压主题色"的渐变描边（一圈纯色读起来像塑料壳），
-        // 轻量档维持 1px 实色。描边画在不裁的层上，否则外侧半个像素会被切掉。
+        // 顶面薄光：上亮下透，玻璃才有"面"而不是一块色板
+        if (glass) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(shape)
+                    .drawBehind {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.0f to Color.White.copy(alpha = 0.22f),
+                                0.55f to Color.Transparent,
+                            ),
+                        )
+                    },
+            )
+        }
+
+        // 边缘：对称的宽白环（多层叠加）＋ 两侧主题色。一圈 1dp 的线读起来只是"描边"。
+        // 画在不裁的层上：外半个环压在页面底色上，正好当"光溢出"。
         Box(
             Modifier
                 .matchParentSize()
                 .drawBehind {
-                    val stroke = RimWidth.toPx()
                     val radius = CornerRadius(size.height / 2f)
                     if (glass) {
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    Color.White,
-                                    Color.White.copy(alpha = 0.35f),
-                                    palette.cardBorder,
-                                    accent.copy(alpha = 0.45f),
-                                ),
-                            ),
-                            cornerRadius = radius,
-                            style = Stroke(stroke),
-                        )
+                        RimLayers.forEach { (width, alpha) ->
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = alpha),
+                                cornerRadius = radius,
+                                style = Stroke(width.toPx()),
+                            )
+                        }
                         drawRoundRect(
                             brush = Brush.horizontalGradient(
                                 listOf(
-                                    accent.copy(alpha = 0.40f),
+                                    accent.copy(alpha = RimSideAlpha),
                                     Color.Transparent,
-                                    accent.copy(alpha = 0.40f),
+                                    accent.copy(alpha = RimSideAlpha),
                                 ),
                             ),
                             cornerRadius = radius,
-                            style = Stroke(stroke),
+                            style = Stroke(RimSideWidth.toPx()),
                         )
                     } else {
                         drawRoundRect(
                             color = palette.cardBorder,
                             cornerRadius = radius,
-                            style = Stroke(stroke),
+                            style = Stroke(1.dp.toPx()),
                         )
                     }
                 },
