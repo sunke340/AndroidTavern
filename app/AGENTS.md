@@ -23,7 +23,10 @@ sealed interface Destination {
     data class CardConfig(cardId, page)         // 角色配置（三级）
 }
 // depth: Tabs=0, Settings/Detail=1, Chat/CardConfig=2
-// 深→更深：新页整屏从右推入、旧页退 1/4；变浅：当前页整屏右退、上一页回 1/4
+// 转场风格可选（NavAnimation，默认「标准」）：
+//   标准：同一时刻只有一层在动 —— 进：新页整屏从右滑入；返回：当前页整屏向右滑出
+//   层叠：两层一起动 —— 进：新页推入 + 旧页左退 1/4；返回：当前页右退 + 上一页回 1/4
+//   淡入 / 关闭：不位移 / 完全不要动画（排查用）
 ```
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
@@ -34,10 +37,15 @@ sealed interface Destination {
 盖住 outgoing）。所以只改位移方向、不给 zIndex，返回就是"上一级从上层滑进来盖住正在退场的当前页"，
 两层朝同一方向错位滑动 —— 用户看到的就是"从右下角弹出来"。
 
-修法：`transitionSpec` 末尾按深度给 `targetContentZIndex = depthOf(targetState).toFloat()`
-（0 / 1 / 2）。返回时当前页深度更大，天然压在上一级之上，才是"把一张卡抽走"。
+修法：`targetContentZIndex = if (forward) 1f else -1f`——用**二值**而不是"深度值"：
+深度值依赖"旧页保留它进来时的 z"这一前提，前提不成立时两层落到同一个 z，又变成新页在顶。
++1/-1 与其它层的 z 无关，谁在上是确定的（进：新页在上；返回：退场页在上）。
+
+反面判据：**「返回时完全没动画」＝退场那层被盖住了**。因为 pop 的上一级是
+`EnterTransition.None`（瞬间就位、不透明），它一旦在上层，动的那层就整个被遮掉，
+看起来就是"秒切"。这条比"看着别扭"更能直接定位到 z 序。
 出处：[ContentTransform 文档](https://developer.android.com/reference/kotlin/androidx/compose/animation/ContentTransform)
-（里面有官方的嵌套菜单示例，用的就是这招）。
+（官方的嵌套菜单示例用的就是这招，只是它按层级值给）。
 
 **退场别配比位移更短的淡出**：240ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
 后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
@@ -55,7 +63,7 @@ AnimatedContent(
     modifier = Modifier.fillMaxSize(),   // ① 容器钉死，不许自己量尺寸
     transitionSpec = {
         (enter togetherWith exit)
-            .apply { targetContentZIndex = depth.toFloat() }
+            .apply { targetContentZIndex = if (forward) 1f else -1f }
             .using(null)                 // ② 关掉尺寸弹簧。注意 setter 是 internal，只能 using(null)
     },
 )

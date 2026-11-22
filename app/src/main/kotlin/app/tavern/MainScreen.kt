@@ -41,6 +41,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -116,6 +117,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             // 导航打点：每次换页留一行。日志是唯一的真机证据来源，没这行就只能靠猜
             // （2026-11-22 那次导出的日志只有一行启动记录，什么都没法定位）。
             val lastDepth = remember { intArrayOf(-1) }
+            // 换页发生的时刻：页面被移除时拿它算"存活了多久"，用来判断转场到底跑没跑。
+            val navAt = remember { longArrayOf(0L) }
             LaunchedEffect(destination) {
                 val depth = depthOf(destination)
                 val previous = lastDepth[0]
@@ -125,6 +128,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     depth < previous -> "pop"
                     else -> "switch"
                 }
+                navAt[0] = System.currentTimeMillis()
                 AppLog.i(
                     "nav",
                     "${labelOf(destination)} depth=$depth $direction anim=${state.navAnimation.name}",
@@ -186,22 +190,37 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         NavAnimation.Fade -> fadeOut(tween(Motion.Base))
                         NavAnimation.None -> ExitTransition.None
                     }
-                    // 页面切换不叠 fade（位移未走完就透明 → 露窗口底色，像闪一下）。
-                    // zIndex 按深度给：返回时当前页压在上一级之上。
+                    // 叠放次序：**进二级页时新页在上，返回时退场页在上**。
                     //
-                    // using(null) = 关掉尺寸动画。这是 2026-11-22 那次的真正病根：
-                    // AnimatedContent 默认带 SizeTransform，会把容器尺寸从旧页弹簧到新页；
-                    // 两个页面在重建瞬间量出的尺寸不一样，容器就从 ~0 弹到满屏，
-                    // 里面的 fillMaxSize 内容被压在窄框里重排、超出的被 clip 掉 ——
-                    // 逐帧看起来是"空白几帧 → 屏幕中央冒出一个小点 → 长成满屏"。
-                    // 它和进出场动画无关，所以把 enter/exit 全关了（NavAnimation.None）也照样发生。
-                    // 注意 sizeTransform 的 setter 是 internal，只能用 using(null)。
+                    // 这里刻意不用"深度值"（0/1/2）而当二值用：深度值依赖"旧页保留它进来时的 z"
+                    // 这个前提，一旦前提不成立（比如初建时没有 ContentTransform 参与），两层就落到
+                    // 同一个 z 上，而**同 z 时 AnimatedContent 把新进来的放最上层**——返回时
+                    // 上一级（EnterTransition.None、瞬间就位且不透明）直接盖住正在退场的当前页，
+                    // 表现就是"回到一级页面没有动画"（2026-11-22 用户报的）。
+                    // 用 +1/-1 严格保证谁在上，与其它层的 z 无关。
+                    //
+                    // using(null) = 关掉尺寸动画。这是上一轮录屏逐帧查出的病根：
+                    // AnimatedContent 默认带 SizeTransform，会把容器尺寸从旧页弹簧到新页，
+                    // 两个页面在重建瞬间量出的尺寸不一致时容器从 ~0 弹到满屏，里面的 fillMaxSize
+                    // 内容被压在窄框里重排、超出的被裁掉 —— 看着像"内容从屏幕中央长出来"。
+                    // sizeTransform 的 setter 是 internal，只能 using(null)。
                     (enter togetherWith exit).apply {
-                        targetContentZIndex = depthOf(targetState).toFloat()
+                        targetContentZIndex = if (forward) 1f else -1f
                     }.using(null)
                 },
                 label = "destination",
             ) { target ->
+                // 转场自检：页面被移除时打个时间差。
+                // ~240ms 后才移除 = 转场真的跑了（那"看不见动画"就只能是叠放次序问题）；
+                // 几十毫秒内就移除 = 转场根本没跑（问题在别处，比如状态连改两次）。
+                DisposableEffect(target) {
+                    onDispose {
+                        AppLog.i(
+                            "nav",
+                            "${labelOf(target)} 页面移除，距上次换页 ${System.currentTimeMillis() - navAt[0]}ms",
+                        )
+                    }
+                }
                 when (target) {
                     Destination.Tabs -> TabsRoot(state, viewModel, sessionsList, charactersGrid)
                     Destination.Chat -> {
