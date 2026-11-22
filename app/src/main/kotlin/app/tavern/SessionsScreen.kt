@@ -52,19 +52,23 @@ fun SessionsScreen(
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
-    PageScaffold(
-        title = "会话",
-        action = { PrimaryAction("＋ 新建", onClick = viewModel::newSession) },
-    ) {
-        if (state.sessions.isEmpty()) {
-            Column(modifier = Modifier.fillMaxSize().padding(Space.l)) {
-                EmptyHint("还没有会话。点右上「新建」，选一张卡开始。")
+    if (state.sessions.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = Space.l)
+                    .padding(top = PageHeaderHeight + Space.l),
+            ) {
+                EmptyHint("还没有会话。点右上「＋」选一张卡开始。")
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
-                contentPadding = PaddingValues(top = Space.s, bottom = Space.l + bottomPadding),
+                contentPadding = PaddingValues(
+                    top = PageHeaderHeight + Space.s,
+                    bottom = Space.l + bottomPadding,
+                ),
                 verticalArrangement = Arrangement.Top,
             ) {
                 items(state.sessions, key = { it.id }) { session ->
@@ -94,7 +98,6 @@ fun SessionsScreen(
                     )
                 }
             }
-        }
     }
 
     // 选卡弹层（新建会话前必须先选卡）

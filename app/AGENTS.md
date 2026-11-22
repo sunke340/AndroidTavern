@@ -113,14 +113,19 @@ MainScreen（Destination + AnimatedContent）
 
 ## 页头的规矩（踩过一次）
 
-三个底部页面（会话 / 角色卡 / 设置）**必须用 `PageScaffold`**，不要各自手写页头：
+页头是 **`PageHeader` 浮层**（在 `MainScreen` 的 TabsRoot 里渲染，跟底栏同级），页面自己不画页头：
 
-- 页头固定 56dp（左右 16 / 上下 8），标题垂直居中，右侧动作按钮槽 40dp；
+- 结构：左边大标题（`headlineMedium` 粗体），右边**玻璃胶囊**装图标动作（`GlassSurface` + `CapsuleIcon`）；
+  页头底下压一层"底色 → 透明"的渐变，内容从下面滚过去时淡出，标题不会跟列表文字叠在一起；
+- **页头必须画在"内容录图层"之外**：画在里面的话，玻璃胶囊采样的图层会带上上一帧的胶囊自己，
+  每帧叠加 = 无限套娃（胶囊里能看到自己的鬼影）。同理底栏也是浮层。
+- 页面自己不再有页头，内容用 `contentPadding(top = PageHeaderHeight + …)` 让位（空态也一样）：
+  这样静止时内容在页头下面，滚动时会从玻璃胶囊底下穿过去 —— 胶囊才有东西可糊。
+- **页头不放实心按钮**（`PrimaryAction`）：截图那种胶囊里是平铺图标，用 `CapsuleIcon`。
 - **没有副标题**：数量、空态这类信息交给内容区；
-- 页头下面一条分隔线，三页内容从同一条线开始；
 - 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
 - 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色）：
-  Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。
+  Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。底栏与页头胶囊共用 `GlassSurface`。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
 - **界面上不写解释性文案**（2026-11-22 用户要求）：不要放"这个功能是怎么实现的""下一批会做什么""两种样式有什么区别"

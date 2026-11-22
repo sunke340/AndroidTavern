@@ -1,8 +1,6 @@
 package app.tavern
 
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.core.tween
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,29 +40,16 @@ fun CharactersScreen(
     // 悬浮底栏压在内容上，网格底部要让出它的高度。
     bottomPadding: Dp = 0.dp,
 ) {
-    val pickCard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importCard(uri)
-    }
     val palette = LocalTavernPalette.current
 
-    PageScaffold(
-        title = "角色卡",
-        action = {
-            SecondaryAction(
-                text = if (state.importing) "导入中…" else "导入",
-                enabled = !state.importing,
-                onClick = { pickCard.launch(arrayOf("image/*")) },
-            )
-        },
-    ) {
-        LazyVerticalGrid(
+    LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
             state = gridState,
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = Space.l,
+                top = PageHeaderHeight + Space.s,
                 bottom = Space.l + bottomPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
@@ -105,6 +90,5 @@ fun CharactersScreen(
                     }
                 }
             }
-        }
     }
 }

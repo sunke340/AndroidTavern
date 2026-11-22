@@ -47,7 +47,8 @@
 - 本机编不了 Android 模块：所有 Compose 改动只能靠 CI 编译 + 真机验。
 - **CI 编译内存**：`gradle.properties` 的值是给本机（1.7 GiB）调的，workflow 里 checkout 后会 sed 成
   `-Xmx3g -XX:MaxMetaspaceSize=1g`。加依赖后 Metaspace 会顶不住，别把那两行 sed 删掉。
-- **玻璃风格只做了底栏**：页头/卡片/聊天气泡还是旧样式（配色/圆角已按新 token 走），下一轮继续。
+- **玻璃已覆盖底栏 + 页头**：底栏胶囊与页头（大标题 + 右侧玻璃胶囊）都走 `GlassSurface`；
+  页头是浮层、画在录图层之外（否则胶囊会采到上一帧的自己）。卡片/聊天气泡仍是旧样式，下一轮继续。
   模糊是每帧离屏绘制，滚动是否掉帧待真机；掉帧就在 设置→外观→视觉效果 切「轻量」。
 - **把内容录进图层要用 `DrawScope` 的 `record` 扩展**（`layer.record(size) { drawContent() }`）：
   四参数成员版只改图层自己的 `DrawContext`，`drawContent()` 会照旧画到主画布 —— 屏幕正常、图层空、底栏画了个寂寞。

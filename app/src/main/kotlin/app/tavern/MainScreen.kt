@@ -3,6 +3,8 @@ package app.tavern
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -13,7 +15,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +41,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -60,25 +62,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
@@ -309,10 +305,13 @@ private fun TabsRoot(
     val frostLayer = rememberGraphicsLayer()
     val contentOrigin = remember { mutableStateOf(Offset.Zero) }
     val contentSize = remember { mutableStateOf(IntSize.Zero) }
-    val barOrigin = remember { mutableStateOf(Offset.Zero) }
     // API 31 以下没有 RenderEffect：那时玻璃档按「轻量」画，连图层都不录（省一遍全屏绘制）。
     val glassOn = state.visualEffects == VisualEffects.Glass && Build.VERSION.SDK_INT >= 31
     val view = LocalView.current
+    // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importCard(uri)
+    }
     // 真机上没有 logcat，玻璃到底有没有跑、坐标系对不对，只能靠这行日志事后判断。
     LaunchedEffect(glassOn) {
         if (!glassOn) return@LaunchedEffect
@@ -322,10 +321,7 @@ private fun TabsRoot(
                 "模糊=${GlassBlur.value}dp",
         )
         repeat(3) { withFrameNanos { } }
-        AppLog.i(
-            "glass",
-            "坐标：底栏=${barOrigin.value} 内容=${contentOrigin.value} 内容尺寸=${contentSize.value}",
-        )
+        AppLog.i("glass", "坐标：内容=${contentOrigin.value} 内容尺寸=${contentSize.value}")
         // 真机上看不出来到底"没糊"还是"图层是空的"，回读一次数不透明像素。
         runCatching {
             withTimeout(2_000) {
@@ -352,6 +348,21 @@ private fun TabsRoot(
     // 不铺的话图层里只有文字和头像（实测 544 个采样里只有 9 个不透明），底栏画上去仍是
     // 「透明磨砂」，背后真实内容照样透出来 —— 看起来就是"没糊"（2026-11-22 就是这个）。
     val pageBackground = MaterialTheme.colorScheme.background
+    val newSessionAction: @Composable () -> Unit = {
+        CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建会话") { viewModel.newSession() }
+    }
+    val importAction: @Composable () -> Unit = {
+        CapsuleIcon(
+            icon = Icons.Filled.Add,
+            contentDescription = if (state.importing) "导入中" else "导入角色卡",
+            enabled = !state.importing,
+        ) { importLauncher.launch(arrayOf("image/*")) }
+    }
+    val headerActions: (@Composable () -> Unit)? = when (state.screen) {
+        Screen.Sessions -> newSessionAction
+        Screen.Characters -> importAction
+        Screen.Settings -> null
+    }
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = BarHeight + Space.s + Space.s + navBar
 
@@ -381,18 +392,8 @@ private fun TabsRoot(
                                 this@drawWithContent.drawContent()
                             }
                             drawLayer(glassLayer)
-                            // 再把这份图层按 1/FrostScale 录进小层：降采样本身就是"糊"，
-                            // 底栏放大画回去即可。降采样一次的成本只跟小层像素数有关。
-                            frostLayer.record(
-                                size = IntSize(
-                                    (size.width / FrostScale).toInt().coerceAtLeast(1),
-                                    (size.height / FrostScale).toInt().coerceAtLeast(1),
-                                ),
-                            ) {
-                                scale(1f / FrostScale, 1f / FrostScale, pivot = Offset.Zero) {
-                                    drawLayer(glassLayer)
-                                }
-                            }
+                            // 再录一份 1/FrostScale 的小层当磨砂素材（成本只跟小层像素数有关）。
+                            recordFrost(frostLayer, glassLayer, size.toIntSize())
                         } else {
                             drawContent()
                         }
@@ -430,13 +431,28 @@ private fun TabsRoot(
                 }
             }
 
+            // 页头浮层：画在录制之外，否则玻璃胶囊会采样到上一帧的自己（无限套娃）。
+            PageHeader(
+                title = when (state.screen) {
+                    Screen.Sessions -> "会话"
+                    Screen.Characters -> "角色卡"
+                    Screen.Settings -> "设置"
+                },
+                glass = glassOn,
+                frost = frostLayer,
+                contentOrigin = { contentOrigin.value },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = padding.calculateTopPadding()),
+                actions = headerActions,
+            )
+
             TavernBottomBar(
                 current = state.screen,
                 onSelect = viewModel::showScreen,
                 glass = glassOn,
-                frostLayer = frostLayer,
+                frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
-                barOrigin = barOrigin,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -455,113 +471,39 @@ private val barItems = listOf(
     BarItem(Screen.Settings, Icons.Filled.Settings, "设置"),
 )
 
-/** 玻璃模糊半径（有 RenderEffect 时用来把放大后的色块再磨一遍；没有也不影响观感下限）。 */
-private val GlassBlur = 12.dp
-
-/** 降采样倍数：内容层按 1/[FrostScale] 录一份小层，底栏放大画回去 —— 放大时的线性插值就是"糊"。 */
-private const val FrostScale = 8f
-
 /**
- * 让节点比父给它的大小每边多出 [pad]，并把它往左上挪同样的距离。
+ * 悬浮底栏：**玻璃胶囊 + 56dp**。
  *
- * 模糊要采样到胶囊**外面**的内容，否则离屏缓冲只有胶囊那么大，边缘会被 clamp 成一条条直纹
- * （胶囊才 56dp 高，24dp 的模糊半径会把上下各一大段吃掉）。多出来的部分由外层胶囊 clip 裁掉。
- */
-private fun Modifier.expandForBlur(pad: Int): Modifier = this.layout { measurable, constraints ->
-    val placeable = measurable.measure(
-        Constraints.fixed(constraints.maxWidth + pad * 2, constraints.maxHeight + pad * 2),
-    )
-    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(-pad, -pad) }
-}
-
-/**
- * 悬浮玻璃底栏：**胶囊 + 56dp**。
- *
- * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
- *
- * 玻璃是**自己画的**（ADR 0005，不再用 Haze —— 它在真机上退化成了纯半透明还不报错）：
- * 1. 内容层每帧把自己录进 `glassLayer`，`drawLayer` 正常显示（上面 TabsRoot 里做的）；
- * 2. 同时把这份图层按 1/[FrostScale] 录进 `frostLayer` —— **降采样本身就是"糊"**；
- * 3. 底栏把 `frostLayer` 放大 [FrostScale] 倍画回来（线性插值 → 磨砂），
- *    有 RenderEffect 的话再叠一层 `Modifier.blur` 磨细；
- * 4. 最后叠半透明底色（`.background(fill)`）+ 1px 描边 + 图标文字。
- *
- * **模糊必须挂在节点上，不能"设了再清"**（2026-11-22 踩的，用户两台机器都只看到半透明）：
- * `GraphicsLayer` 底下就是 RenderNode，绘制操作录进 display list，而 `renderEffect` / `alpha` /
- * `translation` 这些属性是**渲染时才读**的（正因为如此才能在内容不变时只改属性、不重录）。
- * 上一版写成 `renderEffect = …; drawLayer(); renderEffect = null`，同一帧里先设后清，
- * 到渲染那一帧效果早就没了 —— 于是只剩半透明。`Modifier.blur` 就是
- * `graphicsLayer { renderEffect = BlurEffect(…) }`，效果跟着节点活到渲染完，这才是官方路径。
- *
- * 还有一个坑：**elevation 阴影不能和半透明底色一起用**。Android 把阴影画在内容后面，
- * 底色一透明就会透出一道亮度台阶（用户 2026-11-22 报的"白条"）。所以玻璃档不挂 shadow。
+ * 形状、磨砂、描边都在 [GlassSurface] 里；这里只管三项、选中态和"离屏幕边缘多远"。
+ * 玻璃档不挂阴影：elevation 阴影画在内容后面，配半透明底会透出亮度台阶（踩过）。
  */
 @Composable
 private fun TavernBottomBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
     glass: Boolean,
-    frostLayer: GraphicsLayer,
+    frost: GraphicsLayer,
     contentOrigin: () -> Offset,
-    barOrigin: MutableState<Offset>,
     modifier: Modifier = Modifier,
 ) {
-    val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
-    val surface = MaterialTheme.colorScheme.surface
-    // 这块白底是「玻璃本体」的浓度：越高越像奶白塑料，越低越透。
-    // 0.62 那次被判定"太不透明"，收到 0.34 —— 磨砂画面自己承担观感，白底只做提亮。
-    val fill = if (glass) surface.copy(alpha = 0.34f) else surface
-    val blurPad = with(LocalDensity.current) { GlassBlur.roundToPx() }
 
-    // 外壳只负责"离屏幕边缘多远"和阴影；胶囊本体在里面那层，坐标才是准的。
+    // 外壳只负责"离屏幕边缘多远"和阴影；胶囊本体在里面那层，坐标才准。
     Box(
         modifier = modifier
             .padding(horizontal = Space.l, vertical = Space.s)
             .navigationBarsPadding()
             .then(if (glass) Modifier else Modifier.shadow(elevation = 10.dp, shape = shape, clip = false)),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(BarHeight)
-                // 节点自带 padding 时 positionInWindow 报的是含 padding 的外框；这里没有 padding，
-                // 所以它就是胶囊左上角。
-                .onGloballyPositioned { barOrigin.value = it.positionInWindow() }
-                .clip(shape),
+        GlassSurface(
+            frost = frost,
+            contentOrigin = contentOrigin,
+            glass = glass,
+            shape = shape,
+            modifier = Modifier.fillMaxWidth().height(BarHeight),
         ) {
-            if (glass) {
-                Box(Modifier.matchParentSize().expandForBlur(blurPad)) {
-                    Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
-                        // 只有"底栏位置 - 内容位置"这一句几何。这个节点比胶囊大一圈，
-                        // 所以还要把 pad 加回来；小层是 1/FrostScale 的，换算过去即可。
-                        val origin = barOrigin.value - contentOrigin()
-                        translate(left = blurPad.toFloat(), top = blurPad.toFloat()) {
-                            scale(FrostScale, FrostScale, pivot = Offset.Zero) {
-                                translate(
-                                    left = -origin.x / FrostScale,
-                                    top = -origin.y / FrostScale,
-                                ) {
-                                    drawLayer(frostLayer)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 底色 + 描边压在模糊层上：半透明才看得见背后糊成一片的内容。
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(fill)
-                    .border(1.dp, palette.cardBorder, shape),
-            )
-
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(Space.xs),
+                modifier = Modifier.fillMaxSize().padding(Space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 barItems.forEach { item ->

@@ -24,17 +24,19 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
     val worldBookSummary = if (bookCards == 0) "没有卡带内嵌世界书" else "$bookCards 张卡带内嵌世界书"
 
-    PageScaffold(title = "设置") {
-        Column(modifier = Modifier.fillMaxSize().padding(top = Space.s)) {
-            SettingLinkRow("模型", modelSummary) { viewModel.openSettingsPage(SettingsPage.Model) }
-            SettingLinkRow("采样", samplingSummary) { viewModel.openSettingsPage(SettingsPage.Sampling) }
-            SettingLinkRow("外观", appearanceSummary) { viewModel.openSettingsPage(SettingsPage.Appearance) }
-            SettingLinkRow("世界书", worldBookSummary) {
-                viewModel.openSettingsPage(SettingsPage.WorldBook)
-            }
-            SettingLinkRow("关于", "构建与版本信息") {
-                viewModel.openSettingsPage(SettingsPage.About)
-            }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = PageHeaderHeight + Space.s),
+    ) {
+        SettingLinkRow("模型", modelSummary) { viewModel.openSettingsPage(SettingsPage.Model) }
+        SettingLinkRow("采样", samplingSummary) { viewModel.openSettingsPage(SettingsPage.Sampling) }
+        SettingLinkRow("外观", appearanceSummary) { viewModel.openSettingsPage(SettingsPage.Appearance) }
+        SettingLinkRow("世界书", worldBookSummary) {
+            viewModel.openSettingsPage(SettingsPage.WorldBook)
+        }
+        SettingLinkRow("关于", "构建与版本信息") {
+            viewModel.openSettingsPage(SettingsPage.About)
         }
     }
 }

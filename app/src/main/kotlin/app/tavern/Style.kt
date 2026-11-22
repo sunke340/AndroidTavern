@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -23,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -48,8 +52,44 @@ object Radius {
 /** 列表行最小高度（含触控区）。 */
 val ListRowHeight: Dp = 64.dp
 
-/** 页头高度：左右 16、上下 8，标题垂直居中。 */
-val PageHeaderHeight: Dp = 56.dp
+/** 页头高度：大标题 + 玻璃胶囊，内容从它下面开始（滚起来会从渐变底下穿过去）。 */
+val PageHeaderHeight: Dp = 72.dp
+
+/** 页头玻璃胶囊的高度。 */
+val HeaderActionHeight: Dp = 44.dp
+
+/**
+ * 页头胶囊里的图标动作：无底色、只靠图标与主色，跟截图里那种玻璃胶囊一致。
+ *
+ * 图标只能从 `material-icons-core` 取（见 app/AGENTS.md），拿不准的就用文字。
+ */
+@Composable
+fun CapsuleIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val tint = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    }
+    Box(
+        modifier = Modifier
+            .size(HeaderActionHeight - 8.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
 
 /**
  * 列表行：左边可放头像、右边可放操作，底部自带 1px 分隔线。
