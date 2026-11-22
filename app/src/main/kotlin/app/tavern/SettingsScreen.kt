@@ -17,7 +17,10 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    val modelSummary = state.model.ifBlank { "未配置" }
+    // 一级行只说"现在用哪条档案"，细节进二级页看
+    val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
+    val modelSummary = activeProfile?.let { "${it.name} · ${it.model}" }
+        ?: state.model.ifBlank { "未配置" }
     val samplingSummary = "温度 ${state.temperatureText.ifBlank { "—" }}" +
         " · 最大输出 ${state.maxTokensText.takeIf { it != "0" } ?: "不限"}"
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +

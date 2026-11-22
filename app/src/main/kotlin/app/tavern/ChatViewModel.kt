@@ -34,6 +34,7 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.Locale
 
 /**
@@ -51,6 +52,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 一次性提示（导入/删除的结果），用 Snackbar 显示；`id` 保证同一条不会重复弹。 */
     data class Notice(val id: Long, val text: String)
+
+    /**
+     * 正在编辑的模型档案（草稿）。
+     *
+     * 为什么用草稿而不是直接改库里的那行：Key 与请求头是手打的，边打边落库会出现
+     * "打了一半的 Key 已经把能用的 Key 覆盖掉"。只有点「保存」才写库。
+     */
+    data class ProfileDraft(
+        /** null = 新建。 */
+        val id: String? = null,
+        val name: String = "",
+        val baseUrl: String = ModelProfiles.FALLBACK_BASE_URL,
+        val model: String = ModelProfiles.FALLBACK_MODEL,
+        val apiKey: String = "",
+        /** 空串 = 不往请求里放 `reasoning_effort`。 */
+        val reasoningEffort: String = "",
+        /** 「一行一条 Name: value」的原始文本。 */
+        val headersText: String = "",
+        val isDefault: Boolean = false,
+    ) {
+        val isNew: Boolean get() = id == null
+
+        val canSave: Boolean
+            get() = name.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank()
+    }
 
     data class UiState(
         val baseUrl: String = "https://api.deepseek.com/v1",
@@ -96,6 +122,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val profiles: List<ModelProfile> = emptyList(),
         /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
         val activeProfileId: String? = null,
+        /** 非 null 时显示「档案编辑」页（三级）；null = 不在编辑。 */
+        val profileDraft: ProfileDraft? = null,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -519,6 +547,129 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun openSettingsPage(page: SettingsPage) = _state.update { it.copy(settingsPage = page) }
 
     fun closeSettingsPage() = _state.update { it.copy(settingsPage = null) }
+
+    // ---- 模型档案（C 批） ---------------------------------------------------
+
+    /** 打开档案编辑页；[profileId] 为 null 表示新建（预填默认值）。 */
+    fun openProfileEditor(profileId: String?) {
+        viewModelScope.launch {
+            val existing = profileId?.let { id ->
+                withContext(Dispatchers.IO) { profileRepository.find(id) }
+            }
+            val key = profileId
+                ?.let { id -> withContext(Dispatchers.IO) { profileRepository.apiKey(id) } }
+                .orEmpty()
+            _state.update {
+                it.copy(
+                    profileDraft = ProfileDraft(
+                        id = existing?.id,
+                        name = existing?.name.orEmpty(),
+                        baseUrl = existing?.baseUrl ?: ModelProfiles.FALLBACK_BASE_URL,
+                        model = existing?.model ?: ModelProfiles.FALLBACK_MODEL,
+                        apiKey = key,
+                        reasoningEffort = existing?.reasoningEffort.orEmpty(),
+                        headersText = existing?.headers
+                            ?.let { headers -> ModelProfiles.formatHeaders(headers) }
+                            .orEmpty(),
+                        isDefault = existing?.isDefault ?: false,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun closeProfileEditor() = _state.update { it.copy(profileDraft = null) }
+
+    /** 改草稿里的某个字段（界面上每个输入框都调这一条，不再各开一个 setter）。 */
+    fun editProfileDraft(transform: (ProfileDraft) -> ProfileDraft) = _state.update { current ->
+        current.copy(profileDraft = current.profileDraft?.let(transform))
+    }
+
+    fun saveProfileDraft() {
+        val draft = _state.value.profileDraft ?: return
+        if (!draft.canSave) {
+            notify("名称 / Base URL / 模型 ID 不能为空")
+            return
+        }
+        viewModelScope.launch {
+            val id = draft.id ?: UUID.randomUUID().toString()
+            // 一条都没有的时候，新建的就该是默认，否则会出现"有档案但没有默认"
+            val profile = ModelProfile(
+                id = id,
+                name = draft.name.trim(),
+                baseUrl = draft.baseUrl.trim(),
+                model = draft.model.trim(),
+                reasoningEffort = draft.reasoningEffort.takeIf { it.isNotBlank() },
+                headers = ModelProfiles.parseHeaders(draft.headersText),
+                isDefault = draft.isDefault || _state.value.profiles.isEmpty(),
+            )
+            val saved = withContext(Dispatchers.IO) {
+                runCatching {
+                    profileRepository.save(profile)
+                    profileRepository.saveApiKey(id, draft.apiKey)
+                }.isSuccess
+            }
+            if (!saved) {
+                notify("保存失败：写数据库出错")
+                return@launch
+            }
+            AppLog.i(
+                "profile",
+                "保存 id=$id name=${profile.name} 默认=${profile.isDefault} " +
+                    "头=${profile.headers.size} 思考=${profile.reasoningEffort ?: "无"}",
+            )
+            refreshProfiles()
+            _state.update { it.copy(profileDraft = null) }
+            notify("已保存「${profile.name}」")
+        }
+    }
+
+    /** 把某条设为默认（同时把连接配置镜像同步过去）。 */
+    fun setDefaultProfile(id: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { runCatching { profileRepository.setDefault(id) } }
+            AppLog.i("profile", "切换默认 id=$id")
+            refreshProfiles()
+            _state.update { current ->
+                val draft = current.profileDraft
+                current.copy(profileDraft = draft?.copy(isDefault = draft.id == id))
+            }
+        }
+    }
+
+    /** 删档案：连带删掉它的 Key（不可逆，界面侧必须二次确认）。 */
+    fun deleteProfile(id: String) {
+        viewModelScope.launch {
+            val name = _state.value.profiles.firstOrNull { it.id == id }?.name ?: id
+            val removed = withContext(Dispatchers.IO) {
+                runCatching { profileRepository.delete(id) }.isSuccess
+            }
+            AppLog.i("profile", "删除 id=$id ok=$removed")
+            refreshProfiles()
+            _state.update { it.copy(profileDraft = null) }
+            notify(if (removed) "已删除「$name」" else "删除失败")
+        }
+    }
+
+    /** 重新读档案表，并把"当前档案"镜像到 baseUrl / model / apiKey（发送时用的就是这三个）。 */
+    private suspend fun refreshProfiles() {
+        val profiles = withContext(Dispatchers.IO) {
+            ModelProfiles.normalizeDefault(profileRepository.list())
+        }
+        val active = profiles.firstOrNull { it.isDefault }
+        val key = active
+            ?.let { profile -> withContext(Dispatchers.IO) { profileRepository.apiKey(profile.id) } }
+            .orEmpty()
+        _state.update { current ->
+            current.copy(
+                profiles = profiles,
+                activeProfileId = active?.id,
+                baseUrl = active?.baseUrl ?: current.baseUrl,
+                model = active?.model ?: current.model,
+                apiKey = if (active != null) key else current.apiKey,
+            )
+        }
+    }
 
     private fun notify(text: String) {
         noticeSeq += 1

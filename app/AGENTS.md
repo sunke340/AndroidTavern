@@ -21,8 +21,9 @@ sealed interface Destination {
     data class Settings(page: SettingsPage)     // 设置二级
     data class Detail(cardId)                   // 角色详情（二级）
     data class CardConfig(cardId, page)         // 角色配置（三级）
+    data object ProfileEdit                     // 模型档案编辑（三级，叠在设置→模型之上）
 }
-// depth: Tabs=0, Settings/Detail=1, Chat/CardConfig=2
+// depth: Tabs=0, Settings/Detail=1, Chat/CardConfig/ProfileEdit=2
 // 转场风格可选（NavAnimation，默认「标准」）：
 //   标准：进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
 //   淡入：交叉淡化；关闭：完全不要动画（排查用）
@@ -84,7 +85,8 @@ MainScreen（Destination + AnimatedContent）
 │   ├── SessionsScreen    会话列表 → 选卡弹层新建 → 点一行进 Chat
 │   ├── CharactersScreen  角色卡网格（两列 3:4）
 │   └── SettingsScreen    一级列表：模型 / 采样 / 外观 / 世界书 / 关于
-└── 二级页（全屏）：ChatScreen / CharacterDetailScreen / SettingsSubPage / CardConfigPageScreen
+├── 二级页（全屏）：ChatScreen / CharacterDetailScreen / SettingsSubPage / CardConfigPageScreen
+└── 三级页：ProfileEditScreen（设置 → 模型 → 某条档案；返回仍落在"模型"列表，所以 settingsPage 不清）
 ```
 
 - **聊天不占底部 tab**：它是二级页，带返回栈才符合安卓返回键。

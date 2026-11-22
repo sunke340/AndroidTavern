@@ -52,10 +52,10 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
     Violet(
         label = "墨紫",
         light = ThemePalette(
-            // 主色用**中明度紫罗兰**（#6D4BC4）：之前的 #3B2E52 太黑，压在白底上像黑灰，
-            // 选中的底栏图标/文字、SegmentedRow 的选中块都看不出是紫的（用户 2026-11-22 反馈）。
-            // 现在往"明确是紫"靠，但仍然压得住白字，不至于变成糖果色。
-            primary = Color(0xFF6D4BC4),
+            // 主色：中明度紫罗兰 #5C3BAE。
+            // 演进：#3B2E52（太黑，白底上像黑灰）→ #6D4BC4（能看出紫了，但用户觉得偏浅）
+            // → #5C3BAE（深一档，仍然明确是紫，压白字对比度约 7:1）。
+            primary = Color(0xFF5C3BAE),
             onPrimary = Color(0xFFFFFFFF),
             background = Color(0xFFF8F6FC),
             surface = Color(0xFFFFFFFF),

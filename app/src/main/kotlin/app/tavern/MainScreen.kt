@@ -68,6 +68,8 @@ private sealed interface Destination {
     data class Settings(val page: SettingsPage) : Destination
     data class Detail(val cardId: String) : Destination
     data class CardConfig(val cardId: String, val page: CardConfigPage) : Destination
+    /** 设置 → 模型 → 某条档案（三级）。 */
+    data object ProfileEdit : Destination
 }
 
 private fun depthOf(destination: Destination): Int = when (destination) {
@@ -76,6 +78,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     is Destination.Detail -> 1
     Destination.Chat -> 2
     is Destination.CardConfig -> 2
+    Destination.ProfileEdit -> 2
 }
 
 /** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
@@ -85,6 +88,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     is Destination.Settings -> "settings/${destination.page.name}"
     is Destination.Detail -> "detail"
     is Destination.CardConfig -> "card-config/${destination.page.name}"
+    Destination.ProfileEdit -> "profile-edit"
 }
 
 @Composable
@@ -100,11 +104,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val detailId = state.detailCardId
             val cardConfig = state.cardConfigPage
             val settingsPage = state.settingsPage
+            val editingProfile = state.profileDraft != null
 
             val destination: Destination = when {
                 state.chatOpen -> Destination.Chat
                 detailId != null && cardConfig != null -> Destination.CardConfig(detailId, cardConfig)
                 detailId != null -> Destination.Detail(detailId)
+                // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
+                editingProfile -> Destination.ProfileEdit
                 settingsPage != null -> Destination.Settings(settingsPage)
                 else -> Destination.Tabs
             }
@@ -223,6 +230,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     is Destination.CardConfig -> {
                         BackHandler { viewModel.closeCardConfigPage() }
                         CardConfigPageScreen(state = state, viewModel = viewModel)
+                    }
+
+                    Destination.ProfileEdit -> {
+                        BackHandler { viewModel.closeProfileEditor() }
+                        ProfileEditScreen(state = state, viewModel = viewModel)
                     }
                 }
             }

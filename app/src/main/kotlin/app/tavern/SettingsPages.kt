@@ -96,39 +96,52 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 }
 
-// ---- 模型 -----------------------------------------------------------------
+// ---- 模型 ---------------------------------------------------------------
 
+/**
+ * 模型档案列表。
+ *
+ * 一级的「模型」行只显示"当前用哪个"；这里才是可以被增删的清单，
+ * 点一行进编辑页（三级，`Destination.ProfileEdit`）。
+ */
 @Composable
 private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    SectionLabel("当前模型")
+    SectionLabel("模型档案")
     Text(
-        "多模型档案（列出、切换默认、每模型独立 Key/请求头）在下一批。现在这里是唯一的一套连接配置。",
+        "每套连接（provider + 模型 + Key + 请求头）是一条档案，聊天用标了「默认」的那条。",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    OutlinedTextField(
-        value = state.model,
-        onValueChange = viewModel::onModelChange,
-        label = { Text("模型 ID") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        value = state.baseUrl,
-        onValueChange = viewModel::onBaseUrlChange,
-        label = { Text("Base URL") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        value = state.apiKey,
-        onValueChange = viewModel::onApiKeyChange,
-        label = { Text("API Key（Keystore 加密保存）") },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-    )
+    state.profiles.forEach { profile ->
+        ListRow(
+            title = if (profile.isDefault) "${profile.name}  · 默认" else profile.name,
+            subtitle = buildString {
+                append(profile.model)
+                if (profile.reasoningEffort != null) append(" · 思考 ").append(profile.reasoningEffort)
+                append("\n").append(profile.baseUrl)
+            },
+            trailing = {
+                if (!profile.isDefault) {
+                    Text(
+                        "设为默认",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { viewModel.setDefaultProfile(profile.id) },
+                    )
+                }
+            },
+            onClick = { viewModel.openProfileEditor(profile.id) },
+        )
+    }
+
+    if (state.profiles.isEmpty()) {
+        EmptyHint("还没有档案。点下面「新建档案」加一个。")
+    }
+
+    Box(modifier = Modifier.padding(top = Space.m)) {
+        SecondaryAction("＋ 新建档案") { viewModel.openProfileEditor(null) }
+    }
 }
 
 // ---- 采样 -----------------------------------------------------------------

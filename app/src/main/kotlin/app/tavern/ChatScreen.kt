@@ -114,7 +114,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "更多")
                     }
+                    val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        // 只是"看清现在用的哪套连接"，点击应该去哪儿（编辑档案）留到 D 批
+                        DropdownMenuItem(
+                            text = { Text("模型档案：${activeProfile?.name ?: "未配置"}") },
+                            enabled = false,
+                            onClick = {},
+                        )
                         // 三级继承的会话配置在下一批；先占位但明确标注，不做假按钮
                         DropdownMenuItem(
                             text = { Text("会话配置（下一批）") },
