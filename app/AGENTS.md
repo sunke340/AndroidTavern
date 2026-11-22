@@ -11,21 +11,50 @@
 
 ## 当前导航（2026-11-22 起）
 
-**暂不引 `navigation-compose`**：只有三栏 + 一个二级页，用 `enum Screen` + `ChatScreen` 覆盖层就够，
-返回键走 `BackHandler`。等出现深链/多级详情（角色详情→世界书→条目编辑）再引，那时写 ADR。
+**暂不引 `navigation-compose`**：层级只有 0–2 深，用「一个 `Destination` 状态 + `AnimatedContent`」表达，
+返回键走 `BackHandler`。等出现深链或三级以上（角色→世界书→条目编辑）再引，那时写 ADR。
+
+```kotlin
+sealed interface Destination {
+    data object Tabs                            // 三栏根页（tab 切换另有内层 AnimatedContent）
+    data object Chat                            // 聊天（二级）
+    data class Settings(page: SettingsPage)     // 设置二级
+    data class Detail(cardId)                   // 角色详情（二级）
+    data class CardConfig(cardId, page)         // 角色配置（三级）
+}
+// depth: Tabs=0, Settings/Detail=1, Chat/CardConfig=2
+// 深→更深：新页整屏从右推入、旧页退 1/4；变浅：当前页整屏右退、上一页回 1/4
+```
+
+**别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
 ```
-MainScreen（Scaffold + NavigationBar）
-├── SessionsScreen    会话列表 → 点一行进 ChatScreen（全屏，底部栏隐藏）
-├── CharactersScreen  角色卡列表（头像网格在批次 2）
-└── SettingsScreen    一级列表：模型 / 采样 / 外观 / 世界书 / 关于
-    └── SettingsSubPage  二级页（全屏，顶栏返回）；每行右侧显示当前生效值
+MainScreen（Destination + AnimatedContent）
+├── TabsRoot（Scaffold + 自绘底栏）
+│   ├── SessionsScreen    会话列表 → 选卡弹层新建 → 点一行进 Chat
+│   ├── CharactersScreen  角色卡网格（两列 3:4）
+│   └── SettingsScreen    一级列表：模型 / 采样 / 外观 / 世界书 / 关于
+└── 二级页（全屏）：ChatScreen / CharacterDetailScreen / SettingsSubPage / CardConfigPageScreen
 ```
 
 - **聊天不占底部 tab**：它是二级页，带返回栈才符合安卓返回键。
 - **世界书不占底部 tab**：它是跟着卡/会话走的编辑面，入口挂在角色详情、聊天 ⋮、设置三处（P1 再做）。
-- 消息渲染收敛在 `ChatScreen.kt` 的 `MessageRow(message, style)`；`MessageStyle` 现在只有 `Card`，
-  `Bubble` 是留好的接口（设置里能选，暂时回落到卡片）。
+- 消息渲染收敛在 `ChatScreen.kt` 的 `MessageRow(message, style)`；`Bubble`（默认）与 `Card` 都已实现，
+  卡级覆盖在角色详情 → 配置 → 对话样式（`null` = 跟随全局）。
+
+## 聊天列表：必须 reverseLayout（踩过一次）
+
+`LazyColumn(reverseLayout = true)` + `items(transcript.asReversed())`，串流气泡固定在最前（视觉最底部）。
+
+**不要改成"正常排序 + scrollToItem 跟底"**：串流时每个 token 都会触发一次滚动/重排，
+表现是"进聊天时消息从顶滑到底""输出时整屏抽动"。底部锚点天然没有这个问题。
+
+## 日志：用 AppLog，不要 logcat（真机没有）
+
+- 打点走 `app.tavern.data.log.AppLog`（`i/w/e`），**只记事件与状态码，不记 Key 与消息正文**。
+- 崩溃：`TavernApp` 已装 `UncaughtExceptionHandler`，会先落盘再交还系统。
+- 导出：设置 → 关于 →「导出日志」（SAF 写 txt）。
+- 关键路径（发送/完成/失败/异常/导入/删除/主题切换）都要留一行；否则出了问题只能猜。
 
 ## 页头的规矩（踩过一次）
 
@@ -44,6 +73,10 @@ MainScreen（Scaffold + NavigationBar）
 - 图标只能从 `material-icons-core` 里取（ArrowBack / MoreVert / Send / Person / Settings /
   List / Close / Delete / Add 等）；**不确定有没有的就用文字或 Canvas 自绘**——
   引 `material-icons-extended` 会多 10MB 和一轮构建，本机又编不了，不值得。
+- `Icons.Filled.X` 是**扩展属性**：必须 `import androidx.compose.material.icons.filled.X` 再写
+  `Icons.Filled.X`，**不能全限定**（`androidx.compose.material.icons.Icons.Filled.X` 会 Unresolved）。
+- 主题顺序/默认在 `Theme.kt` 的 `ThemePreset` 枚举里：Violet（墨紫，默认）在最前，
+  持久化存的是**名字**，重排枚举不影响已保存的选择。
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 

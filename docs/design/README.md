@@ -35,3 +35,10 @@
   `icon/preview-final.png`（最终两层合成的样子）。
 
 源图与圈形遮罩对照图在本目录：`icon/source-*.{jpg,webp}`、`icon/preview-circle.png`。
+
+## 最终决定（2026-11-22）
+
+- **方向 C · Dense Ink**：细线分隔、1px 描边、无阴影卡片；64dp 列表行；聊天用气泡。
+- **主题墨紫**（从四个候选里选的"4 · Ink Violet"）：浅色主色 `#3B2E52`，深色 `#B9A8D8`，
+  用户气泡 `#E4DDF3`（保留紫调）。四套色板顺序：墨紫（默认）→ 森林绿 → 暖棕 → 石墨蓝。
+- 外观页的选项一律用 `SegmentedRow`（等宽铺满），不再用 FilterChip。

@@ -2,7 +2,8 @@
 
 原生安卓「酒馆」：Kotlin + Compose 重写 SillyTavern 1.19.1，兼容其**文件格式**与**提示词行为**。
 单 APK、单进程、无服务端、无 WebView（[ADR 0002](docs/adr/0002-single-process.md)）。
-**M0 已完成**：`:core:{model,card-format,prompt,ai}` 20 个单测；`:app` 已在真机真连 provider 跑通（见 docs/dev/device-verification.md）。下一步 M1。
+**现状（2026-11-22）**：M1 已可用——导卡/聊天/流式/开场白/会话与消息落库/Key 加密/主题/日志导出，
+在真机上跑通。当前进度与下一步见 [docs/dev/status.md](docs/dev/status.md)。
 
 ## TL;DR — 违反即改动无效
 
@@ -38,6 +39,9 @@ vendor/     原版 ST 只读副本（.gitignore）
 
 ```bash
 tools/check-core-purity.sh            # 铁律 #1（本机可跑，零依赖）
+tools/check-kotlin-comments.sh        # 块注释不许嵌套（会吞掉整段代码）
+tools/check-kotlin-imports.sh         # 不许重复 import（编译期才报错）
+tools/verify-apk.sh <apk> <指纹>       # 无 SDK 也能验签名
 bash tools/fixture/bootstrap.sh       # 重建 vendor/SillyTavern@1.19.1
 tools/test-core.sh                    # 本机：所有 :core:* 单测 + 静默跳过守卫
 ./gradlew test                        # CI 用（聚合 test 会配置 :app，需要 Android SDK，本机跑不了）
@@ -53,7 +57,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 ## 完成定义
 
 - [ ] 代码在正确模块，依赖方向未破
-- [ ] `tools/check-core-purity.sh` 通过
+- [ ] `tools/check-core-purity.sh` / `check-kotlin-comments.sh` / `check-kotlin-imports.sh` 通过
 - [ ] 兼容行为改动 → fixture 已提交且单测断言它
 - [ ] [docs/compat-matrix.md](docs/compat-matrix.md) 状态列已更新
 - [ ] 新的架构决策 → 新 ADR
@@ -78,7 +82,8 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 夹具怎么录、长什么样 | [docs/dev/fixtures.md](docs/dev/fixtures.md) |
 | 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
 | 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
-| 当前这一轮在做什么 | [docs/plan-overnight.md](docs/plan-overnight.md) |
+| **当前状态与下一步（压缩上下文后先读这个）** | [docs/dev/status.md](docs/dev/status.md) |
+| 夜间那一轮的计划与结果（历史） | [docs/plan-overnight.md](docs/plan-overnight.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
 | 本机能力边界（实测） | [docs/environment.md](docs/environment.md) |
 
