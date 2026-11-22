@@ -166,6 +166,11 @@ MainScreen（Destination + AnimatedContent）
   `expandForBlur(pad)` 负责这个，多出来的由外层胶囊 `clip` 裁掉。
 - **`positionInWindow` 量在没有 padding 的那层上**：同一个 LayoutNode 上带 padding 时报的是外框，
   坐标会偏。外壳管留白/阴影，胶囊本体单独一层。
+- **边缘是渐变描边，不是纯色**：上边 `Color.White`（受光）→ 下边 `cardBorder`/主题色，
+  两端再叠一层主题色横向渐变（圆角处带环境色）。一圈均匀的 1px 灰线读起来像塑料壳，没有厚度感。
+- **投影自己画**：模糊的黑胶囊往下压几像素（`Modifier.blur(…, BlurredEdgeTreatment.Unbounded)`）；
+  不能用 `Modifier.shadow` —— elevation 阴影在内容后面，配半透明底会透出亮度台阶。`Unbounded` 不能省，
+  默认的 Rectangle 会把模糊结果裁在节点边界内，光晕直接没了。
 - 判据：切到玻璃看胶囊里的字 —— **还认得出字 = 没糊；一片糊只剩色块 = 糊上了**。
   真机没 logcat，先看 `AppLog` tag `glass` 那两行（sdk / 硬件加速 / 半径，底栏 / 内容 / 尺寸）。
 
