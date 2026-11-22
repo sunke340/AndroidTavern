@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`311a1e2`（兜底回退点：tag `apk-m27`；上一版 `a7419a7` = tag `apk-m26`）
+- 代码：`c2d47bb`（兜底回退点：tag `apk-m28` 是玻璃底栏版；纯 C2 版是 `apk-m27`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 34 个单测全绿
-- 已交付 APK：`app-v22-311a1e2.apk`（签名固定，可覆盖安装；上一版 `app-v21-a7419a7.apk`）
+- 已交付 APK：`app-v23-c2d47bb.apk`（签名固定，可覆盖安装；上一版 `app-v22-311a1e2.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 已经做完的（能装、能日常聊）
@@ -45,6 +45,10 @@
 - 日志只到"事件级"：不含 HTTP 响应原文；进程被系统杀掉时抓不到（导航已补 `tag=nav` 打点）。
 - **未接预测式返回**：Android 13+ 的返回手势在松手后才播动画，拖动时看不到上一级预览（用户暂未要求）。
 - 本机编不了 Android 模块：所有 Compose 改动只能靠 CI 编译 + 真机验。
+- **CI 编译内存**：`gradle.properties` 的值是给本机（1.7 GiB）调的，workflow 里 checkout 后会 sed 成
+  `-Xmx3g -XX:MaxMetaspaceSize=1g`。加依赖后 Metaspace 会顶不住，别把那两行 sed 删掉。
+- **玻璃风格只做了底栏**：页头/卡片/聊天气泡还是旧样式（配色/圆角已按新 token 走），下一轮继续。
+  模糊是每帧离屏绘制，滚动是否掉帧待真机；掉帧就在 设置→外观→视觉效果 切「轻量」。
 
 ## 开发回路（这台机器的现实）
 
