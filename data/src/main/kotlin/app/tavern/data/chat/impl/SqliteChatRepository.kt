@@ -103,6 +103,13 @@ class SqliteChatRepository(context: Context) : ChatRepository {
         }
     }
 
+    override fun deleteSessionsForCard(cardId: String): Int =
+        helper.writableDatabase.delete(
+            TavernDatabase.TABLE_SESSIONS,
+            "card_id = ?",
+            arrayOf(cardId),
+        )
+
     override fun deleteMessage(id: Long) {
         helper.writableDatabase.delete(TavernDatabase.TABLE_MESSAGES, "id = ?", arrayOf(id.toString()))
     }

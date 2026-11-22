@@ -50,6 +50,23 @@ node tools/fixture/capture.mjs --out fixtures/expected/P0-5-prompt-basic.json
 ⚠️ 实测发现：`Generate('normal', { skipWIAN: true })` **并不会**跳过角色卡内嵌 book 的注入
 （两张卡录出来的 5 条消息一模一样）。所以"关掉世界书"这条路走不通，只能换卡。
 
+## 2.55 开场白：`--dump-chat`
+
+```bash
+node tools/fixture/capture.mjs \
+  --out fixtures/expected/P0-8-first-mes-prompt.json \
+  --character Seraphina --no-wi \
+  --dump-chat fixtures/chats/P0-8-first-mes-chat.json
+```
+
+`--dump-chat` 把原版**内存里的 chat 数组**原样存一份，用来回答"新建聊天后第一条到底是什么"。
+配合同一时刻的请求体，两份产物能互相印证：
+
+- `chat[0]` = 卡里的 `first_mes`（`is_user=false`）；
+- 请求体最后一条 = 同一条开场白，role 为 `assistant`，位置在 `[Start a new Chat]` 之后。
+
+`core/chat-format/src/test/.../FirstMesFixtureTest.kt` 就是拿这两份文件交叉断言的。
+
 ## 2.6 多轮历史：`--seed`
 
 ```bash

@@ -23,6 +23,9 @@ function arg(name, fallback = null) {
 const OUT = arg('out', 'fixtures/expected/capture.json');
 const CHARACTER = arg('character', 'Seraphina');
 const SEED = arg('seed', null);
+// --dump-chat：把原版**当前聊天数组**原样存一份（证明"新建聊天后第一条到底是什么"）。
+// 只存内存里的 chat，不读磁盘——避免和别的录制互相干扰。
+const DUMP_CHAT = arg('dump-chat', null);
 
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
@@ -154,6 +157,7 @@ try {
             allCalls,
             error,
             mainApi: S.main_api,
+            chat: context.chat ?? [],
             context: {
                 name1: context.name1,
                 name2: context.name2,
@@ -166,6 +170,13 @@ try {
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
+    }
+
+    if (DUMP_CHAT) {
+        const dumpPath = path.resolve(ROOT, DUMP_CHAT);
+        fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
+        fs.writeFileSync(dumpPath, JSON.stringify(result.chat, null, 2) + '\n');
+        console.log(`OK  ${path.relative(ROOT, dumpPath)}  (${result.chat.length} 条消息)`);
     }
 
     const last = result.captured.at(-1);

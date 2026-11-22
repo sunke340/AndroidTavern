@@ -40,4 +40,7 @@ interface ChatRepository {
 
     /** 撤回一条消息。请求失败时把刚写进去的用户消息撤掉，避免重试一次多一条。 */
     fun deleteMessage(id: Long)
+
+    /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
+    fun deleteSessionsForCard(cardId: String): Int
 }

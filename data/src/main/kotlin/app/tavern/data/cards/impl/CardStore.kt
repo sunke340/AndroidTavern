@@ -55,11 +55,14 @@ class CardStore(context: Context) : CardRepository {
             .filter { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
             .sortedWith(compareBy({ it.name !in seeded }, { it.name }))
             .map { file ->
-                val cardName = runCatching { PngCard.read(file.readBytes()).name }
-                    .getOrNull()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: file.nameWithoutExtension
-                CardRef(id = file.name, name = cardName, imported = file.name !in seeded)
+                val parsed = runCatching { PngCard.read(file.readBytes()) }.getOrNull()
+                val cardName = parsed?.name?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
+                CardRef(
+                    id = file.name,
+                    name = cardName,
+                    imported = file.name !in seeded,
+                    description = parsed?.description.orEmpty(),
+                )
             }
     }
 
@@ -101,7 +104,19 @@ class CardStore(context: Context) : CardRepository {
         val written = runCatching { File(dir, id).writeBytes(bytes) }.isSuccess
         if (!written) return ImportResult.Failed("写入应用私有目录失败")
 
-        return ImportResult.Ok(CardRef(id = id, name = card.name.ifBlank { base }, imported = true))
+        return ImportResult.Ok(
+            CardRef(
+                id = id,
+                name = card.name.ifBlank { base },
+                imported = true,
+                description = card.description,
+            ),
+        )
+    }
+
+    override fun delete(id: String): Boolean {
+        val file = fileFor(id) ?: return false
+        return file.isFile && file.delete()
     }
 
     private fun fileFor(id: String): File? =

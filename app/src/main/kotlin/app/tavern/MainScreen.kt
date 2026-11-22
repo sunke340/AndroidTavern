@@ -33,6 +33,13 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
         return
     }
 
+    if (state.detailCardId != null) {
+        // 角色详情也是全屏二级页（从角色网格点进来）
+        BackHandler { viewModel.closeDetail() }
+        CharacterDetailScreen(state = state, viewModel = viewModel)
+        return
+    }
+
     Scaffold(
         // 三栏页面的状态栏/导航栏留白由 Scaffold 的 contentWindowInsets 负责；
         // imePadding 让键盘弹出时底部导航和内容一起上移，而不是把输入框盖住

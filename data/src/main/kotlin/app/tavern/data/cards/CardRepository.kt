@@ -6,6 +6,8 @@ data class CardRef(
     val name: String,
     /** 用户从系统文件选择器导进来的（随包带的不算）。 */
     val imported: Boolean,
+    /** 角色描述，列表里当简介用。空描述是合法的（有些卡只写人格）。 */
+    val description: String,
 )
 
 sealed interface ImportResult {
@@ -25,4 +27,7 @@ interface CardRepository {
     var selectedId: String?
 
     fun import(uri: android.net.Uri): ImportResult
+
+    /** 删掉一张卡的文件。**会话不在这里处理**——由调用方决定要不要连带删。 */
+    fun delete(id: String): Boolean
 }

@@ -63,6 +63,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // ---- 界面结构（导航） ----
         val screen: Screen = Screen.Sessions,
         val chatOpen: Boolean = false,
+        /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
+        val detailCardId: String? = null,
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -110,34 +112,81 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val firstCard = cards.firstOrNull()
-            if (firstCard == null) {
-                _state.update { it.copy(status = "没有可用的卡：assets/cards 下至少要有一张") }
-                return@launch
+            // 会话改成按需创建（从角色详情点"新建会话"）：删到 0 个也不会被自动补回来
+            _state.update {
+                it.copy(
+                    status = if (cards.isEmpty()) {
+                        "没有可用的卡：assets/cards 下至少要有一张"
+                    } else {
+                        "还没有会话：去「角色」选一张卡"
+                    },
+                )
             }
-            startNewSession(firstCard.id, firstCard.name)
         }
     }
 
     // ---- 卡 ----------------------------------------------------------------
 
-    fun selectCard(id: String) {
+    fun openDetail(cardId: String) {
+        _state.update { it.copy(detailCardId = cardId) }
+    }
+
+    fun closeDetail() {
+        _state.update { it.copy(detailCardId = null) }
+    }
+
+    /**
+     * 用某张卡开一个新会话，并进入聊天。
+     *
+     * 开场白按原版行为写成第一条消息——夹具 `fixtures/chats/P0-8-first-mes-chat.json`
+     * 证明原版新建聊天时 chat[0] 就是 `first_mes`，且它会作为 assistant 进提示词历史。
+     */
+    fun startSessionForCard(cardId: String) {
         viewModelScope.launch {
-            val loaded = loadCard(id)
+            val loaded = loadCard(cardId)
             if (loaded == null) {
-                _state.update { it.copy(status = "读卡失败：$id（文件损坏或不是角色卡）") }
+                _state.update { it.copy(status = "读卡失败：$cardId（文件损坏或不是角色卡）") }
                 return@launch
             }
             card = loaded
-            cardRepository.selectedId = id
+            cardRepository.selectedId = cardId
+            val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
+                ?: loaded.name.ifBlank { cardId }
+            startNewSession(
+                cardId = cardId,
+                cardName = displayName,
+                firstMessage = loaded.firstMessage,
+                navigate = true,
+            )
+        }
+    }
 
-            // 切卡 = 切到这张卡最近的会话；没有就新建（原版切角色也是这个行为）
-            val recent = withContext(Dispatchers.IO) { chatRepository.sessions() }
-                .firstOrNull { it.cardId == id }
-            if (recent != null) {
-                openSessionInternal(recent.id)
-            } else {
-                startNewSession(id, loaded.name.ifBlank { id })
+    /** 删卡：连带删掉它的全部会话（用户在 2026-11-22 确认这个语义）。 */
+    fun deleteCard(cardId: String) {
+        viewModelScope.launch {
+            val removedSessions = withContext(Dispatchers.IO) {
+                chatRepository.deleteSessionsForCard(cardId)
+            }
+            val deletedFile = withContext(Dispatchers.IO) { cardRepository.delete(cardId) }
+            val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+            val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
+
+            val currentGone = _state.value.sessionId?.let { id -> sessions.none { it.id == id } } == true
+
+            _state.update {
+                it.copy(
+                    cards = cards,
+                    sessions = sessions,
+                    detailCardId = null,
+                    sessionId = if (currentGone) null else it.sessionId,
+                    transcript = if (currentGone) emptyList() else it.transcript,
+                    chatOpen = if (currentGone) false else it.chatOpen,
+                    status = if (deletedFile) {
+                        "已删除角色卡（连带 $removedSessions 个会话）"
+                    } else {
+                        "删卡失败：文件可能已经不在了"
+                    },
+                )
             }
         }
     }
@@ -153,8 +202,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             when (result) {
                 is ImportResult.Ok -> {
                     val cards = withContext(Dispatchers.IO) { cardRepository.list() }
-                    _state.update { it.copy(cards = cards, status = "已导入：${result.card.name}") }
-                    selectCard(result.card.id)
+                    _state.update {
+                        it.copy(cards = cards, detailCardId = result.card.id, status = "已导入：${result.card.name}")
+                    }
                 }
 
                 is ImportResult.Failed ->
@@ -171,14 +221,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ---- 会话 --------------------------------------------------------------
 
     fun newSession() {
-        val snapshot = _state.value
-        val cardId = snapshot.cardId
-        val cardName = snapshot.cardName
+        val cardId = _state.value.cardId
         if (cardId == null) {
-            _state.update { it.copy(status = "还没有卡，先选一张卡") }
+            _state.update { it.copy(screen = Screen.Characters, status = "先从「角色」里选一张卡") }
             return
         }
-        viewModelScope.launch { startNewSession(cardId, cardName) }
+        startSessionForCard(cardId)
     }
 
     fun openSession(id: String) {
@@ -189,31 +237,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { chatRepository.deleteSession(id) }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
-            _state.update { it.copy(sessions = sessions) }
+            _state.update { it.copy(sessions = sessions, status = "会话已删除") }
 
             if (_state.value.sessionId != id) return@launch
 
+            // 允许删到 0 个会话：以前会"立刻补一个"，看起来像删不掉
             val next = sessions.firstOrNull()
             if (next != null) {
                 openSessionInternal(next.id, navigate = false)
             } else {
-                val cardId = _state.value.cardId
-                if (cardId != null) {
-                    startNewSession(cardId, _state.value.cardName)
-                } else {
-                    _state.update { it.copy(sessionId = null, transcript = emptyList(), status = "会话已删除") }
+                _state.update {
+                    it.copy(
+                        sessionId = null,
+                        transcript = emptyList(),
+                        streamingText = "",
+                        isStreaming = false,
+                        chatOpen = false,
+                        status = "会话已删除。去「角色」里开新会话。",
+                    )
                 }
             }
         }
     }
 
-    private suspend fun startNewSession(cardId: String, cardName: String) {
+    private suspend fun startNewSession(
+        cardId: String,
+        cardName: String,
+        firstMessage: String,
+        navigate: Boolean = true,
+    ) {
         val title = "$cardName ${stamp()}"
         val session = withContext(Dispatchers.IO) {
             chatRepository.createSession(cardId = cardId, cardName = cardName, title = title)
         }
+        // 原版行为：新聊天的第一条就是卡里的 first_mes（见 P0-8 夹具）
+        if (firstMessage.isNotBlank()) {
+            withContext(Dispatchers.IO) {
+                chatRepository.append(session.id, isUser = false, content = firstMessage)
+            }
+        }
         refreshSessions()
-        openSessionInternal(session.id)
+        openSessionInternal(session.id, navigate = navigate)
     }
 
     private suspend fun openSessionInternal(id: String, navigate: Boolean = true) {
