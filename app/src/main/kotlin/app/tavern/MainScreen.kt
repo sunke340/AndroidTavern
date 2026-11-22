@@ -376,14 +376,16 @@ private fun TavernBottomBar(
     val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
     val surface = MaterialTheme.colorScheme.surface
-    val fill = if (blur) surface.copy(alpha = 0.55f) else surface.copy(alpha = 0.94f)
+    // 轻量档必须**完全不透明**：0.94 的白底挡不住下面 1px 分隔线和黑字，透出来就是一条隐约的灰横带
+    // （用户 2026-11-22 报的"横条"，把截图放大 3 倍对比度就看到了）。玻璃档才允许透。
+    val fill = if (blur) surface.copy(alpha = 0.62f) else surface
 
     val glass = if (blur) {
         Modifier.hazeEffect(
             state = haze,
             style = HazeDefaults.style(
                 backgroundColor = Color.Transparent,
-                blurRadius = 28.dp,
+                blurRadius = 32.dp,
                 noiseFactor = 0f,
             ),
         ) {
