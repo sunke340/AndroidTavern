@@ -4,28 +4,39 @@ import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 
 import app.tavern.core.card.CharacterCard
+import app.tavern.core.lorebook.LorebookScanResult
 
 /**
  * 提示词拼装。产出必须与夹具逐字相等——夹具是原版 1.19.1 实际发给 API 的请求体。
  *
- * 当前覆盖的链路（对应矩阵 P0-5 的主干）：
+ * 当前覆盖的链路（默认预设的 `prompt_order`，见 `default/content/presets/openai/Default.json`）：
  *
  * ```
- * main → charDescription → charPersonality → scenario → dialogueExamples → newChat → 历史
+ * main → worldInfoBefore → charDescription → charPersonality → scenario
+ *      → worldInfoAfter → dialogueExamples → newChat → 历史
  * ```
+ *
+ * 世界书内容由 `:core:lorebook` 扫出来（[LorebookScanResult]），这里只负责**按位置插进去**；
+ * 扫描本身（关键字、递归、预算）不在这里做。
  *
  * 刻意不做的事：不读文件、不碰设置、不算 token —— 分别属于 data / feature / tokenizer。
- * 也还没做：世界书注入（P1）、作者注、名称前缀（names_behavior）、token 预算裁剪。
+ * 也还没做：作者注、名称前缀（names_behavior）、token 预算裁剪。
  */
 public class PromptBuilder {
     public fun build(
         character: CharacterCard,
         userName: String,
         history: List<ChatMessage> = emptyList(),
+        worldInfo: LorebookScanResult = LorebookScanResult(),
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
 
         messages += mainPrompt(character.name, userName)
+
+        // worldInfoBefore：默认顺序里紧跟在 main 后面
+        if (worldInfo.beforeChar.isNotBlank()) {
+            messages += system(worldInfo.beforeChar)
+        }
 
         if (character.description.isNotBlank()) {
             messages += system(substitute(character.description, character.name, userName))
@@ -41,6 +52,11 @@ public class PromptBuilder {
             val formatted = SillyTavernDefaults.SCENARIO_FORMAT
                 .replace("{{scenario}}", character.scenario)
             messages += system(substitute(formatted, character.name, userName))
+        }
+
+        // worldInfoAfter：默认顺序里在 scenario 之后、示例对话之前
+        if (worldInfo.afterChar.isNotBlank()) {
+            messages += system(worldInfo.afterChar)
         }
 
         val examples = ExampleDialogue.parse(character.messageExample, character.name, userName)

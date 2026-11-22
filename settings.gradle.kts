@@ -20,6 +20,7 @@ dependencyResolutionManagement {
 // 好处：本机（无 Android SDK、1.7 GiB 内存）能直接跑 :core:* 的单测。
 include(":core:model")
 include(":core:card-format")
+include(":core:lorebook")
 include(":core:prompt")
 include(":core:ai")
 include(":core:chat-format")

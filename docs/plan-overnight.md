@@ -84,3 +84,79 @@
 
 每完成一档：APK 直发 QQ（`c2c:<openid>`，见 `.secrets/personal.md`），并附这一档的验收要点。
 若某档做不完：明确说"没做到"，给出下一档能测的范围，不假装完成。
+
+---
+
+# 夜间执行计划 · 2026-11-23（世界书 + 队列）
+
+用户睡前授权（01:26）：按队列连着做，一档做完接下一档。**只做功能，不碰 UI 视觉**
+（胶囊暗部圆弧留给用户白天自己提需求，已记进 [dev/status.md](dev/status.md)）。
+
+## 起点（01:25 实测，不是估计）
+
+| 事实 | 证据 |
+|---|---|
+| 代码 `f92200d` / tag `apk-m48`，CI 全绿 | 上一轮 |
+| 原版 ST 1.19.1 **正在** `127.0.0.1:8000` 跑 | `curl /version` → `SillyTavern:1.19.1:Cohee#1207` |
+| `vendor/SillyTavern/node_modules` 已装（533 包） | `ls node_modules \| wc -l` |
+| Maven Central / Google 可达（能加新依赖） | `curl -o /dev/null -w %{http_code}` → 200 / 200 |
+| 本机可跑 core 单测 + Playwright 录夹具；**不能** assembleDebug、不能模拟器 | [environment.md](environment.md) |
+
+## 队列
+
+### A · 世界书引擎（必达，估 3–4h）
+
+| 步 | 做什么 | 验收 |
+|---|---|---|
+| A1 | 读 `vendor/SillyTavern/public/scripts/world-info.js`：`checkWorldInfo`(4709–5292)、`getSortedEntries`(4590)、`parseDecorators`(4652)、`filterGroupsByScoring`(5292)、`filterGroupsByTimedEffects`(5337)、`filterByInclusionGroups`(5388)、`convertCharacterBook`(5617)；结论写进 [original-behavior.md](dev/original-behavior.md)（带行号） | 每条结论有源码行号或夹具证据 |
+| A2 | 新模块 `:core:lorebook`：`LorebookEntry`（全字段）+ `LorebookScanner`（纯函数：entries × chat × 预算 → before/after/atDepth 三组） | `tools/check-core-purity.sh` + 单测 |
+| A3 | `PromptBuilder` 增加世界书入参；`worldInfoBefore` 插在 description 前、`worldInfoAfter` 在 examples 后（默认 `prompt_order`）；注入时做宏替换 | **`P1-1-prompt-lorebook` 逐字通过** |
+| A4 | `tools/fixture/make-test-card.py` 支持 `character_book`（可编程造条目）；用 `--seed` 造多轮；录 `P1-2-logic` / `P1-3-recursion` / `P1-4-budget` | 三个夹具逐字通过 |
+
+### B · 世界书接进 App（估 1.5h，让勾选真的有用）
+
+| 步 | 做什么 |
+|---|---|
+| B1 | data/聊天路径：卡的 `character_book` 减掉 `SettingsRepository.disabledEntries` → 传进 `PromptBuilder`（**现在勾选只存不用**） |
+| B2 | 设置→世界书：SAF 导入 ST 世界书 `.json`（`{entries:{uid:{…}}}`）→ 存 `filesDir/worldinfo/`；列表可启用/停用；条目只读 |
+| B3 | 请求预览页显示 `worldInfoBefore/After` 段（排查注入用） |
+
+验收：单测 + CI 编译 + 明早真机步骤写进 [device-verification.md](dev/device-verification.md)。
+
+### C · token 计数 P1-6（估 1h）
+
+- 加 `com.knuddels:jtokkit`；`Tokens.count(model, text)`，模型→编码映射照 `src/tokenizers`。
+- 夹具：直接打原版 `/api/tokenizers/openai/encode` 录 `text → count`，断言一致（这就是 P1-6）。
+- 接给 A4 的预算裁剪：P1-4 的"预算"用真 token 数，不用字符数糊。
+
+### D · 正则 P1-11（估 1.5h，用户点名要的）
+
+- 先补矩阵条目 + `docs/plan.md` 的 M5 范围（正则不在 P3 禁列，属 M5）。
+- 端口 `public/scripts/extensions/regex/engine.js`（465 行）：`getRegexedString`、placement（用户输入/模型输出/world info）、`affects`、`only_format_display`。
+- 接进发送路径（提示词前处理）与显示路径（渲染前处理）。
+- 夹具 `P1-11-regex`：ST 里建两条脚本（一条 user input、一条 ai output）后录。
+
+### E · 预设 P1-5（估 2h，做不完停在 core）
+
+- 导入 ST 预设 JSON：采样参数 + `main` 提示词 + `prompt_order`。
+- 新模块 `:core:preset` + 单测；`PromptBuilder` 支持自定义 `main`/顺序。
+- UI（设置→采样 变预设列表）留到白天，先不碰。
+
+### F · 有余力再做
+
+1. P0-6 的 core 部分：swipe 栈 / 重新生成 / 删除单条（JSONL 的 `swipes` 已在 `:core:chat-format`）
+2. D 批三级继承的解析器（会话 > 卡 > 全局）
+3. `docs/compat-matrix.md` / `dev/status.md` / ADR 收尾
+
+## 每档"做完"的定义
+
+1. 代码在正确模块、`tools/check-*.sh` 三个全过、`tools/test-core.sh` 全绿
+2. 兼容行为有 fixture 且单测断言它
+3. 矩阵状态列已改
+4. 小提交 + 推 CI 绿（不等 CI 就可以开始下一档，但**失败必须先修**）
+
+## 纪律
+
+- 不碰 UI 视觉；不动 `vendor/`
+- 猜不出的原版行为：写进 `dev/status.md` 的"待问"，**不猜**
+- **07:00 硬停**：main 绿 + 出 APK + 发 QQ + 写早间验收清单（没做完的档明确写"没做到"）

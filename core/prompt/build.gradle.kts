@@ -11,6 +11,7 @@ kotlin {
 
 dependencies {
     api(project(":core:card-format"))
+    api(project(":core:lorebook"))
     api(project(":core:model"))
 
     testImplementation(kotlin("test-junit5"))
