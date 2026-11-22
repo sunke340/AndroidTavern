@@ -122,6 +122,8 @@ MainScreen（Destination + AnimatedContent）
 - 页面自己不再有页头，内容用 `contentPadding(top = PageHeaderHeight + …)` 让位（空态也一样）：
   这样静止时内容在页头下面，滚动时会从玻璃胶囊底下穿过去 —— 胶囊才有东西可糊。
 - **页头不放实心按钮**（`PrimaryAction`）：截图那种胶囊里是平铺图标，用 `CapsuleIcon`。
+- **胶囊里的内容只 `fillMaxHeight`，不要 `fillMaxSize`**：`fillMaxSize` 会把胶囊撑满整行，
+  标题的 `weight(1f)` 被挤成 0 宽 —— 真机上表现就是"标题消失、只剩一个图标贴在最左"（踩过）。
 - **没有副标题**：数量、空态这类信息交给内容区；
 - 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
 - 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色）：
