@@ -134,6 +134,9 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
 
             AnimatedContent(
                 targetState = destination,
+                // 必须钉死整屏：不写这一句，AnimatedContent 会按内容量尺寸，
+                // 而它与默认开启的 SizeTransform 组合起来会把换页变成"新页面从 0 长到满屏"。
+                modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
                     // 叠放次序由深度决定：深的总在上面。
                     //
@@ -185,9 +188,17 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     }
                     // 页面切换不叠 fade（位移未走完就透明 → 露窗口底色，像闪一下）。
                     // zIndex 按深度给：返回时当前页压在上一级之上。
+                    //
+                    // using(null) = 关掉尺寸动画。这是 2026-11-22 那次的真正病根：
+                    // AnimatedContent 默认带 SizeTransform，会把容器尺寸从旧页弹簧到新页；
+                    // 两个页面在重建瞬间量出的尺寸不一样，容器就从 ~0 弹到满屏，
+                    // 里面的 fillMaxSize 内容被压在窄框里重排、超出的被 clip 掉 ——
+                    // 逐帧看起来是"空白几帧 → 屏幕中央冒出一个小点 → 长成满屏"。
+                    // 它和进出场动画无关，所以把 enter/exit 全关了（NavAnimation.None）也照样发生。
+                    // 注意 sizeTransform 的 setter 是 internal，只能用 using(null)。
                     (enter togetherWith exit).apply {
                         targetContentZIndex = depthOf(targetState).toFloat()
-                    }
+                    }.using(null)
                 },
                 label = "destination",
             ) { target ->
@@ -244,17 +255,23 @@ private fun TabsRoot(
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             AnimatedContent(
                 targetState = state.screen,
+                // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
+                modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
                     val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
                     (
-                        fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
-                            slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
-                                if (forward) w / 8 else -w / 8
-                            }
-                        ) togetherWith (
-                        fadeOut(tween(Motion.Fast)) +
-                            slideOutHorizontally(tween(Motion.Fast)) { w -> if (forward) -w / 8 else w / 8 }
-                        )
+                        (
+                            fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                                slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
+                                    if (forward) w / 8 else -w / 8
+                                }
+                            ) togetherWith (
+                            fadeOut(tween(Motion.Fast)) +
+                                slideOutHorizontally(tween(Motion.Fast)) { w ->
+                                    if (forward) -w / 8 else w / 8
+                                }
+                            )
+                        ).using(null)
                 },
                 label = "screen",
             ) { screen ->

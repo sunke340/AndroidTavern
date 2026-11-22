@@ -42,6 +42,30 @@ sealed interface Destination {
 **退场别配比位移更短的淡出**：240ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
 后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
 
+### `AnimatedContent` 必须 `fillMaxSize()` + `using(null)`（真正的病根，2026-11-22）
+
+上一轮改 zIndex / 方向 / 淡入全都没用，因为病根是**尺寸动画**：`AnimatedContent` 默认带一个
+`SizeTransform`，容器尺寸会在"旧页尺寸→新页尺寸"之间弹簧动画，且 `clip = true`。
+两个页面在重建瞬间量出来的尺寸不一样时，容器会从 ~0 弹到满屏，里面的 `fillMaxSize` 内容被压在
+窄框里重排、超出部分直接裁掉。逐帧看是：**空白几帧 → 屏幕中央冒出一个几像素的小点 → 长成满屏**。
+它跟 enter/exit 无关，所以把动画全关了（`NavAnimation.None`）照样发生（用户就是这么发现的）。
+
+```kotlin
+AnimatedContent(
+    modifier = Modifier.fillMaxSize(),   // ① 容器钉死，不许自己量尺寸
+    transitionSpec = {
+        (enter togetherWith exit)
+            .apply { targetContentZIndex = depth.toFloat() }
+            .using(null)                 // ② 关掉尺寸弹簧。注意 setter 是 internal，只能 using(null)
+    },
+)
+```
+
+判据：**页面换页时如果内容是"长出来"的，不是"滑进来"的，就是它。**
+官方依据：[AnimatedContent 文档](https://developer.android.com/reference/kotlin/androidx/compose/animation/AnimatedContent)
+（"the container will animate its size … unless `SizeTransform` is set to `null`"）、
+[issue 233644826](https://issuetracker.google.com/issues/233644826)。
+
 **列表滚动位置要提到 `MainScreen`**：换二级页时 Tabs 整棵子树被销毁重建，`remember` 在
 `TabsRoot`/页面里的 `LazyListState`/`LazyGridState` 会丢（真机表现：从二级页返回后列表回到顶部）。
 `sessionsList` / `charactersGrid` 现在在 `MainScreen` 里 `remember`，再传下去。

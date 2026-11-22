@@ -62,5 +62,5 @@
 
 - 兼容 = 文件格式往返 + 提示词逐条等价；不改写卡内容、不在发送前加工提示词。
 - DB 是运行时真相，JSONL 只做导入导出（ADR 0003：原生 SQLite，不用 Room）。
-- UI 方向「C · Dense Ink」：细线分隔、1px 描边、信息密度高；主题墨紫 `#3B2E52`（深色 `#B9A8D8`）。
+- UI 方向「C · Dense Ink」：细线分隔、1px 描边、信息密度高；主题墨紫 `#6D4BC4`（深色 `#C6B4F5`）。
 - 不引第三方 UI 库、不引 navigation-compose、不引 Coil/material-icons-extended。
