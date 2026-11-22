@@ -12,6 +12,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -355,14 +357,13 @@ private val barItems = listOf(
  *
  * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
  *
- * 玻璃怎么叠（顺序别动，踩过两次）：
- * 1. `Surface(shape, shadowElevation, border)` 负责**圆角裁剪**——它会把内容裁成胶囊；
- * 2. 模糊层必须放在 Surface **里面**：`hazeEffect` 画的是矩形，放外面就会露出一条横条（用户 2026-11-22 报）；
- * 3. 半透明底色用我们自己的 `.background(fill)` 叠在模糊层上面，HazeStyle 的 backgroundColor 给透明，
- *    否则会和 Surface 的色叠两次、看起来发灰。
- *
- * `blur` 参数名别和 `HazeEffectScope.blurEnabled` 撞：写作 `this.blurEnabled = blur`
- * （写成 `= blurEnabled` 会解析成作用域自己的属性，变成空操作，模糊永远不会生效）。
+ * 叠放顺序（改之前先读这段，已经踩了三次）：
+ * 1. **不要套 `Surface`**：它带 elevation 时会自己开一个渲染节点，Haze 按 `positionOnScreen` 算偏移，
+ *    两层坐标系一错，模糊就被画成"一条横带"（2026-11-22 用户报的横条）。
+ *    改用 `Modifier.shadow + clip + background + border` 手工拼。
+ * 2. `blur = false`（设置里的「轻量」）时**完全不加 hazeEffect**，只留半透明底。
+ * 3. `this.blurEnabled = blur` 里的参数名不能和 `HazeEffectScope.blurEnabled` 重名——
+ *    写成 `= blurEnabled` 会解析成作用域自己的属性，变成自赋值、模糊永远不生效（踩过）。
  */
 @Composable
 private fun TavernBottomBar(
@@ -375,67 +376,68 @@ private fun TavernBottomBar(
     val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
     val surface = MaterialTheme.colorScheme.surface
-    val fill = if (blur) surface.copy(alpha = 0.55f) else surface.copy(alpha = 0.96f)
+    val fill = if (blur) surface.copy(alpha = 0.55f) else surface.copy(alpha = 0.94f)
 
-    Surface(
+    val glass = if (blur) {
+        Modifier.hazeEffect(
+            state = haze,
+            style = HazeDefaults.style(
+                backgroundColor = Color.Transparent,
+                blurRadius = 28.dp,
+                noiseFactor = 0f,
+            ),
+        ) {
+            this.blurEnabled = true
+        }
+    } else {
+        Modifier
+    }
+
+    Row(
         modifier = modifier
             .padding(horizontal = Space.l, vertical = Space.s)
-            .navigationBarsPadding(),
-        shape = shape,
-        color = Color.Transparent,
-        shadowElevation = 10.dp,
-        border = BorderStroke(1.dp, palette.cardBorder),
+            .navigationBarsPadding()
+            .shadow(elevation = 10.dp, shape = shape, clip = false)
+            .clip(shape)
+            .then(glass)
+            .background(fill)
+            .border(1.dp, palette.cardBorder, shape)
+            .height(BarHeight)
+            .padding(Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .hazeEffect(
-                    state = haze,
-                    style = HazeDefaults.style(
-                        backgroundColor = Color.Transparent,
-                        blurRadius = 24.dp,
-                        noiseFactor = 0f,
-                    ),
-                ) {
-                    this.blurEnabled = blur
-                }
-                .background(fill)
-                .height(BarHeight)
-                .padding(Space.xs),
-        ) {
-            barItems.forEach { item ->
-                val selected = current == item.screen
-                val tint = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(Radius.pill))
-                        .background(
-                            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                            else Color.Transparent,
-                        )
-                        .clickable { onSelect(item.screen) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        item.icon,
-                        contentDescription = item.label,
-                        tint = tint,
-                        modifier = Modifier.size(20.dp),
+        barItems.forEach { item ->
+            val selected = current == item.screen
+            val tint = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(Radius.pill))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else Color.Transparent,
                     )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = item.label,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = tint,
-                    )
-                }
+                    .clickable { onSelect(item.screen) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    item.icon,
+                    contentDescription = item.label,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = tint,
+                )
             }
         }
     }

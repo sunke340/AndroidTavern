@@ -126,7 +126,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         /** 二级页转场风格；见 [NavAnimation]。 */
         val navAnimation: NavAnimation = NavAnimation.Slide,
         /** 视觉效果档位；见 [VisualEffects]。 */
-        val visualEffects: VisualEffects = VisualEffects.Glass,
+        val visualEffects: VisualEffects = VisualEffects.Off,
         /** 全部模型档案（只在"模型"页与发送时用）。 */
         val profiles: List<ModelProfile> = emptyList(),
         /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
@@ -196,7 +196,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     navAnimation = runCatching { NavAnimation.valueOf(saved.navAnimation) }
                         .getOrDefault(NavAnimation.Slide),
                     visualEffects = runCatching { VisualEffects.valueOf(saved.visualEffects) }
-                        .getOrDefault(VisualEffects.Glass),
+                        .getOrDefault(VisualEffects.Off),
                 )
             }
 

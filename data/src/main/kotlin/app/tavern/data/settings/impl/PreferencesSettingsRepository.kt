@@ -144,6 +144,6 @@ class PreferencesSettingsRepository(
         const val DEFAULT_THEME_PRESET = "Violet"
         const val DEFAULT_THEME_MODE = "Follow"
         const val DEFAULT_NAV_ANIMATION = "Slide"
-        const val DEFAULT_VISUAL_EFFECTS = "Glass"
+        const val DEFAULT_VISUAL_EFFECTS = "Off"
     }
 }

@@ -56,8 +56,9 @@ enum class NavAnimation(val label: String) {
 /**
  * 视觉效果档位（ADR 0004）。
  *
- * [Glass] 用 Haze 对底栏背后的内容做真模糊（Android 12+ 才有；更低版本 haze 自动退化）；
- * [Off] 关掉模糊只留半透明 —— 低端机滚动掉帧时用这个，观感差别不大但省 GPU。
+ * [Off] 默认：半透明 + 1px 描边 + 投影，**不接 Haze**，观感稳、零性能代价。
+ * [Glass] 对底栏背后的内容做真模糊（Haze，Android 12+）。2026-11-22 在 vivo sdk37 上
+ * 出现过"模糊被画成一条横带"，还在查，所以先不做默认。
  */
 enum class VisualEffects(val label: String) {
     Glass("玻璃"),
