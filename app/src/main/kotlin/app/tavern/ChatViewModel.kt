@@ -172,6 +172,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 .orEmpty()
             if (seeded) AppLog.i("profile", "用旧的单套配置种了默认档案 id=${active?.id}")
             AppLog.i("profile", "档案=${profiles.size} 当前=${active?.id ?: "无"} model=${active?.model ?: "无"}")
+            AppLog.i(
+                "ui",
+                "主题=${saved.themePreset}/${saved.themeMode} 转场=${saved.navAnimation} " +
+                    "视觉=${saved.visualEffects}",
+            )
 
             _state.update {
                 it.copy(

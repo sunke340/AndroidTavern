@@ -19,7 +19,12 @@ class TavernApp : Application() {
             header = "build=${BuildConfig.BUILD_ID} version=${BuildConfig.VERSION_NAME}" +
                 "(${BuildConfig.VERSION_CODE})",
         )
-        AppLog.i("app", "启动 build=${BuildConfig.BUILD_ID.take(7)}")
+        // sdk 很关键：背景模糊（RenderEffect）要 API 31+，低于这个版本玻璃只会退化成半透明
+        AppLog.i(
+            "app",
+            "启动 build=${BuildConfig.BUILD_ID.take(7)} sdk=${android.os.Build.VERSION.SDK_INT}" +
+                " ${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL}",
+        )
         logAnimationScale()
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()

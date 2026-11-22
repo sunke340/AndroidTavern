@@ -330,7 +330,7 @@ private fun TabsRoot(
             TavernBottomBar(
                 current = state.screen,
                 onSelect = viewModel::showScreen,
-                blurEnabled = state.visualEffects == VisualEffects.Glass,
+                blur = state.visualEffects == VisualEffects.Glass,
                 haze = haze,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -354,45 +354,55 @@ private val barItems = listOf(
  * 悬浮玻璃底栏：**胶囊 + 56dp**。
  *
  * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
- * 这里要的是"浮在内容上的胶囊"：圆角 26dp、1px 描边、投影，选中项是一个淡紫胶囊块。
  *
- * 模糊走 Haze（ADR 0004）：`hazeEffect` 把 `hazeSource` 那层（页面内容）裁到胶囊里做高斯模糊；
- * `blurEnabled = false`（设置里的「轻量」）时只留半透明底，低端机滚动更稳。
+ * 玻璃怎么叠（顺序别动，踩过两次）：
+ * 1. `Surface(shape, shadowElevation, border)` 负责**圆角裁剪**——它会把内容裁成胶囊；
+ * 2. 模糊层必须放在 Surface **里面**：`hazeEffect` 画的是矩形，放外面就会露出一条横条（用户 2026-11-22 报）；
+ * 3. 半透明底色用我们自己的 `.background(fill)` 叠在模糊层上面，HazeStyle 的 backgroundColor 给透明，
+ *    否则会和 Surface 的色叠两次、看起来发灰。
+ *
+ * `blur` 参数名别和 `HazeEffectScope.blurEnabled` 撞：写作 `this.blurEnabled = blur`
+ * （写成 `= blurEnabled` 会解析成作用域自己的属性，变成空操作，模糊永远不会生效）。
  */
 @Composable
 private fun TavernBottomBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
-    blurEnabled: Boolean,
+    blur: Boolean,
     haze: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalTavernPalette.current
     val shape = RoundedCornerShape(Radius.pill)
     val surface = MaterialTheme.colorScheme.surface
-    val fill = if (blurEnabled) surface.copy(alpha = 0.58f) else surface
+    val fill = if (blur) surface.copy(alpha = 0.55f) else surface.copy(alpha = 0.96f)
 
     Surface(
         modifier = modifier
             .padding(horizontal = Space.l, vertical = Space.s)
-            .navigationBarsPadding()
-            .clip(shape)
-            .hazeEffect(
-                state = haze,
-                style = HazeDefaults.style(
-                    backgroundColor = fill,
-                    blurRadius = 24.dp,
-                    noiseFactor = 0f,
-                ),
-            ) {
-                this.blurEnabled = blurEnabled
-            },
+            .navigationBarsPadding(),
         shape = shape,
         color = Color.Transparent,
         shadowElevation = 10.dp,
         border = BorderStroke(1.dp, palette.cardBorder),
     ) {
-        Row(modifier = Modifier.fillMaxWidth().height(BarHeight).padding(Space.xs)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .hazeEffect(
+                    state = haze,
+                    style = HazeDefaults.style(
+                        backgroundColor = Color.Transparent,
+                        blurRadius = 24.dp,
+                        noiseFactor = 0f,
+                    ),
+                ) {
+                    this.blurEnabled = blur
+                }
+                .background(fill)
+                .height(BarHeight)
+                .padding(Space.xs),
+        ) {
             barItems.forEach { item ->
                 val selected = current == item.screen
                 val tint = if (selected) {
