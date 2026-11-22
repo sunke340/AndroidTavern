@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AndroidTavern UI 方向样张</title>
+<style>
+  :root { --font: system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC", "PingFang SC", sans-serif; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #EDEBE7; font-family: var(--font); padding: 28px; }
+  h1 { font-size: 20px; margin-bottom: 6px; color:#222; }
+  .note { font-size: 13px; color:#666; margin-bottom: 22px; }
+  .direction { margin-bottom: 36px; }
+  .direction > h2 { font-size: 16px; color:#222; margin-bottom: 4px; }
+  .direction > p { font-size: 12px; color:#666; margin-bottom: 12px; }
+  .row { display: flex; gap: 20px; align-items: flex-start; }
+  .phone { width: 360px; height: 760px; border-radius: 28px; overflow: hidden;
+           box-shadow: 0 10px 30px rgba(0,0,0,.14); position: relative; display:flex; flex-direction:column; }
+  .status { height: 28px; display:flex; align-items:center; justify-content:space-between;
+            padding: 0 18px; font-size: 12px; font-weight: 600; }
+  .caption { text-align:center; font-size:12px; color:#666; margin-top:8px; }
+
+  /* ---------- A: Quiet Paper ---------- */
+  .a { background:#FBFBF9; color:#1C1C1A; }
+  .a .status { color:#1C1C1A; }
+  .a .hdr { padding: 6px 20px 12px; display:flex; align-items:flex-end; justify-content:space-between; }
+  .a .hdr h3 { font-size: 30px; font-weight: 700; letter-spacing:-.5px; }
+  .a .hdr .act { font-size: 13px; color:#2F5D50; font-weight:600; border:1px solid #C9D6D1; padding:6px 12px; border-radius:999px; }
+  .a .rule { height:1px; background:#E5E3DD; }
+  .a .list { padding: 4px 0; }
+  .a .item { display:flex; gap:12px; align-items:center; padding: 12px 20px; }
+  .a .av { width:44px;height:44px;border-radius:50%; background:linear-gradient(140deg,#F4B6C2,#8E6BA8); flex:none; }
+  .a .item .t1 { font-size:15px; font-weight:600; }
+  .a .item .t2 { font-size:13px; color:#6B6B66; margin-top:2px; }
+  .a .item .right { margin-left:auto; text-align:right; }
+  .a .item .time { font-size:11px; color:#9A9A94; }
+  .a .count { display:inline-block; margin-top:6px; font-size:11px; color:#2F5D50; }
+  .a .nav { margin-top:auto; height:64px; border-top:1px solid #E5E3DD; display:flex; }
+  .a .nav div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:11px; color:#8C8C86; }
+  .a .nav div.on { color:#2F5D50; font-weight:700; }
+  .a .nav .ic { font-size:16px; }
+
+  .a .chat { display:flex; flex-direction:column; height:100%; }
+  .a .chat .bar { padding: 8px 16px 10px; display:flex; align-items:center; gap:10px; }
+  .a .chat .bar .back { font-size:18px; }
+  .a .chat .bar .nm { font-size:17px; font-weight:700; }
+  .a .chat .bar .st { font-size:11px; color:#8C8C86; }
+  .a .msgs { flex:1; padding: 8px 16px 0; display:flex; flex-direction:column; gap:14px; }
+  .a .msg .who { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9A9A94; margin-bottom:4px; }
+  .a .msg p { font-size:14px; line-height:1.6; color:#2A2A27; }
+  .a .msg.me { align-self:flex-end; max-width:78%; background:#EFF3F0; border-left:3px solid #2F5D50; padding:10px 12px; border-radius:4px 12px 12px 4px; }
+  .a .msg.me .who { color:#5C8A7C; }
+  .a .inp { margin:12px 16px 20px; border:1px solid #DCD9D2; border-radius:14px; padding:12px 14px; color:#8C8C86; font-size:14px; display:flex; justify-content:space-between; }
+  .a .inp b { color:#2F5D50; }
+
+  /* ---------- B: Soft Cards ---------- */
+  .b { background:#F6F4F1; color:#1B1B1F; }
+  .b .hdr { padding: 4px 16px 12px; display:flex; align-items:center; justify-content:space-between; }
+  .b .hdr h3 { font-size: 26px; font-weight: 800; letter-spacing:-.6px; }
+  .b .hdr .act { font-size:13px; font-weight:700; color:#fff; background:#6C5CE7; padding:9px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(108,92,231,.32); }
+  .b .list { padding: 0 16px; display:flex; flex-direction:column; gap:10px; }
+  .b .item { display:flex; gap:12px; align-items:center; background:#fff; border-radius:20px; padding:12px 14px; box-shadow:0 2px 10px rgba(20,18,30,.06); }
+  .b .av { width:46px;height:46px;border-radius:16px; background:linear-gradient(140deg,#F4B6C2,#8E6BA8); flex:none; }
+  .b .item .t1 { font-size:15px; font-weight:700; }
+  .b .item .t2 { font-size:12.5px; color:#77747F; margin-top:2px; }
+  .b .item .time { margin-left:auto; font-size:11px; color:#A5A2AD; }
+  .b .nav { margin-top:auto; height:68px; background:rgba(255,255,255,.9); backdrop-filter: blur(8px); display:flex; border-top:1px solid #E8E4EE; }
+  .b .nav div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-size:11px; color:#8B8896; }
+  .b .nav div.on { color:#6C5CE7; font-weight:700; }
+  .b .nav .pill { width:44px;height:26px;border-radius:13px; background:#EDE9FE; display:flex;align-items:center;justify-content:center; font-size:14px; }
+
+  .b .chat { display:flex; flex-direction:column; height:100%; background:#F6F4F1; }
+  .b .chat .bar { padding: 6px 14px 10px; display:flex; align-items:center; gap:10px; }
+  .b .chat .bar .back { width:34px;height:34px;border-radius:12px;background:#fff; display:flex;align-items:center;justify-content:center; box-shadow:0 2px 8px rgba(20,18,30,.07); }
+  .b .chat .bar .nm { font-size:16px; font-weight:800; }
+  .b .chat .bar .st { font-size:11px; color:#8B8896; }
+  .b .msgs { flex:1; padding: 4px 14px 0; display:flex; flex-direction:column; gap:10px; }
+  .b .msg { max-width:82%; }
+  .b .msg .bub { background:#fff; border-radius:20px 20px 20px 6px; padding:11px 14px; font-size:14px; line-height:1.55; box-shadow:0 2px 10px rgba(20,18,30,.05); }
+  .b .msg.me { align-self:flex-end; }
+  .b .msg.me .bub { background:#6C5CE7; color:#fff; border-radius:20px 20px 6px 20px; box-shadow:0 4px 14px rgba(108,92,231,.28); }
+  .b .typing { display:inline-flex; gap:4px; padding: 10px 14px; background:#fff; border-radius:20px; width:52px; box-shadow:0 2px 10px rgba(20,18,30,.05); }
+  .b .typing i { width:6px;height:6px;border-radius:50%;background:#B9B5C6; display:block; }
+  .b .inp { margin:12px 14px 20px; background:#fff; border-radius:22px; padding:12px 8px 12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 4px 16px rgba(20,18,30,.08); }
+  .b .inp span { color:#9A96A6; font-size:14px; }
+  .b .inp b { width:34px;height:34px;border-radius:50%;background:#6C5CE7;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px; }
+
+  /* ---------- C: Dense Ink ---------- */
+  .c { background:#0F1115; color:#EDEFF3; }
+  .c .status { color:#EDEFF3; }
+  .c .hdr { padding: 2px 18px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #1D2128; }
+  .c .hdr h3 { font-size: 21px; font-weight: 700; }
+  .c .hdr .act { font-size:12.5px; font-weight:700; color:#0F1115; background:#7BD88F; padding:7px 13px; border-radius:10px; }
+  .c .item { display:flex; gap:11px; align-items:center; padding: 11px 18px; border-bottom:1px solid #191D24; }
+  .c .av { width:40px;height:40px;border-radius:12px; background:linear-gradient(140deg,#8E6BA8,#3E2F52); flex:none; }
+  .c .item .t1 { font-size:14.5px; font-weight:650; }
+  .c .item .t2 { font-size:12.5px; color:#8E96A3; margin-top:1px; }
+  .c .item .right { margin-left:auto; text-align:right; }
+  .c .item .time { font-size:11px; color:#6E7684; }
+  .c .item .count { display:inline-block; margin-top:4px; background:#232A34; color:#9AE3AA; font-size:11px; padding:1px 7px; border-radius:999px; }
+  .c .nav { margin-top:auto; height:60px; border-top:1px solid #1D2128; display:flex; background:#111419; }
+  .c .nav div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:10.5px; color:#6E7684; }
+  .c .nav div.on { color:#7BD88F; }
+  .c .nav .ic { font-size:15px; }
+
+  .c .chat { display:flex; flex-direction:column; height:100%; background:#0F1115; }
+  .c .chat .bar { padding: 6px 14px 10px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #1D2128; }
+  .c .chat .bar .nm { font-size:15px; font-weight:700; }
+  .c .chat .bar .st { font-size:10.5px; color:#6E7684; }
+  .c .chat .bar .more { margin-left:auto; color:#8E96A3; }
+  .c .msgs { flex:1; padding: 12px 14px 0; display:flex; flex-direction:column; gap:9px; }
+  .c .msg { max-width:84%; }
+  .c .msg .bub { background:#1A1F27; border:1px solid #232A34; border-radius:14px 14px 14px 5px; padding:10px 12px; font-size:13.5px; line-height:1.55; color:#DEE3EA; }
+  .c .msg.me { align-self:flex-end; }
+  .c .msg.me .bub { background:#15281C; border-color:#22402D; color:#D6F5DE; border-radius:14px 14px 5px 14px; }
+  .c .msg .meta { font-size:10px; color:#5F6775; margin-top:3px; }
+  .c .inp { margin:10px 14px 18px; background:#171B21; border:1px solid #232A34; border-radius:12px; padding:11px 12px; display:flex; justify-content:space-between; color:#6E7684; font-size:13.5px; }
+  .c .inp b { color:#0F1115; background:#7BD88F; border-radius:8px; padding:5px 10px; font-size:12.5px; }
+</style>
+</head>
+<body>
+<section class="direction" id="dirC">
+  <h2>C · Dense Ink（墨密）</h2>
+  <p>深色优先、高信息密度、行分隔线替卡片；适合长时间聊天。浅色版可同构（只是换色板）。</p>
+  <div class="row">
+    <div class="phone c">
+      <div class="status"><span>14:20</span><span>5G · 84%</span></div>
+      <div class="hdr"><h3>会话</h3><div class="act">＋ 新建</div></div>
+      <div class="item"><div class="av"></div><div><div class="t1">Seraphina</div><div class="t2">我在森林边缘等你，别走太远。</div></div><div class="right"><div class="time">14:12</div><div class="count">12</div></div></div>
+      <div class="item"><div class="av" style="background:linear-gradient(140deg,#9FD8CB,#3F7F74)"></div><div><div class="t1">Librarian</div><div class="t2">那本书在第三层，靠窗。</div></div><div class="right"><div class="time">昨天</div><div class="count">4</div></div></div>
+      <div class="item"><div class="av" style="background:linear-gradient(140deg,#E4C08A,#9B6B3E)"></div><div><div class="t1">Synthetic</div><div class="t2">测试卡：只用来验证链路。</div></div><div class="right"><div class="time">11-20</div><div class="count">2</div></div></div>
+      <div class="nav"><div class="on"><span class="ic">◫</span>会话</div><div><span class="ic">☖</span>角色</div><div><span class="ic">⚙</span>设置</div></div>
+      <div class="caption">会话列表</div>
+    </div>
+    <div class="phone c">
+      <div class="status"><span>14:20</span><span>5G · 84%</span></div>
+      <div class="chat">
+        <div class="bar"><div class="nm">Seraphina</div><div class="st">12 条</div><div class="more">⋮</div></div>
+        <div class="msgs">
+          <div class="msg"><div class="bub">*You wake with a start…* “Ah, you're awake at last. I was so worried.”</div><div class="meta">14:02</div></div>
+          <div class="msg me"><div class="bub">你是谁？这里是什么地方？</div><div class="meta" style="text-align:right">14:03</div></div>
+          <div class="msg"><div class="bub">“The name's Seraphina, guardian of this forest — I've healed your wounds as best I could with my magic.”</div><div class="meta">14:03</div></div>
+        </div>
+        <div class="inp"><span>说点什么</span><b>发送</b></div>
+      </div>
+      <div class="caption">聊天页</div>
+    </div>
+  </div>
+</section>
+</body>
+</html>
