@@ -399,7 +399,10 @@ private fun TavernBottomBar(
         modifier = modifier
             .padding(horizontal = Space.l, vertical = Space.s)
             .navigationBarsPadding()
-            .shadow(elevation = 10.dp, shape = shape, clip = false)
+            // 阴影只能是**不透明**底色下的阴影：Android 把 elevation 阴影画在内容后面，
+            // 填充一旦半透明就会透出一道亮度台阶（用户 2026-11-22 报的"白条"，逐像素量到 4 级台阶）。
+            // 玻璃档要半透明，所以它不用 elevation 阴影，只靠 1px 描边 + 模糊本身的边缘。
+            .then(if (blur) Modifier else Modifier.shadow(elevation = 10.dp, shape = shape, clip = false))
             .clip(shape)
             .then(glass)
             .background(fill)
