@@ -140,7 +140,8 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 
     Box(modifier = Modifier.padding(top = Space.m)) {
-        SecondaryAction("＋ 新建档案") { viewModel.openProfileEditor(null) }
+        // 注意 SecondaryAction 的最后一个参数是 enabled，尾随 lambda 会落到它上面 —— 必须具名
+        SecondaryAction(text = "＋ 新建档案", onClick = { viewModel.openProfileEditor(null) })
     }
 }
 
