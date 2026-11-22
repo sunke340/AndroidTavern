@@ -1,0 +1,406 @@
+{
+    "entries": {
+        "0": {
+            "key": [
+                "alpha"
+            ],
+            "keysecondary": [
+                "beta"
+            ],
+            "comment": "e0",
+            "content": "MARK-ANDANY",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": null,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "uid": 0,
+            "displayIndex": 0,
+            "extensions": {
+                "position": 0,
+                "display_index": 0,
+                "probability": 100,
+                "useProbability": true,
+                "depth": 4,
+                "selectiveLogic": 0
+            }
+        },
+        "1": {
+            "key": [
+                "alpha"
+            ],
+            "keysecondary": [
+                "zeta"
+            ],
+            "comment": "e1",
+            "content": "MARK-NOTALL",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 1,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": null,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "uid": 1,
+            "displayIndex": 1,
+            "extensions": {
+                "position": 0,
+                "display_index": 1,
+                "probability": 100,
+                "useProbability": true,
+                "depth": 4,
+                "selectiveLogic": 1
+            }
+        },
+        "2": {
+            "key": [
+                "alpha"
+            ],
+            "keysecondary": [
+                "beta"
+            ],
+            "comment": "e2",
+            "content": "MARK-NOTANY-BLOCKED",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 2,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": null,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "uid": 2,
+            "displayIndex": 2,
+            "extensions": {
+                "position": 0,
+                "display_index": 2,
+                "probability": 100,
+                "useProbability": true,
+                "depth": 4,
+                "selectiveLogic": 2
+            }
+        },
+        "3": {
+            "key": [
+                "alpha"
+            ],
+            "keysecondary": [
+                "beta",
+                "delta"
+            ],
+            "comment": "e3",
+            "content": "MARK-ANDALL",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 3,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": null,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "uid": 3,
+            "displayIndex": 3,
+            "extensions": {
+                "position": 0,
+                "display_index": 3,
+                "probability": 100,
+                "useProbability": true,
+                "depth": 4,
+                "selectiveLogic": 3
+            }
+        },
+        "4": {
+            "key": [
+                "alpha"
+            ],
+            "keysecondary": [
+                "zeta"
+            ],
+            "comment": "e4",
+            "content": "MARK-NOTANY",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 2,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": null,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "uid": 4,
+            "displayIndex": 4,
+            "extensions": {
+                "position": 0,
+                "display_index": 4,
+                "probability": 100,
+                "useProbability": true,
+                "depth": 4,
+                "selectiveLogic": 2
+            }
+        }
+    },
+    "originalData": {
+        "name": "WILogic",
+        "entries": [
+            {
+                "id": 0,
+                "keys": [
+                    "alpha"
+                ],
+                "secondary_keys": [
+                    "beta"
+                ],
+                "content": "MARK-ANDANY",
+                "enabled": true,
+                "insertion_order": 100,
+                "position": "before_char",
+                "selective": true,
+                "constant": false,
+                "comment": "e0",
+                "extensions": {
+                    "position": 0,
+                    "display_index": 0,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 0
+                }
+            },
+            {
+                "id": 1,
+                "keys": [
+                    "alpha"
+                ],
+                "secondary_keys": [
+                    "zeta"
+                ],
+                "content": "MARK-NOTALL",
+                "enabled": true,
+                "insertion_order": 100,
+                "position": "before_char",
+                "selective": true,
+                "constant": false,
+                "comment": "e1",
+                "extensions": {
+                    "position": 0,
+                    "display_index": 1,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 1
+                }
+            },
+            {
+                "id": 2,
+                "keys": [
+                    "alpha"
+                ],
+                "secondary_keys": [
+                    "beta"
+                ],
+                "content": "MARK-NOTANY-BLOCKED",
+                "enabled": true,
+                "insertion_order": 100,
+                "position": "before_char",
+                "selective": true,
+                "constant": false,
+                "comment": "e2",
+                "extensions": {
+                    "position": 0,
+                    "display_index": 2,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 2
+                }
+            },
+            {
+                "id": 3,
+                "keys": [
+                    "alpha"
+                ],
+                "secondary_keys": [
+                    "beta",
+                    "delta"
+                ],
+                "content": "MARK-ANDALL",
+                "enabled": true,
+                "insertion_order": 100,
+                "position": "before_char",
+                "selective": true,
+                "constant": false,
+                "comment": "e3",
+                "extensions": {
+                    "position": 0,
+                    "display_index": 3,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 3
+                }
+            },
+            {
+                "id": 4,
+                "keys": [
+                    "alpha"
+                ],
+                "secondary_keys": [
+                    "zeta"
+                ],
+                "content": "MARK-NOTANY",
+                "enabled": true,
+                "insertion_order": 100,
+                "position": "before_char",
+                "selective": true,
+                "constant": false,
+                "comment": "e4",
+                "extensions": {
+                    "position": 0,
+                    "display_index": 4,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 2
+                }
+            }
+        ]
+    }
+}

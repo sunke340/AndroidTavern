@@ -22,7 +22,8 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +
         if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
-    val worldBookSummary = if (bookCards == 0) "没有卡带内嵌世界书" else "$bookCards 张卡带内嵌世界书"
+    val enabledBooks = state.worldBooks.count { it.enabled }
+    val worldBookSummary = "全局 ${state.worldBooks.size} 本（启用 $enabledBooks）· $bookCards 张卡带内嵌书"
 
     Column(
         modifier = Modifier

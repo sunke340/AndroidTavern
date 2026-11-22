@@ -2,6 +2,7 @@ package app.tavern
 
 import android.app.Application
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.tavern.core.ai.ChatRequest
@@ -15,6 +16,7 @@ import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.core.model.ModelProfile
 import app.tavern.core.model.ModelProfiles
+import app.tavern.core.lorebook.LorebookEntry
 import app.tavern.core.lorebook.LorebookGlobalScanData
 import app.tavern.core.lorebook.LorebookScanResult
 import app.tavern.core.lorebook.LorebookScanner
@@ -28,6 +30,7 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
 import app.tavern.data.profiles.ProfileRepository
+import app.tavern.data.worldinfo.WorldBookRef
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -128,6 +131,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val cardMessageStyle: MessageStyle? = null,
         /** 当前这张卡里被关掉的内嵌世界书条目（按 `character_book.entries` 下标）。 */
         val bookDisabled: Set<Int> = emptySet(),
+        /** 已导入的全局世界书。 */
+        val worldBooks: List<WorldBookRef> = emptyList(),
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -155,6 +160,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val profileRepository: ProfileRepository = AppGraph.profiles(application)
     private val chatRepository = AppGraph.chats(application)
     private val settingsRepository = AppGraph.settings(application)
+    private val worldBookRepository = AppGraph.worldBooks(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -165,6 +171,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var keySaveJob: Job? = null
 
     init {
+        refreshWorldBooks()
         viewModelScope.launch {
             // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
@@ -836,6 +843,81 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     private val worldInfoStates = HashMap<String, LorebookScanState>()
 
+    /** 全局世界书名字 → 解析好的条目。send() 在主线程，读文件与解析必须提前在 IO 里做好。 */
+    private val globalBookEntries = HashMap<String, List<LorebookEntry>>()
+
+    /** 重新读全局世界书列表，顺便把启用中的那些书解析进缓存。 */
+    fun refreshWorldBooks() {
+        viewModelScope.launch {
+            val books = withContext(Dispatchers.IO) { worldBookRepository.list() }
+            val entries = withContext(Dispatchers.IO) {
+                books.filter { it.enabled }.mapNotNull { ref ->
+                    worldBookRepository.load(ref.name)?.let { book -> ref.name to book.entries }
+                }.toMap()
+            }
+            globalBookEntries.clear()
+            globalBookEntries.putAll(entries)
+            _state.update { it.copy(worldBooks = books) }
+            AppLog.i("worldinfo", "全局书 ${books.size} 本，启用 ${entries.size} 本")
+        }
+    }
+
+    /** 导入一本全局世界书（SAF 选来的 `.json`）。导入后默认停用。 */
+    fun importWorldBook(uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val name = displayNameOf(uri)
+                    val json = getApplication<Application>().contentResolver
+                        .openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        ?: error("读不到文件")
+                    worldBookRepository.import(name, json)
+                }
+            }
+            result.onSuccess { ref ->
+                AppLog.i("worldinfo", "导入世界书 ${ref.name}（${ref.entryCount} 条）")
+                _state.update {
+                    it.copy(notice = Notice(System.nanoTime(), "已导入「${ref.name}」（${ref.entryCount} 条），默认停用"))
+                }
+                refreshWorldBooks()
+            }.onFailure { error ->
+                AppLog.w("worldinfo", "导入世界书失败：${error.message}")
+                _state.update { it.copy(notice = Notice(System.nanoTime(), "导入失败：${error.message}")) }
+            }
+        }
+    }
+
+    fun setWorldBookEnabled(name: String, enabled: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { worldBookRepository.setEnabled(name, enabled) }
+            refreshWorldBooks()
+        }
+    }
+
+    fun deleteWorldBook(name: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { worldBookRepository.delete(name) }
+            AppLog.i("worldinfo", "删除世界书 $name")
+            refreshWorldBooks()
+        }
+    }
+
+    private fun displayNameOf(uri: Uri): String {
+        runCatching {
+            val projection = arrayOf(OpenableColumns.DISPLAY_NAME)
+            getApplication<Application>().contentResolver.query(uri, projection, null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0) cursor.getString(index)?.let { return it }
+                    }
+                }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "worldinfo.json"
+    }
+
     /**
      * 扫一遍世界书。数据来源目前只有**卡内嵌书**（减去被关掉的条目）；
      * 全局世界书（设置里导入的）还没接。
@@ -849,7 +931,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         history: List<ChatMessage>,
     ): LorebookScanResult {
         val sessionKey = snapshot.sessionId ?: return LorebookScanResult()
-        val entries = card.lorebookEntries().filterIndexed { index, _ -> index !in snapshot.bookDisabled }
+        val cardEntries = card.lorebookEntries().filterIndexed { index, _ -> index !in snapshot.bookDisabled }
+        // 全局书排在内嵌书之后（原版 character_first 策略：卡的书先，全局书后）
+        val globalEntries = snapshot.worldBooks
+            .filter { it.enabled }
+            .flatMap { globalBookEntries[it.name].orEmpty() }
+        val entries = cardEntries + globalEntries
         if (entries.isEmpty()) {
             worldInfoStates.remove(sessionKey)
             return LorebookScanResult()

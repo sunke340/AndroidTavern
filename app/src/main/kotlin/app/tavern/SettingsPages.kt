@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,7 +22,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,10 +33,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -272,8 +279,91 @@ private fun ThemeSwatch(preset: ThemePreset, selected: Boolean, onClick: () -> U
  */
 @Composable
 private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    SectionLabel("全局世界书")
-    EmptyHint("还没有全局世界书。")
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importWorldBook(uri)
+    }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
+
+    SectionLabel("全局世界书（${state.worldBooks.size} 本）")
+    if (state.worldBooks.isEmpty()) {
+        EmptyHint("还没有全局世界书。导入 PC 版的世界书 .json，打开开关后它对所有会话生效。")
+    } else {
+        state.worldBooks.forEach { book ->
+            WorldBookRow(
+                name = book.name,
+                summary = "${book.entryCount} 条 · ${if (book.enabled) "已启用" else "未启用"}",
+                enabled = book.enabled,
+                onToggle = { viewModel.setWorldBookEnabled(book.name, it) },
+                onDelete = { pendingDelete = book.name },
+            )
+        }
+    }
+
+    Spacer(Modifier.height(Space.m))
+    OutlinedButton(
+        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("导入世界书（.json）")
+    }
+    Text(
+        "导入后默认停用。启用后会与卡内嵌书一起参与关键字激活；条目本身开没开看书里的设置。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    pendingDelete?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除世界书？") },
+            text = { Text("「$name」会从这台设备删掉，之后可以重新导入。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteWorldBook(name)
+                        pendingDelete = null
+                    },
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+/** 一本全局书：名字 + 条目数 + 启用开关 + 删除。 */
+@Composable
+private fun WorldBookRow(
+    name: String,
+    summary: String,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                summary,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = onToggle)
+        IconButton(onClick = onDelete) {
+            Icon(
+                Icons.Filled.Delete,
+                contentDescription = "删除世界书 $name",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 // ---- 关于 -----------------------------------------------------------------
