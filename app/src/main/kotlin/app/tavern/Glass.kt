@@ -114,8 +114,12 @@ private fun Modifier.expandForBlur(pad: Int): Modifier = layout { measurable, co
  */
 @Composable
 fun GlassSurface(
-    frost: GraphicsLayer,
-    contentOrigin: () -> Offset,
+    /**
+     * 磨砂素材（内容小层）。传 null 表示**不采背景**，只画半透面 + 高光边 + 投影 ——
+     * 给"自己也在录制范围里"的元素用（比如聊天输入框）：采样自己的图层会变成自反馈。
+     */
+    frost: GraphicsLayer?,
+    contentOrigin: () -> Offset = { Offset.Zero },
     glass: Boolean,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -148,7 +152,7 @@ fun GlassSurface(
 
         // 本体：先裁形状，磨砂与底色都画在里面
         Box(Modifier.matchParentSize().clip(shape)) {
-            if (glass) {
+            if (glass && frost != null) {
                 Box(Modifier.matchParentSize().expandForBlur(pad)) {
                     Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
                         val origin = nodeOrigin - contentOrigin()

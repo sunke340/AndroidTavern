@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -46,11 +47,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 
-/** 二级/三级页的页头高度（不含状态栏）。 */
-val DetailHeaderHeight: Dp = 68.dp
+/** 二级/三级页的页头高度（不含状态栏）。比一级页的 72dp 矮一档。 */
+val DetailHeaderHeight: Dp = 56.dp
 
 /** 页头圆形返回钮的直径。 */
-val DetailBackSize: Dp = 44.dp
+val DetailBackSize: Dp = 40.dp
+
+/** 页头玻璃胶囊的高度（比一级页的 44dp 矮一档）。 */
+val DetailActionHeight: Dp = 40.dp
 
 /**
  * 二级/三级页骨架：**内容录图层 + 玻璃页头浮层**。
@@ -152,13 +156,13 @@ private fun DetailHeader(
             Modifier
                 .matchParentSize()
                 .drawBehind {
+                    // 标题区域必须是实底，否则内容滚到页头下面时两层文字会叠在一起
                     drawRect(
                         brush = Brush.verticalGradient(
-                            listOf(
-                                background,
-                                background.copy(alpha = 0.92f),
-                                background.copy(alpha = 0f),
-                            ),
+                            0.00f to background,
+                            0.55f to background,
+                            0.82f to background.copy(alpha = 0.86f),
+                            1.00f to Color.Transparent,
                         ),
                     )
                 },
@@ -181,7 +185,7 @@ private fun DetailHeader(
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -191,7 +195,7 @@ private fun DetailHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     maxLines = 1,
                 )
                 if (subtitle != null) {
@@ -210,7 +214,7 @@ private fun DetailHeader(
                     contentOrigin = contentOrigin,
                     glass = glass,
                     shape = RoundedCornerShape(Radius.pill),
-                    modifier = Modifier.height(HeaderActionHeight),
+                    modifier = Modifier.height(DetailActionHeight),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxHeight().padding(horizontal = Space.xs),

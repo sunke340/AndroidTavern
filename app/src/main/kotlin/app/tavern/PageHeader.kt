@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 
@@ -44,13 +45,13 @@ fun PageHeader(
             Modifier
                 .matchParentSize()
                 .drawBehind {
+                    // 标题区域必须是实底，否则内容滚到页头下面时两层文字会叠在一起
                     drawRect(
                         brush = Brush.verticalGradient(
-                            listOf(
-                                background,
-                                background.copy(alpha = 0.94f),
-                                background.copy(alpha = 0f),
-                            ),
+                            0.00f to background,
+                            0.55f to background,
+                            0.82f to background.copy(alpha = 0.86f),
+                            1.00f to Color.Transparent,
                         ),
                     )
                 },

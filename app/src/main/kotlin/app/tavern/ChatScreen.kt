@@ -14,6 +14,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -51,10 +54,8 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -81,12 +82,13 @@ import app.tavern.core.model.ChatRole
 @Composable
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
+    val glassOn = state.visualEffects == VisualEffects.Glass
 
     GlassDetailScaffold(
         title = state.cardName.ifBlank { "聊天" },
         subtitle = state.status,
         onBack = viewModel::closeChat,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = glassOn,
         // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
         contentTopInset = 0.dp,
         actions = {
@@ -160,31 +162,38 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Space.s),
             ) {
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(Radius.button),
-                    border = BorderStroke(1.dp, palette.cardBorder),
+                // 输入框也做成玻璃胶囊。注意它自己在录制范围里，所以 frost 传 null：
+                // 采样自己的图层会变成自反馈（越糊越白）。这里背后只有页面底色，不采也没损失。
+                GlassSurface(
+                    frost = null,
+                    glass = glassOn,
+                    shape = RoundedCornerShape(Radius.pill),
+                    modifier = Modifier.weight(1f).height(44.dp),
                 ) {
-                    BasicTextField(
-                        value = state.input,
-                        onValueChange = viewModel::onInputChange,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.padding(horizontal = Space.m, vertical = 11.dp),
-                        decorationBox = { inner ->
-                            if (state.input.isEmpty()) {
-                                Text(
-                                    "说点什么",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            inner()
-                        },
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        BasicTextField(
+                            value = state.input,
+                            onValueChange = viewModel::onInputChange,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
+                            decorationBox = { inner ->
+                                if (state.input.isEmpty()) {
+                                    Text(
+                                        "说点什么",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    }
                 }
 
                 // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
@@ -197,34 +206,44 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     label = "send-stop",
                 ) { streaming ->
                     if (streaming) {
-                        FilledIconButton(
-                            onClick = viewModel::stop,
+                        GlassSurface(
+                            frost = null,
+                            glass = glassOn,
+                            shape = CircleShape,
                             modifier = Modifier.size(44.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
                         ) {
-                            // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
                             Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                        RoundedCornerShape(2.dp),
-                                    ),
-                            )
+                                modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::stop),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                            RoundedCornerShape(2.dp),
+                                        ),
+                                )
+                            }
                         }
                     } else {
-                        FilledIconButton(
-                            onClick = viewModel::send,
+                        GlassSurface(
+                            frost = null,
+                            glass = glassOn,
+                            shape = CircleShape,
                             modifier = Modifier.size(44.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
+                            Box(
+                                modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::send),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "发送",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                 }
