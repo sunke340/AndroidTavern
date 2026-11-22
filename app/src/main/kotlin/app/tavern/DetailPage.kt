@@ -6,13 +6,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -79,6 +85,11 @@ fun GlassDetailScaffold(
     actions: (@Composable () -> Unit)? = null,
     snackbarHost: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    /**
+     * 底部浮层（聊天输入区）。它画在**录制之外**，所以能拿 [GlassBackdrop] 做真玻璃：
+     * 磨砂采样的是页面内容，消息能从胶囊后面滚过去。
+     */
+    bottomOverlay: (@Composable BoxScope.(GlassBackdrop) -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val background = MaterialTheme.colorScheme.background
@@ -122,6 +133,20 @@ fun GlassDetailScaffold(
                 )
             }
 
+            if (bottomOverlay != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(
+                            WindowInsets.systemBars
+                                .only(WindowInsetsSides.Bottom)
+                                .union(WindowInsets.ime),
+                        ),
+                ) {
+                    bottomOverlay(GlassBackdrop(frost, { origin.value }))
+                }
+            }
+
             DetailHeader(
                 title = title,
                 subtitle = subtitle,
@@ -150,7 +175,7 @@ private fun DetailHeader(
 ) {
     val background = MaterialTheme.colorScheme.background
 
-    Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight)) {
+    Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight + HeaderFadeTail)) {
         // 内容从下面滚过去时淡出，标题不会和内容叠在一起
         Box(
             Modifier
@@ -168,7 +193,8 @@ private fun DetailHeader(
                 },
         )
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = Space.l),
+            // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
+            modifier = Modifier.fillMaxWidth().height(DetailHeaderHeight).padding(horizontal = Space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             GlassSurface(

@@ -59,6 +59,12 @@ val PageHeaderHeight: Dp = 72.dp
 val HeaderActionHeight: Dp = 44.dp
 
 /**
+ * 页头遮挡范围比页头本身再往下多出的高度。
+ * 渐变必须在**这一段的末尾**才收到透明，否则内容贴着页头底边"一刀切"地出现（2026-11-23 用户要求）。
+ */
+val HeaderFadeTail: Dp = 28.dp
+
+/**
  * 页头胶囊里的图标动作：无底色、只靠图标与主色，跟截图里那种玻璃胶囊一致。
  *
  * 图标只能从 `material-icons-core` 取（见 app/AGENTS.md），拿不准的就用文字。

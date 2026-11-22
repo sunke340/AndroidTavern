@@ -100,6 +100,12 @@ private fun Modifier.expandForBlur(pad: Int): Modifier = layout { measurable, co
     layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(-pad, -pad) }
 }
 
+/** 玻璃浮层要的两样东西：磨砂素材 + 内容原点。浮层（页头/底栏/输入区）用它反过来采样"背后的内容"。 */
+class GlassBackdrop(
+    val frost: GraphicsLayer,
+    val contentOrigin: () -> Offset,
+)
+
 /**
  * 玻璃面：软投影 + 磨砂底 + 半透明面 + 渐变描边，内容放最后。
  *
@@ -210,11 +216,15 @@ fun GlassSurface(
                                 style = Stroke(width.toPx()),
                             )
                         }
-                        // 两个半圆形的暗部：只覆盖左右圆头，直线边不加深
+                        // 暗部只覆盖左右圆头，而且是**渐变**的：最外侧最浓，靠近上下切点化没。
+                        // 用纯色弧会留下两个硬切口，读起来像"括号"（踩过）。
                         val cap = size.height
                         val capStroke = Stroke(RimCapWidth.toPx())
                         drawArc(
-                            color = accent.copy(alpha = RimCapAlpha),
+                            brush = Brush.horizontalGradient(
+                                0.00f to accent.copy(alpha = RimCapAlpha),
+                                0.75f to Color.Transparent,
+                            ),
                             startAngle = 90f,
                             sweepAngle = 180f,
                             useCenter = false,
@@ -223,7 +233,10 @@ fun GlassSurface(
                             style = capStroke,
                         )
                         drawArc(
-                            color = accent.copy(alpha = RimCapAlpha),
+                            brush = Brush.horizontalGradient(
+                                0.25f to Color.Transparent,
+                                1.00f to accent.copy(alpha = RimCapAlpha),
+                            ),
                             startAngle = -90f,
                             sweepAngle = 180f,
                             useCenter = false,
@@ -244,3 +257,20 @@ fun GlassSurface(
         content()
     }
 }
+
+/** 浮层用：直接吃一个 [GlassBackdrop]。 */
+@Composable
+fun GlassSurface(
+    backdrop: GlassBackdrop,
+    glass: Boolean,
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) = GlassSurface(
+    frost = backdrop.frost,
+    contentOrigin = backdrop.contentOrigin,
+    glass = glass,
+    shape = shape,
+    modifier = modifier,
+    content = content,
+)

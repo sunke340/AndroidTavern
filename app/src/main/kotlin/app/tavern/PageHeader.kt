@@ -40,7 +40,7 @@ fun PageHeader(
 ) {
     val background = MaterialTheme.colorScheme.background
 
-    Box(modifier = modifier.fillMaxWidth().height(PageHeaderHeight)) {
+    Box(modifier = modifier.fillMaxWidth().height(PageHeaderHeight + HeaderFadeTail)) {
         Box(
             Modifier
                 .matchParentSize()
@@ -57,7 +57,8 @@ fun PageHeader(
                 },
         )
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = Space.l),
+            // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
+            modifier = Modifier.fillMaxWidth().height(PageHeaderHeight).padding(horizontal = Space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

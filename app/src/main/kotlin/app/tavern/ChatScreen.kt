@@ -66,13 +66,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
@@ -88,7 +84,6 @@ import app.tavern.core.model.ChatRole
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
     val glassOn = state.visualEffects == VisualEffects.Glass
-    val background = MaterialTheme.colorScheme.background
 
     GlassDetailScaffold(
         title = state.cardName.ifBlank { "聊天" },
@@ -97,6 +92,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         glass = glassOn,
         // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
         contentTopInset = 0.dp,
+        // 输入区画在录制之外：可以采磨砂，消息从胶囊后面滚过去
+        bottomOverlay = { backdrop -> ChatInputBar(state, viewModel, glassOn, backdrop) },
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
@@ -117,25 +114,20 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 )
             }
         },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-                .padding(horizontal = Space.m),
+    ) { _ ->
+        // 列表铺满整页（连输入区底下也算）：消息能滚到输入胶囊后面，胶囊才是真玻璃。
+        // 顶部/底部让位一律用 contentPadding —— 它不裁内容，滚动时会从玻璃底下过。
+        // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
+        // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
+        LazyColumn(
+            reverseLayout = true,
+            modifier = Modifier.fillMaxSize().padding(horizontal = Space.m),
+            contentPadding = PaddingValues(
+                top = DetailHeaderHeight,
+                bottom = ChatInputAreaHeight,
+            ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
-            // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
-            LazyColumn(
-                reverseLayout = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(top = DetailHeaderHeight),
-                verticalArrangement = Arrangement.spacedBy(Space.s),
-            ) {
                 if (state.streamingText.isNotEmpty()) {
                     item {
                         MessageRow(
@@ -161,117 +153,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         ),
                     )
                 }
-            }
-
-            // 输入区脚下"雾化"：消息在这一块上方就淡出，胶囊才是浮在空处
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .drawBehind {
-                        val extra = 64.dp.toPx()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                0.5f to background.copy(alpha = 0.82f),
-                                1f to background,
-                            ),
-                            topLeft = Offset(0f, -extra),
-                            size = Size(size.width, size.height + extra),
-                        )
-                    },
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = Space.s),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Space.s),
-                ) {
-                    // 输入框也做成玻璃胶囊。注意它自己在录制范围里，所以 frost 传 null：
-                    // 采样自己的图层会变成自反馈（越糊越白）。这里背后只有页面底色，不采也没损失。
-                    GlassSurface(
-                        frost = null,
-                        glass = glassOn,
-                        shape = RoundedCornerShape(Radius.pill),
-                        modifier = Modifier.weight(1f).height(44.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            BasicTextField(
-                                value = state.input,
-                                onValueChange = viewModel::onInputChange,
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
-                                decorationBox = { inner ->
-                                    if (state.input.isEmpty()) {
-                                        Text(
-                                            "说点什么",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    inner()
-                                },
-                            )
-                        }
-                    }
-
-                    // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
-                    AnimatedContent(
-                        targetState = state.isStreaming,
-                        transitionSpec = {
-                            (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
-                                (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
-                        },
-                        label = "send-stop",
-                    ) { streaming ->
-                        if (streaming) {
-                            GlassSurface(
-                                frost = null,
-                                glass = glassOn,
-                                shape = CircleShape,
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::stop),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
-                                    Box(
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .background(
-                                                MaterialTheme.colorScheme.onSurfaceVariant,
-                                                RoundedCornerShape(2.dp),
-                                            ),
-                                    )
-                                }
-                            }
-                        } else {
-                            GlassSurface(
-                                frost = null,
-                                glass = glassOn,
-                                shape = CircleShape,
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::send),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "发送",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
