@@ -63,9 +63,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -445,6 +447,23 @@ private fun TabsRoot(
                     .align(Alignment.TopCenter)
                     .padding(top = padding.calculateTopPadding()),
                 actions = headerActions,
+            )
+
+            // 底栏脚下"雾化"：内容在胶囊周围先淡出，胶囊才像浮在空处，而不是压在列表上。
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(BarHeight + Space.s * 2 + navBar + Space.xl)
+                    .drawBehind {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.00f to Color.Transparent,
+                                0.55f to pageBackground.copy(alpha = 0.80f),
+                                1.00f to pageBackground,
+                            ),
+                        )
+                    },
             )
 
             TavernBottomBar(

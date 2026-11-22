@@ -66,6 +66,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
@@ -83,6 +88,7 @@ import app.tavern.core.model.ChatRole
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
     val glassOn = state.visualEffects == VisualEffects.Glass
+    val background = MaterialTheme.colorScheme.background
 
     GlassDetailScaffold(
         title = state.cardName.ifBlank { "聊天" },
@@ -157,92 +163,110 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = Space.s),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.s),
-            ) {
-                // 输入框也做成玻璃胶囊。注意它自己在录制范围里，所以 frost 传 null：
-                // 采样自己的图层会变成自反馈（越糊越白）。这里背后只有页面底色，不采也没损失。
-                GlassSurface(
-                    frost = null,
-                    glass = glassOn,
-                    shape = RoundedCornerShape(Radius.pill),
-                    modifier = Modifier.weight(1f).height(44.dp),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        BasicTextField(
-                            value = state.input,
-                            onValueChange = viewModel::onInputChange,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
+            // 输入区脚下"雾化"：消息在这一块上方就淡出，胶囊才是浮在空处
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        val extra = 64.dp.toPx()
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.5f to background.copy(alpha = 0.82f),
+                                1f to background,
                             ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
-                            decorationBox = { inner ->
-                                if (state.input.isEmpty()) {
-                                    Text(
-                                        "说点什么",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            topLeft = Offset(0f, -extra),
+                            size = Size(size.width, size.height + extra),
+                        )
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Space.s),
+                ) {
+                    // 输入框也做成玻璃胶囊。注意它自己在录制范围里，所以 frost 传 null：
+                    // 采样自己的图层会变成自反馈（越糊越白）。这里背后只有页面底色，不采也没损失。
+                    GlassSurface(
+                        frost = null,
+                        glass = glassOn,
+                        shape = RoundedCornerShape(Radius.pill),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            BasicTextField(
+                                value = state.input,
+                                onValueChange = viewModel::onInputChange,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
+                                decorationBox = { inner ->
+                                    if (state.input.isEmpty()) {
+                                        Text(
+                                            "说点什么",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    inner()
+                                },
+                            )
+                        }
+                    }
+
+                    // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
+                    AnimatedContent(
+                        targetState = state.isStreaming,
+                        transitionSpec = {
+                            (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
+                                (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
+                        },
+                        label = "send-stop",
+                    ) { streaming ->
+                        if (streaming) {
+                            GlassSurface(
+                                frost = null,
+                                glass = glassOn,
+                                shape = CircleShape,
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::stop),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .background(
+                                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                                RoundedCornerShape(2.dp),
+                                            ),
                                     )
                                 }
-                                inner()
-                            },
-                        )
-                    }
-                }
-
-                // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
-                AnimatedContent(
-                    targetState = state.isStreaming,
-                    transitionSpec = {
-                        (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
-                            (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
-                    },
-                    label = "send-stop",
-                ) { streaming ->
-                    if (streaming) {
-                        GlassSurface(
-                            frost = null,
-                            glass = glassOn,
-                            shape = CircleShape,
-                            modifier = Modifier.size(44.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::stop),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
-                                Box(
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.onSurfaceVariant,
-                                            RoundedCornerShape(2.dp),
-                                        ),
-                                )
                             }
-                        }
-                    } else {
-                        GlassSurface(
-                            frost = null,
-                            glass = glassOn,
-                            shape = CircleShape,
-                            modifier = Modifier.size(44.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::send),
-                                contentAlignment = Alignment.Center,
+                        } else {
+                            GlassSurface(
+                                frost = null,
+                                glass = glassOn,
+                                shape = CircleShape,
+                                modifier = Modifier.size(44.dp),
                             ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "发送",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
+                                Box(
+                                    modifier = Modifier.fillMaxSize().clickable(onClick = viewModel::send),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "发送",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             }
                         }
                     }

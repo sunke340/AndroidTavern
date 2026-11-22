@@ -49,8 +49,8 @@ fun PageHeader(
                     drawRect(
                         brush = Brush.verticalGradient(
                             0.00f to background,
-                            0.55f to background,
-                            0.82f to background.copy(alpha = 0.86f),
+                            0.62f to background,
+                            0.88f to background.copy(alpha = 0.55f),
                             1.00f to Color.Transparent,
                         ),
                     )

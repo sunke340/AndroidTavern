@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -57,9 +58,12 @@ private val RimLayers = listOf(
     8.0.dp to 0.10f,
 )
 
-/** 两侧再压一点主题色（顶部/底部中间保持纯白，跟参考图一致）。 */
-private val RimSideWidth = 1.5.dp
-private const val RimSideAlpha = 0.18f
+/**
+ * 暗部（主题色）只画在两侧的**圆头**上：只有到最两侧才最粗。
+ * 整圈均匀加深会被读成"给胶囊描了道边"（用户 2026-11-23 指出：由细到粗变得太快、大部分面积一样粗）。
+ */
+private val RimCapWidth = 3.dp
+private const val RimCapAlpha = 0.30f
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
 private val ShadowBlur = 18.dp
@@ -206,16 +210,26 @@ fun GlassSurface(
                                 style = Stroke(width.toPx()),
                             )
                         }
-                        drawRoundRect(
-                            brush = Brush.horizontalGradient(
-                                listOf(
-                                    accent.copy(alpha = RimSideAlpha),
-                                    Color.Transparent,
-                                    accent.copy(alpha = RimSideAlpha),
-                                ),
-                            ),
-                            cornerRadius = radius,
-                            style = Stroke(RimSideWidth.toPx()),
+                        // 两个半圆形的暗部：只覆盖左右圆头，直线边不加深
+                        val cap = size.height
+                        val capStroke = Stroke(RimCapWidth.toPx())
+                        drawArc(
+                            color = accent.copy(alpha = RimCapAlpha),
+                            startAngle = 90f,
+                            sweepAngle = 180f,
+                            useCenter = false,
+                            topLeft = Offset.Zero,
+                            size = Size(cap, cap),
+                            style = capStroke,
+                        )
+                        drawArc(
+                            color = accent.copy(alpha = RimCapAlpha),
+                            startAngle = -90f,
+                            sweepAngle = 180f,
+                            useCenter = false,
+                            topLeft = Offset(size.width - cap, 0f),
+                            size = Size(cap, cap),
+                            style = capStroke,
                         )
                     } else {
                         drawRoundRect(
