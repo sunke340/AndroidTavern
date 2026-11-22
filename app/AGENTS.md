@@ -123,6 +123,8 @@ MainScreen（Destination + AnimatedContent）
   Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
+- `PrimaryAction` / `SecondaryAction` 的最后一个参数是 `enabled`，**调用时必须具名**
+  （`SecondaryAction(text = "…", onClick = { … })`）；写成尾随 lambda 会绑到 `enabled` 上，编译期才报（踩过）。
 - 设置要分层：一级只放"去哪儿"（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。
 - 聊天页的排查工具（本次请求）走右上 `⋮` → 全屏弹层，不占消息区版面。
 - 图标只能从 `material-icons-core` 里取（ArrowBack / MoreVert / Send / Person / Settings /
