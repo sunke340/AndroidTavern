@@ -66,8 +66,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val baseUrl: String = ModelProfiles.FALLBACK_BASE_URL,
         val model: String = ModelProfiles.FALLBACK_MODEL,
         val apiKey: String = "",
-        /** 空串 = 不往请求里放 `reasoning_effort`。 */
-        val reasoningEffort: String = "",
+        /**
+         * 思考强度预设：`""` = 不设，`low` / `medium` / `high`；**null = 自定义**（用 [effortCustom]）。
+         *
+         * 拆成两段是因为各家的值不统一（DeepSeek 认 `max`），用一个下拉框穷举不完，
+         * 又不想让"自定义"变成一个用户看不懂的自由文本框。
+         */
+        val effortPreset: String? = "",
+        /** 「自定义」时真正发给 provider 的字符串。 */
+        val effortCustom: String = "",
         /** 「一行一条 Name: value」的原始文本。 */
         val headersText: String = "",
         val isDefault: Boolean = false,
@@ -567,11 +574,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         baseUrl = existing?.baseUrl ?: ModelProfiles.FALLBACK_BASE_URL,
                         model = existing?.model ?: ModelProfiles.FALLBACK_MODEL,
                         apiKey = key,
-                        reasoningEffort = existing?.reasoningEffort.orEmpty(),
+                        effortPreset = presetOf(existing?.reasoningEffort),
+                        effortCustom = existing?.reasoningEffort
+                            ?.takeIf { it.isNotBlank() && it !in ModelProfiles.EFFORTS }
+                            .orEmpty(),
                         headersText = existing?.headers
                             ?.let { headers -> ModelProfiles.formatHeaders(headers) }
                             .orEmpty(),
-                        isDefault = existing?.isDefault ?: false,
+                        // 新建时默认打开"保存后设为默认"：建一条档案通常就是马上要用它
+                        isDefault = existing?.isDefault ?: true,
                     ),
                 )
             }
@@ -579,6 +590,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeProfileEditor() = _state.update { it.copy(profileDraft = null) }
+
+    /** 库里存的原始值 → 界面上的预设；认不出来的（`max` 等）落到「自定义」。 */
+    private fun presetOf(effort: String?): String? = when {
+        effort.isNullOrBlank() -> ""
+        effort in ModelProfiles.EFFORTS -> effort
+        else -> null
+    }
 
     /** 改草稿里的某个字段（界面上每个输入框都调这一条，不再各开一个 setter）。 */
     fun editProfileDraft(transform: (ProfileDraft) -> ProfileDraft) = _state.update { current ->
@@ -599,7 +617,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 name = draft.name.trim(),
                 baseUrl = draft.baseUrl.trim(),
                 model = draft.model.trim(),
-                reasoningEffort = draft.reasoningEffort.takeIf { it.isNotBlank() },
+                reasoningEffort = (if (draft.effortPreset == null) draft.effortCustom else draft.effortPreset)
+                    .trim()
+                    .takeIf { it.isNotBlank() },
                 headers = ModelProfiles.parseHeaders(draft.headersText),
                 isDefault = draft.isDefault || _state.value.profiles.isEmpty(),
             )

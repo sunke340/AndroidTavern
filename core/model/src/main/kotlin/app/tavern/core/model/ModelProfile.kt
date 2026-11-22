@@ -36,6 +36,12 @@ public object ModelProfiles {
     public const val FALLBACK_BASE_URL: String = "https://api.deepseek.com/v1"
     public const val FALLBACK_MODEL: String = "deepseek-chat"
 
+    /**
+     * `reasoning_effort` 的常用取值。空串（不设）由调用方单独处理；
+     * 各家的扩展值（DeepSeek 的 `max` 之类）走界面的「自定义」，所以这里只列通用那几个。
+     */
+    public val EFFORTS: List<String> = listOf("low", "medium", "high")
+
     /** 每个档案的 Key 在 data 层 SecretStore（Keystore 加密）里的名字。 */
     public fun keyName(profileId: String): String = "api_key:$profileId"
 

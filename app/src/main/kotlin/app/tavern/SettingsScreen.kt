@@ -1,14 +1,10 @@
 package app.tavern
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 /**
  * 设置一级页：只放"去哪儿"，不放控件。
@@ -38,17 +34,6 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             SettingLinkRow("关于", "构建与版本信息") {
                 viewModel.openSettingsPage(SettingsPage.About)
-            }
-
-            Column(
-                modifier = Modifier.padding(horizontal = Space.l, vertical = Space.l),
-                verticalArrangement = Arrangement.spacedBy(Space.xs),
-            ) {
-                Text(
-                    "会话与角色卡的配置在聊天页 ⋮ 和角色详情里，不在这里。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

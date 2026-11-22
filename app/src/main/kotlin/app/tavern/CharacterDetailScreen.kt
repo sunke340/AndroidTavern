@@ -346,10 +346,6 @@ private fun GreetingTab(detail: CardDetail?) {
     val alternates = detail?.alternateGreetings.orEmpty()
     if (alternates.isNotEmpty()) {
         Text("备选开场白（${alternates.size}）", style = MaterialTheme.typography.labelMedium)
-        Text(
-            "只读：选择备选开场白要等 swipe 做完（P0-6）。新建会话用的永远是第一条。",
-            style = MaterialTheme.typography.labelSmall,
-        )
         alternates.forEachIndexed { index, text ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(10.dp)) {

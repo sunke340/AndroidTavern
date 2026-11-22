@@ -122,12 +122,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             enabled = false,
                             onClick = {},
                         )
-                        // 三级继承的会话配置在下一批；先占位但明确标注，不做假按钮
-                        DropdownMenuItem(
-                            text = { Text("会话配置（下一批）") },
-                            enabled = false,
-                            onClick = {},
-                        )
                         DropdownMenuItem(
                             text = { Text("查看本次请求") },
                             onClick = {

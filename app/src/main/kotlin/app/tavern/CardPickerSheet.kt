@@ -46,11 +46,6 @@ fun CardPickerSheet(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l)) {
             Text("选一张卡开始新会话", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "同一张卡可以有多个会话，标题里会用时间区分。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         LazyVerticalGrid(

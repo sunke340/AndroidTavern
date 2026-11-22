@@ -123,6 +123,9 @@ MainScreen（Destination + AnimatedContent）
   Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
+- **界面上不写解释性文案**（2026-11-22 用户要求）：不要放"这个功能是怎么实现的""下一批会做什么""两种样式有什么区别"
+  这类说明；页面里只留 ①字段标签 ②状态值 ③空状态 ④删除/不可逆的确认措辞 ⑤隐私声明（日志不含 Key/正文）。
+  说明写进 `docs/`，不要写进安装包。
 - `PrimaryAction` / `SecondaryAction` 的最后一个参数是 `enabled`，**调用时必须具名**
   （`SecondaryAction(text = "…", onClick = { … })`）；写成尾随 lambda 会绑到 `enabled` 上，编译期才报（踩过）。
 - 设置要分层：一级只放"去哪儿"（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。

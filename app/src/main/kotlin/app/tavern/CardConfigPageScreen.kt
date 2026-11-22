@@ -105,23 +105,11 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
             }
         }
     }
-
-    Text(
-        "世界书引擎（条目激活、递归、预算）还没实现：勾选会先存下来，等 P1 做好后才影响提示词。" +
-            "ST 是把 enabled 写在卡文件里的，我们暂时不动卡文件。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
 private fun CardMessageStylePage(detail: CardDetail?, cardId: String, viewModel: ChatViewModel) {
     SectionLabel("这张卡的对话样式")
-    Text(
-        "会话内的消息怎么排版。选「跟随全局」会跟着设置 → 外观里的全局样式走。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
     val options = listOf<MessageStyle?>(null, MessageStyle.Bubble, MessageStyle.Card)
     SegmentedRow(
@@ -177,4 +165,4 @@ private fun InfoRow(label: String, value: String) {
 
 /** 空字段说明白一点：很多卡把内容全写进描述，这里是空的其实是作者的写法。 */
 private fun fieldState(value: String?): String =
-    if (value.isNullOrBlank()) "（空 —— 作者可能写进了描述）" else "${value.length} 字"
+    if (value.isNullOrBlank()) "（空）" else "${value.length} 字"

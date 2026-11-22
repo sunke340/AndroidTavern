@@ -73,6 +73,14 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 title = {
                     Text(page.title, style = MaterialTheme.typography.titleMedium)
                 },
+                actions = {
+                    if (page == SettingsPage.Model) {
+                        PrimaryAction(
+                            text = "＋ 新建",
+                            onClick = { viewModel.openProfileEditor(null) },
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
@@ -106,42 +114,53 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  */
 @Composable
 private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    SectionLabel("模型档案")
-    Text(
-        "每套连接（provider + 模型 + Key + 请求头）是一条档案，聊天用标了「默认」的那条。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
     state.profiles.forEach { profile ->
         ListRow(
-            title = if (profile.isDefault) "${profile.name}  · 默认" else profile.name,
+            title = profile.name,
             subtitle = buildString {
                 append(profile.model)
-                if (profile.reasoningEffort != null) append(" · 思考 ").append(profile.reasoningEffort)
+                profile.reasoningEffort?.let { append(" · ").append(it) }
                 append("\n").append(profile.baseUrl)
             },
             trailing = {
-                if (!profile.isDefault) {
-                    Text(
-                        "设为默认",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { viewModel.setDefaultProfile(profile.id) },
-                    )
-                }
+                DefaultSlot(
+                    isDefault = profile.isDefault,
+                    onSetDefault = { viewModel.setDefaultProfile(profile.id) },
+                )
             },
             onClick = { viewModel.openProfileEditor(profile.id) },
         )
     }
+    if (state.profiles.isEmpty()) EmptyHint("还没有档案。点右上「新建」。")
+}
 
-    if (state.profiles.isEmpty()) {
-        EmptyHint("还没有档案。点下面「新建档案」加一个。")
-    }
-
-    Box(modifier = Modifier.padding(top = Space.m)) {
-        // 注意 SecondaryAction 的最后一个参数是 enabled，尾随 lambda 会落到它上面 —— 必须具名
-        SecondaryAction(text = "＋ 新建档案", onClick = { viewModel.openProfileEditor(null) })
+/**
+ * 「默认」只有一个呈现位置：行尾。
+ *
+ * 默认 → 淡紫徽标；非默认 → 同一位置的文字按钮。之前把「· 默认」拼在标题后面、
+ * 动作又是一个按钮，会被读成两件不相干的事（用户 2026-11-22 提）。
+ */
+@Composable
+private fun DefaultSlot(isDefault: Boolean, onSetDefault: () -> Unit) {
+    if (isDefault) {
+        Text(
+            "默认",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(Radius.button))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                .padding(horizontal = Space.s, vertical = 2.dp),
+        )
+    } else {
+        Text(
+            "设为默认",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clickable(onClick = onSetDefault)
+                .padding(vertical = Space.xs),
+        )
     }
 }
 
@@ -165,11 +184,6 @@ private fun SamplingPage(state: ChatViewModel.UiState, viewModel: ChatViewModel)
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        "留空或解析不了的数字不会保存，避免把半截输入写进配置。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -213,11 +227,6 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         label = { if (it == MessageStyle.Bubble) "气泡" else "整行卡片" },
         onSelect = viewModel::onMessageStyleChange,
     )
-    Text(
-        "整行卡片信息密度更低，适合长段落；角色详情里可以按卡单独覆盖。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
     SectionLabel("页面转场")
     SegmentedRow(
@@ -225,12 +234,6 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         selected = state.navAnimation,
         label = { it.label },
         onSelect = viewModel::setNavAnimation,
-    )
-    Text(
-        "进/退二级页的动画。「标准」新页从右侧滑入、返回时上一页从左侧滑回；" +
-            "「淡入」只做交叉淡化；「关闭」直接切换（排查问题时用）。只影响二级页，不影响底部 tab。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -279,20 +282,7 @@ private fun ThemeSwatch(preset: ThemePreset, selected: Boolean, onClick: () -> U
 @Composable
 private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     SectionLabel("全局世界书")
-    Text(
-        "跨角色共用的世界书。世界书引擎（条目激活、递归、预算）还没实现，所以现在还不能导入。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
-    EmptyHint("还没有全局世界书。等世界书引擎（P1）实现后，这里会支持导入 ST 的世界书 JSON 并绑定到会话。")
-
-    SectionLabel("角色卡自带的世界书呢？")
-    Text(
-        "它属于那张卡，入口在：角色详情 → 配置 → 内嵌世界书。不在设置里重复出现。",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    EmptyHint("还没有全局世界书。")
 }
 
 // ---- 关于 -----------------------------------------------------------------
@@ -341,12 +331,12 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     SectionLabel("诊断")
     Text(
-        "日志只记事件与状态码（模型名、消息条数、HTTP 状态、崩溃堆栈），不含 API Key 与消息正文。",
+        "日志不含 API Key 与消息正文",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Text(
-        "当前缓存 $logCount 条（内存 800 条上限，另落盘 1MB 滚动）",
+        "缓存 $logCount 条",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -367,15 +357,4 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         ) { Text("清空") }
     }
 
-    SectionLabel("说明")
-    Text(
-        "原生安卓酒馆：兼容 SillyTavern 的文件格式与提示词行为，单进程、无服务端、无 WebView。",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Text(
-        "当前状态见仓库 docs/compat-matrix.md。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }

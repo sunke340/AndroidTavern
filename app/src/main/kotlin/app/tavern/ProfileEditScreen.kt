@@ -18,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -62,10 +64,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     )
                 },
                 actions = {
-                    TextButton(
-                        onClick = viewModel::saveProfileDraft,
-                        enabled = draft.canSave,
-                    ) {
+                    TextButton(onClick = viewModel::saveProfileDraft, enabled = draft.canSave) {
                         Text("保存")
                     }
                 },
@@ -83,7 +82,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             OutlinedTextField(
                 value = draft.name,
                 onValueChange = { value -> viewModel.editProfileDraft { it.copy(name = value) } },
-                label = { Text("档案名（例如：DeepSeek 官网 / 本地 Ollama）") },
+                label = { Text("名称") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -105,30 +104,42 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             OutlinedTextField(
                 value = draft.apiKey,
                 onValueChange = { value -> viewModel.editProfileDraft { it.copy(apiKey = value) } },
-                label = { Text("API Key（Keystore 加密，按档案分开存）") },
+                label = { Text("API Key") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                "本地 Ollama / LM Studio 通常不需要 Key，留空即可。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             SectionLabel("思考强度")
             SegmentedRow(
                 options = EFFORT_OPTIONS,
-                selected = draft.reasoningEffort,
-                label = { key -> EFFORT_LABELS.getValue(key) },
-                onSelect = { value -> viewModel.editProfileDraft { it.copy(reasoningEffort = value) } },
+                selected = draft.effortPreset,
+                label = { option -> effortLabel(option) },
+                onSelect = { option ->
+                    viewModel.editProfileDraft { current ->
+                        if (option == null) {
+                            current.copy(
+                                effortPreset = null,
+                                effortCustom = current.effortCustom.ifBlank { "max" },
+                            )
+                        } else {
+                            current.copy(effortPreset = option)
+                        }
+                    }
+                },
             )
-            Text(
-                "会作为 reasoning_effort 放进请求体。「不设」= 不发送这个字段（多数 provider 用默认值）。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (draft.effortPreset == null) {
+                OutlinedTextField(
+                    value = draft.effortCustom,
+                    onValueChange = { value ->
+                        viewModel.editProfileDraft { it.copy(effortCustom = value) }
+                    },
+                    label = { Text("自定义值（例如 DeepSeek 的 max）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             SectionLabel("自定义请求头")
             OutlinedTextField(
@@ -139,36 +150,27 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 maxLines = 6,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                "中转站常用：X-Title、HTTP-Referer。值里可以有冒号（URL 不用转义）。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
-            if (!draft.isNew) {
-                SectionLabel("这条档案")
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                    SecondaryAction(
-                        text = if (draft.isDefault) "已是默认" else "设为默认",
-                        enabled = !draft.isDefault,
-                        onClick = { draft.id?.let(viewModel::setDefaultProfile) },
+            if (draft.isNew) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "保存后设为默认",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
                     )
-                    SecondaryAction(text = "删除档案", onClick = { confirmDelete = true })
+                    Switch(
+                        checked = draft.isDefault,
+                        onCheckedChange = { checked ->
+                            viewModel.editProfileDraft { it.copy(isDefault = checked) }
+                        },
+                    )
                 }
-                Text(
-                    "删除会同时删掉这条档案的 Key（不可逆）。至少会留一条档案，" +
-                        "删掉默认的后会自动把第一条顶上来。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
-            Column(modifier = Modifier.padding(bottom = Space.xl)) {
-                Text(
-                    text = "保存后立即生效：默认档案就是聊天实际用的连接。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (!draft.isNew) {
+                Column(modifier = Modifier.padding(top = Space.l, bottom = Space.xl)) {
+                    SecondaryAction(text = "删除档案", onClick = { confirmDelete = true })
+                }
             }
         }
     }
@@ -177,7 +179,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("删除「${draft.name}」？") },
-            text = { Text("这条档案的 API Key 也会一起删除，删了找不回来（不会影响其它档案）。") },
+            text = { Text("这条档案的 API Key 也会一起删除，删了找不回来。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -195,12 +197,13 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 }
 
-/** 思考强度的取值（空串 = 不发送该字段）。 */
-private val EFFORT_OPTIONS = listOf("", "low", "medium", "high")
+/** 思考强度选项：null = 自定义（下面会出现输入框）。 */
+private val EFFORT_OPTIONS: List<String?> = listOf("", "low", "medium", "high", null)
 
-private val EFFORT_LABELS = mapOf(
-    "" to "不设",
-    "low" to "低",
-    "medium" to "中",
-    "high" to "高",
-)
+private fun effortLabel(option: String?): String = when (option) {
+    null -> "自定义"
+    "" -> "不设"
+    "low" -> "低"
+    "medium" -> "中"
+    else -> "高"
+}
