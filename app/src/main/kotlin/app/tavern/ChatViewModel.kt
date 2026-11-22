@@ -387,6 +387,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) {
                     userMessageId?.let { runCatching { chatRepository.deleteMessage(it) } }
                 }
+                // 撤回后条数/排序要跟着变，否则会话列表里还显示着这条没发出去的消息
+                refreshSessions()
                 _state.update { current ->
                     if (current.sessionId != sessionId) {
                         current.copy(streamingText = "", isStreaming = false, status = message)
