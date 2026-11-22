@@ -67,6 +67,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
@@ -81,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.withTimeout
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.tavern.data.log.AppLog
 
@@ -298,8 +301,11 @@ private fun TabsRoot(
         }
     }
 
-    // 玻璃：内容画一遍录进图层，底栏再把"自己脚下那块"裁出来加模糊画上去（ADR 0005）。
+    // 玻璃：内容录两份图层（全尺寸一份显示、1/FrostScale 一份给底栏当"糊"）。
     val glassLayer = rememberGraphicsLayer()
+    // 降采样的那一份：底栏放大画回去就是"糊"。整条路不碰 RenderEffect ——
+    // 这台机器上 Modifier.blur / Haze 两套都没出过模糊，不再押 GPU 效果（ADR 0006）。
+    val frostLayer = rememberGraphicsLayer()
     val contentOrigin = remember { mutableStateOf(Offset.Zero) }
     val contentSize = remember { mutableStateOf(IntSize.Zero) }
     val barOrigin = remember { mutableStateOf(Offset.Zero) }
@@ -319,6 +325,25 @@ private fun TabsRoot(
             "glass",
             "坐标：底栏=${barOrigin.value} 内容=${contentOrigin.value} 内容尺寸=${contentSize.value}",
         )
+        // 真机上看不出来到底"没糊"还是"图层是空的"，回读一次数不透明像素。
+        runCatching {
+            withTimeout(2_000) {
+                val base = frostLayer.toImageBitmap().asAndroidBitmap()
+                var opaque = 0
+                var sampled = 0
+                var x = 0
+                while (x < base.width) {
+                    var y = 0
+                    while (y < base.height) {
+                        sampled++
+                        if ((base.getPixel(x, y) ushr 24) != 0) opaque++
+                        y += 8
+                    }
+                    x += 8
+                }
+                AppLog.i("glass", "降采样图层：${base.width}x${base.height} 采样=$sampled 不透明=$opaque")
+            }
+        }.onFailure { AppLog.w("glass", "降采样图层回读失败：${it.message}") }
     }
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val contentBottom = BarHeight + Space.s + Space.s + navBar
@@ -349,6 +374,20 @@ private fun TabsRoot(
                                 this@drawWithContent.drawContent()
                             }
                             drawLayer(glassLayer)
+                            // 再把这份图层按 1/FrostScale 录进小层：降采样本身就是"糊"，
+                            // 底栏放大画回去即可。降采样一次的成本只跟小层像素数有关。
+                            frostLayer.record(
+                                density = this,
+                                layoutDirection = layoutDirection,
+                                size = IntSize(
+                                    (size.width / FrostScale).toInt().coerceAtLeast(1),
+                                    (size.height / FrostScale).toInt().coerceAtLeast(1),
+                                ),
+                            ) {
+                                scale(1f / FrostScale, 1f / FrostScale, pivot = Offset.Zero) {
+                                    drawLayer(glassLayer)
+                                }
+                            }
                         } else {
                             drawContent()
                         }
@@ -390,7 +429,7 @@ private fun TabsRoot(
                 current = state.screen,
                 onSelect = viewModel::showScreen,
                 glass = glassOn,
-                glassLayer = glassLayer,
+                frostLayer = frostLayer,
                 contentOrigin = { contentOrigin.value },
                 barOrigin = barOrigin,
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -411,8 +450,11 @@ private val barItems = listOf(
     BarItem(Screen.Settings, Icons.Filled.Settings, "设置"),
 )
 
-/** 玻璃模糊半径。 */
+/** 玻璃模糊半径（有 RenderEffect 时用来把放大后的色块再磨一遍；没有也不影响观感下限）。 */
 private val GlassBlur = 24.dp
+
+/** 降采样倍数：内容层按 1/[FrostScale] 录一份小层，底栏放大画回去 —— 放大时的线性插值就是"糊"。 */
+private const val FrostScale = 10f
 
 /**
  * 让节点比父给它的大小每边多出 [pad]，并把它往左上挪同样的距离。
@@ -433,9 +475,11 @@ private fun Modifier.expandForBlur(pad: Int): Modifier = this.layout { measurabl
  * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp、带自己的指示器，压不矮也换不了形状。
  *
  * 玻璃是**自己画的**（ADR 0005，不再用 Haze —— 它在真机上退化成了纯半透明还不报错）：
- * 1. 内容层每帧把自己录进 `glassLayer`（上面 TabsRoot 里做的）；
- * 2. 底栏把这块图层平移过来、塞进一个挂 `Modifier.blur` 的节点里画出来；
- * 3. 再叠半透明底色（`.background(fill)`）+ 1px 描边，最后才是图标文字。
+ * 1. 内容层每帧把自己录进 `glassLayer`，`drawLayer` 正常显示（上面 TabsRoot 里做的）；
+ * 2. 同时把这份图层按 1/[FrostScale] 录进 `frostLayer` —— **降采样本身就是"糊"**；
+ * 3. 底栏把 `frostLayer` 放大 [FrostScale] 倍画回来（线性插值 → 磨砂），
+ *    有 RenderEffect 的话再叠一层 `Modifier.blur` 磨细；
+ * 4. 最后叠半透明底色（`.background(fill)`）+ 1px 描边 + 图标文字。
  *
  * **模糊必须挂在节点上，不能"设了再清"**（2026-11-22 踩的，用户两台机器都只看到半透明）：
  * `GraphicsLayer` 底下就是 RenderNode，绘制操作录进 display list，而 `renderEffect` / `alpha` /
@@ -452,7 +496,7 @@ private fun TavernBottomBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
     glass: Boolean,
-    glassLayer: GraphicsLayer,
+    frostLayer: GraphicsLayer,
     contentOrigin: () -> Offset,
     barOrigin: MutableState<Offset>,
     modifier: Modifier = Modifier,
@@ -483,10 +527,17 @@ private fun TavernBottomBar(
                 Box(Modifier.matchParentSize().expandForBlur(blurPad)) {
                     Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
                         // 只有"底栏位置 - 内容位置"这一句几何。这个节点比胶囊大一圈，
-                        // 所以还要把 pad 加回来。
+                        // 所以还要把 pad 加回来；小层是 1/FrostScale 的，换算过去即可。
                         val origin = barOrigin.value - contentOrigin()
-                        translate(left = blurPad - origin.x, top = blurPad - origin.y) {
-                            drawLayer(glassLayer)
+                        translate(left = blurPad.toFloat(), top = blurPad.toFloat()) {
+                            scale(FrostScale, FrostScale, pivot = Offset.Zero) {
+                                translate(
+                                    left = -origin.x / FrostScale,
+                                    top = -origin.y / FrostScale,
+                                ) {
+                                    drawLayer(frostLayer)
+                                }
+                            }
                         }
                     }
                 }
