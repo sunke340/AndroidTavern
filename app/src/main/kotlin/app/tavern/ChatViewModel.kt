@@ -10,11 +10,19 @@ import app.tavern.core.ai.StreamEvent
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
+import app.tavern.core.card.lorebookEntries
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.core.model.ModelProfile
 import app.tavern.core.model.ModelProfiles
+import app.tavern.core.lorebook.LorebookGlobalScanData
+import app.tavern.core.lorebook.LorebookScanResult
+import app.tavern.core.lorebook.LorebookScanner
+import app.tavern.core.lorebook.LorebookScanSettings
+import app.tavern.core.lorebook.LorebookScanState
+import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.prompt.PromptBuilder
+import app.tavern.core.tokenizer.Tokens
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
@@ -46,7 +54,8 @@ import java.util.Locale
  * 持久化策略（见 ADR 0003）：会话与消息都在 SQLite 里，**DB 是唯一真相**；
  * 流式过程中只有内存里的半截文本，收到完成/停止才落库。
  *
- * 还没做的：Key 持久化（只在内存）、swipe 切换 UI、世界书。
+ * 还没做的：swipe 切换 UI、全局世界书（现在只吃卡内嵌书）、世界书的 sticky/cooldown
+ * 计时状态还没落库（只在内存里跟会话走，杀进程会重置）。
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -117,6 +126,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val detail: CardDetail? = null,
         /** 当前会话所属卡的样式覆盖；null = 跟随全局。 */
         val cardMessageStyle: MessageStyle? = null,
+        /** 当前这张卡里被关掉的内嵌世界书条目（按 `character_book.entries` 下标）。 */
+        val bookDisabled: Set<Int> = emptySet(),
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -278,7 +289,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val detail = _state.value.detail ?: return
         val next = if (enabled) detail.disabledEntries - entryIndex else detail.disabledEntries + entryIndex
 
-        _state.update { it.copy(detail = it.detail?.copy(disabledEntries = next)) }
+        _state.update {
+            it.copy(
+                detail = it.detail?.copy(disabledEntries = next),
+                // 聊天页要用它过滤，不只是详情页好看
+                bookDisabled = if (it.cardId == cardId) next else it.bookDisabled,
+            )
+        }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveDisabledBookEntries(cardId, next) }
         }
@@ -312,6 +329,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             card = loaded
             cardRepository.selectedId = cardId
+            // 卡内嵌书的勾选状态：哪些条目被关掉了（send 时据此过滤）
+            val disabledBook = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(cardId) }
+            _state.update { it.copy(bookDisabled = disabledBook) }
             val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
                 ?: loaded.name.ifBlank { cardId }
             startNewSession(
@@ -463,6 +483,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val cardStyle = withContext(Dispatchers.IO) {
             settingsRepository.cardMessageStyle(session.cardId)
         }?.let { name -> runCatching { MessageStyle.valueOf(name) }.getOrNull() }
+        val disabledBook = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(session.cardId) }
         val loadedCard = loadCard(session.cardId)
         card = loadedCard
         if (loadedCard != null) cardRepository.selectedId = session.cardId
@@ -482,6 +503,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isStreaming = false,
                 chatOpen = navigate,
                 cardMessageStyle = cardStyle,
+                bookDisabled = disabledBook,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
@@ -806,6 +828,62 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 世界书的 sticky / cooldown 计时状态，按会话存。
+     *
+     * 原版把它写进聊天元数据（`chat_metadata.timedWorldInfo`）跟着聊天落盘；我们还没加表，
+     * 所以先挂在 ViewModel 上：同一次运行内行为正确，杀进程就重置（矩阵里记着这条差异）。
+     */
+    private val worldInfoStates = HashMap<String, LorebookScanState>()
+
+    /**
+     * 扫一遍世界书。数据来源目前只有**卡内嵌书**（减去被关掉的条目）；
+     * 全局世界书（设置里导入的）还没接。
+     *
+     * 传给扫描器的聊天串要带名字前缀（原版 `chatForWI` 就是 `${name}: ${mes}`），
+     * 否则 `matchPersonaDescription` 这类开关、以及"人类说话里点名"的条目会匹配不到。
+     */
+    private fun scanWorldInfo(
+        card: CharacterCard,
+        snapshot: UiState,
+        history: List<ChatMessage>,
+    ): LorebookScanResult {
+        val sessionKey = snapshot.sessionId ?: return LorebookScanResult()
+        val entries = card.lorebookEntries().filterIndexed { index, _ -> index !in snapshot.bookDisabled }
+        if (entries.isEmpty()) {
+            worldInfoStates.remove(sessionKey)
+            return LorebookScanResult()
+        }
+
+        val userName = "User"
+        val settings = LorebookScanSettings(
+            charName = card.name,
+            userName = userName,
+            // 预算按"提示词能用的上下文"算，与 Max tokens 无关的那部分；先跟原版默认预设一致
+            maxContext = 3795,
+            tokenCounter = LorebookTokenCounter { text -> Tokens.countAsMessage(snapshot.model, text) },
+        )
+        val chat = history.map { message ->
+            val name = if (message.role == ChatRole.User) userName else card.name
+            "$name: ${message.content}"
+        }
+        val global = LorebookGlobalScanData(
+            characterDescription = card.description,
+            characterPersonality = card.personality,
+            scenario = card.scenario,
+        )
+
+        val result = LorebookScanner().scan(
+            entries = entries,
+            chat = chat,
+            settings = settings,
+            state = worldInfoStates[sessionKey] ?: LorebookScanState(),
+            global = global,
+        )
+        worldInfoStates[sessionKey] = result.state
+        return result
+    }
+
     fun send() {
         val snapshot = _state.value
         val characterCard = card ?: return
@@ -824,7 +902,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val text = snapshot.input.trim()
         val userMessage = ChatMessage(ChatRole.User, text)
         val history = snapshot.transcript + userMessage
-        val messages = PromptBuilder().build(characterCard, userName = "User", history = history)
+        // 世界书：卡内嵌书扫一遍再拼提示词。没有条目时是空结果，不会多出一条消息。
+        val worldInfo = scanWorldInfo(characterCard, snapshot, history)
+        val messages = PromptBuilder().build(
+            characterCard,
+            userName = "User",
+            history = history,
+            worldInfo = worldInfo,
+        )
 
         _state.update {
             it.copy(
@@ -841,7 +926,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         AppLog.i(
             "chat",
-            "发送 model=${snapshot.model} messages=${messages.size} repeat=${history.count { it.role == ChatRole.User }}",
+            "发送 model=${snapshot.model} messages=${messages.size} repeat=${history.count { it.role == ChatRole.User }} " +
+                "wi=${worldInfo.activated.size}(before=${worldInfo.beforeChar.length}字 after=${worldInfo.afterChar.length}字)",
         )
         // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
         val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }

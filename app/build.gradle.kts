@@ -69,6 +69,8 @@ dependencies {
     implementation(project(":data"))
     implementation(project(":core:card-format"))
     implementation(project(":core:prompt"))
+    implementation(project(":core:lorebook"))
+    implementation(project(":core:tokenizer"))
     implementation(project(":core:ai"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
