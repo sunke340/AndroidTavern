@@ -57,6 +57,29 @@
 
 **G3**：聊三轮 → 杀进程 → 重开 → 记录/会话列表是否在
 
+## 执行结果（2026-11-22 11:30 补记）
+
+三档全部完成，CI 全绿（`9e5f2c7`），出包 `apk-m1`，已验签并直发 QQ。
+
+| 目标 | 状态 | 落地 | tag |
+|---|---|---|---|
+| G1 固定签名 + versionCode + 回退点 | ✅ | `88c2ada`、`97e4ee5` | `night-g1` |
+| G2 SAF 导入卡 + 卡列表 + 记忆选择 | ✅（待真机） | `db8da5b` | `night-g2` |
+| G3 JSONL 读写 + SQLite 持久化 + 会话列表 | ✅（待真机） | `9850b7c`、`9e5f2c7` | `night-g3` |
+| 顺手：停止保留半截内容 | ✅ | `db8da5b` | — |
+| 顺手：Key 存 Keystore | ❌ 没做 | — | — |
+| 顺手：CI aapt2 冒烟 | 🟡 做了 apksigner/aapt2 打印 + 本机 `tools/verify-apk.sh` 验签 | `88c2ada`、`9ea998f` | — |
+
+意外收获 / 踩到的坑：
+
+- 原版真实聊天文件被拿来当夹具后，发现一个**逐字节往返**的硬要求（重新序列化必须与原文件完全一致）；
+  `ChatFile` 靠"原始 JsonObject 是真相"做到了，8 个单测里 1 个就是断言这个。
+- Kotlin 块注释可嵌套：注释里写了 `cards/*.png` 把整个类体吞了，CI 报 EOF 处 "Unclosed comment"。
+  加了 `tools/check-kotlin-comments.sh` 进铁律检查。
+- 本机没有 apksigner，用 AGP 缓存里的 apksig 库做了 `tools/verify-apk.sh`，
+  `apk-m1` 实测 `verified=true v2=true`，指纹与 `keystore/README.md` 一致。
+- 夜间会话中途离线 8 小时（03:10 → 11:29），后半段没有继续排活；06:30 硬停这条没有实际生效机会。
+
 ## 交付
 
 每完成一档：APK 直发 QQ（`c2c:<openid>`，见 `.secrets/personal.md`），并附这一档的验收要点。
