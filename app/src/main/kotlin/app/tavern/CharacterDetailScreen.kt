@@ -15,10 +15,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -27,6 +34,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tavern.data.chat.ChatSession
@@ -72,12 +81,25 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
                 navigationIcon = {
-                    IconButton(onClick = viewModel::closeDetail) { Text("←", fontSize = 28.sp) }
+                    IconButton(onClick = viewModel::closeDetail) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
                 },
-                title = { Text(detail?.name ?: cardRef?.name ?: "角色详情") },
+                // 顶栏只说明"这是哪一页"；卡名在下面的卡头里出现一次就够
+                title = {
+                    Text(
+                        "角色详情",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) { Text("⋮", fontSize = 24.sp) }
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
+                    }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
                             text = {
@@ -95,7 +117,11 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             // ---- 卡头：常驻，不随标签滚动 ----
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(top = Space.l),
+            ) {
                 Row(verticalAlignment = Alignment.Top) {
                     CardAvatar(
                         cardId = cardId,
@@ -107,7 +133,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     Column(modifier = Modifier.padding(start = 12.dp)) {
                         Text(
                             detail?.name ?: cardRef?.name ?: cardId,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                         )
                         Text(
                             if (detail?.imported == true) "导入的卡" else "随包带的卡",
@@ -127,7 +153,12 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 ) { Text("用这张卡开新会话") }
             }
 
-            TabRow(selectedTabIndex = tabIndex) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(Space.m))
+
+            TabRow(
+                selectedTabIndex = tabIndex,
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
                 DetailTab.entries.forEachIndexed { index, tab ->
                     Tab(
                         selected = tabIndex == index,

@@ -34,6 +34,9 @@ MainScreen（Scaffold + NavigationBar）
 - **没有副标题**：数量、空态这类信息交给内容区；
 - 页头下面一条分隔线，三页内容从同一条线开始；
 - 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
+- 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色）：
+  Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。
+- 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 
 当初三页各写各的（留白 12/16、有的有副标题有的没有、按钮位置各异），切 tab 时标题会跳几像素。
 

@@ -46,13 +46,13 @@ fun SessionsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = Space.l),
+                contentPadding = PaddingValues(top = Space.s, bottom = Space.l),
                 verticalArrangement = Arrangement.Top,
             ) {
                 items(state.sessions, key = { it.id }) { session ->
                     ListRow(
-                        title = session.title,
-                        subtitle = "${session.cardName}｜${session.messageCount} 条",
+                        title = session.cardName,
+                        subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
                         leading = {
                             CardAvatar(
                                 cardId = session.cardId,

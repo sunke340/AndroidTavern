@@ -123,9 +123,10 @@ fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true) {
 
 /** 页头右边的次要按钮（导入这类）。 */
 @Composable
-fun SecondaryAction(text: String, onClick: () -> Unit) {
+fun SecondaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(Radius.button),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             horizontal = Space.m + 2.dp,
@@ -138,6 +139,15 @@ fun SecondaryAction(text: String, onClick: () -> Unit) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
+
+/** 会话时间：`11-22 14:20`，与卡名一起构成列表行的两行信息。 */
+fun formatSessionTime(epochMillis: Long): String = sessionTimeFormatter.format(
+    java.time.Instant.ofEpochMilli(epochMillis),
+)
+
+private val sessionTimeFormatter: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm", java.util.Locale.US)
+        .withZone(java.time.ZoneId.systemDefault())
 
 /** 空态提示：居中一段说明，不要做成"空白页"。 */
 @Composable

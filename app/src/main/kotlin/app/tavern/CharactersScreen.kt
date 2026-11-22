@@ -38,9 +38,13 @@ fun CharactersScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     PageScaffold(
         title = "角色卡",
-        action = { SecondaryAction(if (state.importing) "导入中…" else "导入", onClick = {
-            pickCard.launch(arrayOf("image/*"))
-        }) },
+        action = {
+            SecondaryAction(
+                text = if (state.importing) "导入中…" else "导入",
+                enabled = !state.importing,
+                onClick = { pickCard.launch(arrayOf("image/*")) },
+            )
+        },
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),

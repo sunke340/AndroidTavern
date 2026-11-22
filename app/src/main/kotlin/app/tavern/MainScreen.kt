@@ -1,19 +1,27 @@
 package app.tavern
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -23,8 +31,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -81,27 +92,7 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         modifier = Modifier.fillMaxSize().imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            val palette = LocalTavernPalette.current
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationItem(
-                    icon = Icons.AutoMirrored.Filled.List,
-                    label = "会话",
-                    selected = state.screen == Screen.Sessions,
-                    onClick = { viewModel.showScreen(Screen.Sessions) },
-                )
-                NavigationItem(
-                    icon = Icons.Filled.Person,
-                    label = "角色",
-                    selected = state.screen == Screen.Characters,
-                    onClick = { viewModel.showScreen(Screen.Characters) },
-                )
-                NavigationItem(
-                    icon = Icons.Filled.Settings,
-                    label = "设置",
-                    selected = state.screen == Screen.Settings,
-                    onClick = { viewModel.showScreen(Screen.Settings) },
-                )
-            }
+            TavernBottomBar(current = state.screen, onSelect = viewModel::showScreen)
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -114,24 +105,62 @@ private fun MainContent(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
     }
 }
 
+/** 底栏的三项。 */
+private data class BarItem(val screen: Screen, val icon: ImageVector, val label: String)
+
+private val barItems = listOf(
+    BarItem(Screen.Sessions, Icons.AutoMirrored.Filled.List, "会话"),
+    BarItem(Screen.Characters, Icons.Filled.Person, "角色"),
+    BarItem(Screen.Settings, Icons.Filled.Settings, "设置"),
+)
+
+/**
+ * 自绘底栏，**56dp**。
+ *
+ * 为什么不用 Material3 的 `NavigationBar`：它固定 80dp 并带胶囊指示器，压不高（标签会被截）。
+ * C 方向要的是紧凑、无胶囊、选中态只靠主色区分。代价是失去它自带的指示器动画，
+ * 下一批做动效时自己补一个淡入。
+ *
+ * insets：背景要铺到系统导航栏底下（否则会露出一条缝），内容用 `navigationBarsPadding()` 让开。
+ */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.NavigationItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = { Icon(icon, contentDescription = label) },
-        label = { Text(label) },
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.primary,
-            selectedTextColor = MaterialTheme.colorScheme.primary,
-            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-    )
+private fun TavernBottomBar(current: Screen, onSelect: (Screen) -> Unit) {
+    val palette = LocalTavernPalette.current
+
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column(modifier = Modifier.navigationBarsPadding()) {
+            HorizontalDivider(color = palette.divider)
+            Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                barItems.forEach { item ->
+                    val selected = current == item.screen
+                    val tint = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable { onSelect(item.screen) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = item.label,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = item.label,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = tint,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
