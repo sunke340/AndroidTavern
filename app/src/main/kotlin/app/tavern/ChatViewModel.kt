@@ -12,11 +12,14 @@ import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
+import app.tavern.core.model.ModelProfile
+import app.tavern.core.model.ModelProfiles
 import app.tavern.core.prompt.PromptBuilder
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
+import app.tavern.data.profiles.ProfileRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -26,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
@@ -88,6 +92,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val themeMode: ThemeMode = ThemeMode.Follow,
         /** 二级页转场风格；见 [NavAnimation]。 */
         val navAnimation: NavAnimation = NavAnimation.Slide,
+        /** 全部模型档案（只在"模型"页与发送时用）。 */
+        val profiles: List<ModelProfile> = emptyList(),
+        /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
+        val activeProfileId: String? = null,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -96,6 +104,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val cardRepository = AppGraph.cards(application)
+    private val profileRepository: ProfileRepository = AppGraph.profiles(application)
     private val chatRepository = AppGraph.chats(application)
     private val settingsRepository = AppGraph.settings(application)
 
@@ -111,11 +120,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
+
+            // 模型档案：表里还没有档案就用老的单套配置种一条（幂等），
+            // 之后**档案才是真相**，老字段留着只为回退时数据还在。
+            val seeded = withContext(Dispatchers.IO) {
+                profileRepository.ensureSeeded(saved.baseUrl, saved.model, saved.apiKey)
+            }
+            val profiles = withContext(Dispatchers.IO) {
+                ModelProfiles.normalizeDefault(profileRepository.list())
+            }
+            val active = profiles.firstOrNull { it.isDefault }
+            val activeKey = active
+                ?.let { profile -> withContext(Dispatchers.IO) { profileRepository.apiKey(profile.id) } }
+                .orEmpty()
+            if (seeded) AppLog.i("profile", "用旧的单套配置种了默认档案 id=${active?.id}")
+            AppLog.i("profile", "档案=${profiles.size} 当前=${active?.id ?: "无"} model=${active?.model ?: "无"}")
+
             _state.update {
                 it.copy(
-                    baseUrl = saved.baseUrl,
-                    apiKey = saved.apiKey,
-                    model = saved.model,
+                    baseUrl = active?.baseUrl ?: saved.baseUrl,
+                    apiKey = activeKey.ifBlank { saved.apiKey },
+                    model = active?.model ?: saved.model,
+                    profiles = profiles,
+                    activeProfileId = active?.id,
                     temperatureText = saved.temperature.toString(),
                     maxTokensText = saved.maxTokens.toString(),
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
@@ -442,18 +469,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun onApiKeyChange(value: String) {
         _state.update { it.copy(apiKey = value) }
+        val profileId = _state.value.activeProfileId
         keySaveJob?.cancel()
         keySaveJob = viewModelScope.launch {
             delay(600)
-            withContext(Dispatchers.IO) { settingsRepository.saveApiKey(value) }
+            withContext(Dispatchers.IO) {
+                // 两处都写：档案里是真相，老字段留着只为回退版本时还能用
+                settingsRepository.saveApiKey(value)
+                profileId?.let { profileRepository.saveApiKey(it, value) }
+            }
         }
     }
 
     private fun persistConnection() {
         val current = _state.value
+        val profileId = current.activeProfileId
+        val baseUrl = current.baseUrl
+        val model = current.model
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                settingsRepository.saveConnection(current.baseUrl, current.model)
+                settingsRepository.saveConnection(baseUrl, model)
+                if (profileId != null) {
+                    runCatching {
+                        profileRepository.find(profileId)?.let { existing ->
+                            profileRepository.save(existing.copy(baseUrl = baseUrl, model = model))
+                        }
+                    }
+                }
             }
         }
     }
@@ -612,7 +654,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             "chat",
             "发送 model=${snapshot.model} messages=${messages.size} repeat=${history.count { it.role == ChatRole.User }}",
         )
-        val client = OpenAiCompatibleClient(baseUrl = snapshot.baseUrl, apiKey = snapshot.apiKey)
+        // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
+        val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }
+        val client = OpenAiCompatibleClient(
+            baseUrl = snapshot.baseUrl,
+            apiKey = snapshot.apiKey,
+            extraHeaders = activeProfile?.headers.orEmpty(),
+        )
         val request = ChatRequest(
             model = snapshot.model,
             messages = messages,
@@ -620,6 +668,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // 0 = 不限：不往请求里放 max_tokens（以前硬编码 300，长回复会被截）
             maxTokens = snapshot.maxTokensText.toIntOrNull()?.takeIf { it > 0 },
             stream = true,
+            extraBody = activeProfile?.reasoningEffort
+                ?.takeIf { it.isNotBlank() }
+                ?.let { mapOf("reasoning_effort" to JsonPrimitive(it)) }
+                .orEmpty(),
         )
 
         job = viewModelScope.launch {

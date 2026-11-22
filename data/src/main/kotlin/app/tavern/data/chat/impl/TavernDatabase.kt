@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * 表结构就两张：会话、消息。SQL 全部集中在这里，改表必须同时写 [onUpgrade] 的迁移
+ * 表结构：会话、消息、模型档案。SQL 全部集中在这里，改表必须同时写 [onUpgrade] 的迁移
  * （为什么不用 Room，见 `docs/adr/0003-sqlite-over-room.md`）。
  *
  * 字段命名故意贴近原版 `.jsonl`：`is_user` / `is_system` / `send_date`，少一层心智转换。
@@ -20,8 +20,25 @@ internal class TavernDatabase(context: Context) :
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
+        db.execSQL(CREATE_SESSIONS)
+        db.execSQL(CREATE_MESSAGES)
+        db.execSQL("CREATE INDEX idx_messages_session ON $TABLE_MESSAGES(session_id, id)")
+        db.execSQL(CREATE_PROFILES)
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        var version = oldVersion
+        // v1 → v2：只**增加**「模型档案」表。会话与消息一行都不动 —— 升级不能丢聊天记录。
+        if (version < 2) {
+            db.execSQL(CREATE_PROFILES)
+            version = 2
+        }
+        // 漏写迁移就炸出来，绝不用 DROP 了事
+        if (version != newVersion) error("没有 $oldVersion → $newVersion 的迁移")
+    }
+
+    private companion object {
+        const val CREATE_SESSIONS = """
             CREATE TABLE $TABLE_SESSIONS (
                 id TEXT PRIMARY KEY NOT NULL,
                 card_id TEXT NOT NULL,
@@ -30,10 +47,9 @@ internal class TavernDatabase(context: Context) :
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
-            """.trimIndent(),
-        )
-        db.execSQL(
-            """
+        """
+
+        const val CREATE_MESSAGES = """
             CREATE TABLE $TABLE_MESSAGES (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
@@ -43,20 +59,42 @@ internal class TavernDatabase(context: Context) :
                 send_date TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES $TABLE_SESSIONS(id) ON DELETE CASCADE
             )
-            """.trimIndent(),
-        )
-        db.execSQL("CREATE INDEX idx_messages_session ON $TABLE_MESSAGES(session_id, id)")
-    }
+        """
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // 还没有历史版本。加字段/改表时在这里写分支，逐版本迁移，绝不要 DROP 了事。
-        error("没有 $oldVersion → $newVersion 的迁移")
+        // headers 存"一行一条 Name: value"的原始文本（UI 里就是这个形状，存取不用转义）
+        const val CREATE_PROFILES = """
+            CREATE TABLE IF NOT EXISTS $TABLE_PROFILES (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                model TEXT NOT NULL,
+                reasoning_effort TEXT,
+                headers TEXT NOT NULL DEFAULT '',
+                is_default INTEGER NOT NULL DEFAULT 0
+            )
+        """
     }
 
     companion object {
         const val DATABASE_NAME = "tavern.db"
-        const val VERSION = 1
+        const val VERSION = 2
         const val TABLE_SESSIONS = "sessions"
         const val TABLE_MESSAGES = "messages"
+        const val TABLE_PROFILES = "model_profiles"
+    }
+}
+
+/**
+ * 同一个数据库只开一个 [SQLiteOpenHelper]。
+ *
+ * 两个仓储各 `new` 一个的话会有两条连接抢一把锁，非 WAL 模式下容易出现 "database is locked"。
+ */
+internal object TavernDatabases {
+
+    @Volatile
+    private var instance: TavernDatabase? = null
+
+    fun of(context: Context): TavernDatabase = instance ?: synchronized(this) {
+        instance ?: TavernDatabase(context).also { instance = it }
     }
 }

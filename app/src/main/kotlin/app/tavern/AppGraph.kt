@@ -5,6 +5,8 @@ import app.tavern.data.cards.CardRepository
 import app.tavern.data.cards.impl.CardStore
 import app.tavern.data.chat.ChatRepository
 import app.tavern.data.chat.impl.SqliteChatRepository
+import app.tavern.data.profiles.ProfileRepository
+import app.tavern.data.profiles.impl.SqliteProfileRepository
 import app.tavern.data.settings.SettingsRepository
 import app.tavern.data.settings.impl.PreferencesSettingsRepository
 
@@ -25,6 +27,9 @@ object AppGraph {
     @Volatile
     private var settingsStore: SettingsRepository? = null
 
+    @Volatile
+    private var profileStore: ProfileRepository? = null
+
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
             cardStore ?: CardStore(context.applicationContext).also { cardStore = it }
@@ -39,5 +44,12 @@ object AppGraph {
         settingsStore ?: synchronized(this) {
             settingsStore ?: PreferencesSettingsRepository(context.applicationContext)
                 .also { settingsStore = it }
+        }
+
+    /** 模型档案（多套连接配置）。Key 仍由它自己的 SecretStore 管，别在这里碰明文。 */
+    fun profiles(context: Context): ProfileRepository =
+        profileStore ?: synchronized(this) {
+            profileStore ?: SqliteProfileRepository(context.applicationContext)
+                .also { profileStore = it }
         }
 }
