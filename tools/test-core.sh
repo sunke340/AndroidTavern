@@ -10,6 +10,7 @@ tools/gradle-local.sh \
     :core:model:test \
     :core:card-format:test \
     :core:lorebook:test \
+    :core:tokenizer:test \
     :core:prompt:test \
     :core:ai:test \
     :core:chat-format:test \

@@ -176,7 +176,11 @@ try {
         }
 
         const context = getContext();
+        // 世界书预算 = round(wi_budget% * maxPromptTokens)，必须记下来，否则测试只能猜上下文长度
+        let maxPromptTokens = null;
+        try { maxPromptTokens = typeof S.getMaxPromptTokens === 'function' ? S.getMaxPromptTokens() : null; } catch { }
         return {
+            maxPromptTokens,
             captured,
             allCalls,
             error,
@@ -213,6 +217,7 @@ try {
             character: CHARACTER,
             world: SELECT_WORLD,
             wiSettings: WI_SETTINGS,
+            maxPromptTokens: result.maxPromptTokens,
             context: result.context,
             generateError: result.error,
         },

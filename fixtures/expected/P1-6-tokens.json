@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-22T17:46:03.369Z",
+    "how": "playwright：在页面里调用原版 getTokenCountAsync()，抄下 (文本, 计数)",
+    "model": null,
+    "mainApi": "openai",
+    "note": "gpt-4-turbo 走 cl100k_base；换模型重录要连断言一起改"
+  },
+  "cases": [
+    {
+      "text": "hello world",
+      "count": 8
+    },
+    {
+      "text": "Write Seraphina's next reply in a fictional chat between Seraphina and User.",
+      "count": 24
+    },
+    {
+      "text": "你好，旅人。很高兴看到你醒来。",
+      "count": 26
+    },
+    {
+      "text": "## 标题\n\n- 列表项一\n- 列表项二\n\n**粗体** 与 `代码`。",
+      "count": 36
+    },
+    {
+      "text": "MARK-BUDGET-0 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "count": 59
+    },
+    {
+      "text": "MARK-BUDGET-1 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "count": 59
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "count": 51
+    },
+    {
+      "text": "*Seraphina smiles softly, turning back toward you as she hums in thought.* \"Well, as guardian of this glade, I possess certain gifts - healing, protection, nature magic and the like.\"",
+      "count": 49
+    },
+    {
+      "text": "1234567890 1234567890 1234567890",
+      "count": 20
+    },
+    {
+      "text": "a\nb\nc\nd\ne",
+      "count": 15
+    }
+  ]
+}

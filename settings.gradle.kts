@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 include(":core:model")
 include(":core:card-format")
 include(":core:lorebook")
+include(":core:tokenizer")
 include(":core:prompt")
 include(":core:ai")
 include(":core:chat-format")

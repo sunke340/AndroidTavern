@@ -6,9 +6,11 @@ import app.tavern.core.card.lorebookEntries
 import app.tavern.core.lorebook.LorebookGlobalScanData
 import app.tavern.core.lorebook.LorebookScanResult
 import app.tavern.core.lorebook.LorebookScanner
+import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
+import app.tavern.core.tokenizer.Tokens
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
@@ -56,6 +58,9 @@ class LorebookBehaviorFixtureTest {
     @Test
     fun `P1-3 delay 到期后激活`() = assertFixture("P1-3-delay-passed")
 
+    @Test
+    fun `P1-4 token 预算把超出的条目挡在外面`() = assertFixture("P1-4-budget")
+
     private fun assertFixture(id: String) {
         val file = repoRoot.resolve("fixtures/expected/$id.json")
         require(Files.exists(file)) { "夹具不存在：$file" }
@@ -81,11 +86,14 @@ class LorebookBehaviorFixtureTest {
             "$name: ${message.content}"
         }
 
+        val model = request["model"]?.jsonPrimitive?.content ?: "gpt-4-turbo"
+        val maxPromptTokens = meta["maxPromptTokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 3795
+
         val wiSettings = (meta["wiSettings"] as? JsonObject)
         val settings = LorebookScanSettings(
             charName = card.name,
             userName = userName,
-            maxContext = 3795,
+            maxContext = maxPromptTokens,
             recursive = wiSettings?.get("world_info_recursive")?.jsonPrimitive?.booleanOrNull ?: false,
             budgetPercent = wiSettings?.get("world_info_budget")?.jsonPrimitive?.intOrNull ?: 25,
             budgetCap = wiSettings?.get("world_info_budget_cap")?.jsonPrimitive?.intOrNull ?: 0,
@@ -95,6 +103,8 @@ class LorebookBehaviorFixtureTest {
             useGroupScoring = wiSettings?.get("world_info_use_group_scoring")?.jsonPrimitive?.booleanOrNull ?: false,
             minActivations = wiSettings?.get("world_info_min_activations")?.jsonPrimitive?.intOrNull ?: 0,
             maxRecursionSteps = wiSettings?.get("world_info_max_recursion_steps")?.jsonPrimitive?.intOrNull ?: 0,
+            // 原版数的是"当一条消息算"的 token（裸计数 + 6），见 :core:tokenizer 的 countAsMessage
+            tokenCounter = LorebookTokenCounter { text -> Tokens.countAsMessage(model, text) },
         )
         val global = LorebookGlobalScanData(
             characterDescription = card.description,

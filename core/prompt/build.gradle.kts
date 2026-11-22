@@ -14,6 +14,7 @@ dependencies {
     api(project(":core:lorebook"))
     api(project(":core:model"))
 
+    testImplementation(project(":core:tokenizer"))
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
