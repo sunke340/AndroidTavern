@@ -1,0 +1,146 @@
+{
+ "spec": "chara_card_v2",
+ "spec_version": "2.0",
+ "data": {
+  "name": "WILogic",
+  "description": "DESC-LOGIC",
+  "personality": "",
+  "scenario": "",
+  "first_mes": "GREETING-LOGIC",
+  "mes_example": "",
+  "creator_notes": "",
+  "system_prompt": "",
+  "post_history_instructions": "",
+  "alternate_greetings": [],
+  "tags": [],
+  "creator": "androidtavern-fixtures",
+  "character_version": "0.0.1",
+  "extensions": {},
+  "character_book": {
+   "name": "WILogic",
+   "entries": [
+    {
+     "id": 0,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [
+      "beta"
+     ],
+     "content": "MARK-ANDANY",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e0",
+     "extensions": {
+      "position": 0,
+      "display_index": 0,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 0
+     }
+    },
+    {
+     "id": 1,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [
+      "zeta"
+     ],
+     "content": "MARK-NOTALL",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e1",
+     "extensions": {
+      "position": 0,
+      "display_index": 1,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 1
+     }
+    },
+    {
+     "id": 2,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [
+      "beta"
+     ],
+     "content": "MARK-NOTANY-BLOCKED",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e2",
+     "extensions": {
+      "position": 0,
+      "display_index": 2,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 2
+     }
+    },
+    {
+     "id": 3,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [
+      "beta",
+      "delta"
+     ],
+     "content": "MARK-ANDALL",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e3",
+     "extensions": {
+      "position": 0,
+      "display_index": 3,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 3
+     }
+    },
+    {
+     "id": 4,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [
+      "zeta"
+     ],
+     "content": "MARK-NOTANY",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e4",
+     "extensions": {
+      "position": 0,
+      "display_index": 4,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 2
+     }
+    }
+   ]
+  }
+ }
+}

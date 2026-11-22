@@ -26,6 +26,16 @@ const SEED = arg('seed', null);
 // --dump-chat：把原版**当前聊天数组**原样存一份（证明"新建聊天后第一条到底是什么"）。
 // 只存内存里的 chat，不读磁盘——避免和别的录制互相干扰。
 const DUMP_CHAT = arg('dump-chat', null);
+// --wi-settings：世界书的全局开关（recursive / budget / depth / group scoring …），传 JSON。
+// 用原版自己的 updateWorldInfoSettings() 设进去，不去点 DOM 复选框——那套选择器太脆。
+const WI_SETTINGS = arg('wi-settings', null) ? JSON.parse(arg('wi-settings')) : null;
+// --import-embedded-world：把卡内嵌世界书真的导入成原版的世界书文件并挂到这张卡上。
+// 不做这一步，原版只在界面上弹一个"要不要导入？"的对话框，然后**什么都不注入**——
+// 我第一次录 P1-2 就录出一份没有世界书的请求体（chat 里连条目都没有）。
+const IMPORT_EMBEDDED = process.argv.indexOf('--import-embedded-world') !== -1;
+// --select-world：把某个世界书挂到"全局激活"上（原版 updateWorldInfoSettings 的第二个参数）。
+// 只导入不挂载的话，卡里没有 extensions.world，原版就当作"没挂书"，一条都不注入。
+const SELECT_WORLD = arg('select-world', null);
 
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
@@ -77,7 +87,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -91,8 +101,22 @@ try {
             throw new Error('原版里没有角色卡。先放一张到 data/default-user/characters/，例如 Seraphina.png');
         }
         const idx = Math.max(0, chars.findIndex(c => c && c.name === character));
-        if (getContext().characterId == null) {
+        const current = chars[Number(getContext().characterId)];
+        if (!current || current.name !== character) {
             await S.selectCharacterById(String(idx));
+        }
+
+        // 世界书全局开关要在第一次 Generate 之前设好（模块级变量，设完即生效）
+        const WI = await import('./scripts/world-info.js');
+        if (importEmbeddedWorld) {
+            await WI.importEmbeddedWorldInfo(true);
+            await new Promise(r => setTimeout(r, 500));
+        }
+        if (selectWorld) {
+            WI.updateWorldInfoSettings({}, [selectWorld]);
+        }
+        if (wiSettings) {
+            WI.updateWorldInfoSettings(wiSettings, selectWorld ? [selectWorld] : undefined);
         }
         // main_api 由页面上的 #main_api 下拉框驱动（没有导出的 setter），默认可能不是 openai。
         // 直接把 select 设成 openai 并触发 change，走原版自己的初始化路径。
@@ -166,7 +190,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
@@ -187,6 +211,8 @@ try {
             endpoint: last.url,
             how: 'playwright + window.fetch 拦截，调用原版 Generate("normal")',
             character: CHARACTER,
+            world: SELECT_WORLD,
+            wiSettings: WI_SETTINGS,
             context: result.context,
             generateError: result.error,
         },

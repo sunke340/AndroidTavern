@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-22T17:36:54.770Z",
+    "endpoint": "/api/backends/chat-completions/generate",
+    "how": "playwright + window.fetch 拦截，调用原版 Generate(\"normal\")",
+    "character": "WIRecursion",
+    "world": "WIRecursion",
+    "wiSettings": {
+      "world_info_recursive": true
+    },
+    "context": {
+      "name1": "User",
+      "name2": "WIRecursion",
+      "characterId": "2",
+      "chatId": "WIRecursion - 2026-11-23@01h36m52s800ms",
+      "chatLength": 3
+    },
+    "generateError": null
+  },
+  "request": {
+    "type": "normal",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Write WIRecursion's next reply in a fictional chat between WIRecursion and User."
+      },
+      {
+        "role": "system",
+        "content": "MARK-DELAYED-RECURSION\nMARK-RECURSED\nRECURSE-HOOK wombat"
+      },
+      {
+        "role": "system",
+        "content": "DESC-RECURSION"
+      },
+      {
+        "role": "system",
+        "content": "[Start a new Chat]"
+      },
+      {
+        "role": "assistant",
+        "content": "GREETING-RECURSION"
+      },
+      {
+        "role": "user",
+        "content": "alpha"
+      }
+    ],
+    "model": "gpt-4-turbo",
+    "temperature": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "top_p": 1,
+    "max_tokens": 300,
+    "stream": true,
+    "chat_completion_source": "openai",
+    "user_name": "User",
+    "char_name": "WIRecursion",
+    "group_names": [],
+    "include_reasoning": true,
+    "enable_web_search": false,
+    "request_images": false,
+    "request_image_resolution": "",
+    "request_image_aspect_ratio": "",
+    "custom_prompt_post_processing": ""
+  }
+}

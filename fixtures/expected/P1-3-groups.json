@@ -1,0 +1,65 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-22T17:37:01.374Z",
+    "endpoint": "/api/backends/chat-completions/generate",
+    "how": "playwright + window.fetch 拦截，调用原版 Generate(\"normal\")",
+    "character": "WIGroups",
+    "world": "WIGroups",
+    "wiSettings": null,
+    "context": {
+      "name1": "User",
+      "name2": "WIGroups",
+      "characterId": "1",
+      "chatId": "WIGroups - 2026-11-23@01h36m59s397ms",
+      "chatLength": 3
+    },
+    "generateError": null
+  },
+  "request": {
+    "type": "normal",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Write WIGroups's next reply in a fictional chat between WIGroups and User."
+      },
+      {
+        "role": "system",
+        "content": "MARK-GROUP-HIGH"
+      },
+      {
+        "role": "system",
+        "content": "DESC-GROUPS"
+      },
+      {
+        "role": "system",
+        "content": "[Start a new Chat]"
+      },
+      {
+        "role": "assistant",
+        "content": "GREETING-GROUPS"
+      },
+      {
+        "role": "user",
+        "content": "alpha beta"
+      }
+    ],
+    "model": "gpt-4-turbo",
+    "temperature": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "top_p": 1,
+    "max_tokens": 300,
+    "stream": true,
+    "chat_completion_source": "openai",
+    "user_name": "User",
+    "char_name": "WIGroups",
+    "group_names": [],
+    "include_reasoning": true,
+    "enable_web_search": false,
+    "request_images": false,
+    "request_image_resolution": "",
+    "request_image_aspect_ratio": "",
+    "custom_prompt_post_processing": ""
+  }
+}

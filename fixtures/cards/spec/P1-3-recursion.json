@@ -1,0 +1,92 @@
+{
+ "spec": "chara_card_v2",
+ "spec_version": "2.0",
+ "data": {
+  "name": "WIRecursion",
+  "description": "DESC-RECURSION",
+  "personality": "",
+  "scenario": "",
+  "first_mes": "GREETING-RECURSION",
+  "mes_example": "",
+  "creator_notes": "",
+  "system_prompt": "",
+  "post_history_instructions": "",
+  "alternate_greetings": [],
+  "tags": [],
+  "creator": "androidtavern-fixtures",
+  "character_version": "0.0.1",
+  "extensions": {},
+  "character_book": {
+   "name": "WIRecursion",
+   "entries": [
+    {
+     "id": 0,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [],
+     "content": "RECURSE-HOOK wombat",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e0",
+     "extensions": {
+      "position": 0,
+      "display_index": 0,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 0
+     }
+    },
+    {
+     "id": 1,
+     "keys": [
+      "wombat"
+     ],
+     "secondary_keys": [],
+     "content": "MARK-RECURSED",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e1",
+     "extensions": {
+      "position": 0,
+      "display_index": 1,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 0
+     }
+    },
+    {
+     "id": 2,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [],
+     "content": "MARK-DELAYED-RECURSION",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e2",
+     "extensions": {
+      "position": 0,
+      "display_index": 2,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 0,
+      "delay_until_recursion": true
+     }
+    }
+   ]
+  }
+ }
+}

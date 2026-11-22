@@ -9,9 +9,15 @@
 （换行归一、宏替换、包装前缀）都能一眼看出来。
 
 用法：
-  python3 tools/fixture/make-test-card.py            # 写到 fixtures/cards/P0-5-synthetic.png
+  python3 tools/fixture/make-test-card.py                       # 默认合成卡 → fixtures/cards/P0-5-synthetic.png
+  python3 tools/fixture/make-test-card.py --spec <card.json> --out <card.png>
+      # 用一份完整的 V2/V3 卡 JSON 当卡数据（世界书夹具用它造带 character_book 的卡）
+
+之所以要能读 spec：世界书夹具（P1-1~P1-4）需要**可编程的**内嵌书条目，
+每条条目的 keys / 位置 / 逻辑 / 权重都要能精确控制，否则夹具说不清是哪一行为失败了。
 """
 
+import argparse
 import base64
 import json
 import struct
@@ -65,11 +71,19 @@ def make_chunk(ctype: bytes, payload: bytes) -> bytes:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spec", help="完整卡 JSON（含 data.character_book）")
+    parser.add_argument("--out", help="输出 PNG 路径（相对仓库根）")
+    args = parser.parse_args()
+
     if not SOURCE_IMAGE.exists():
         raise SystemExit(f"找不到底图：{SOURCE_IMAGE}\n先跑 tools/fixture/bootstrap.sh")
 
     raw = SOURCE_IMAGE.read_bytes()
-    json_bytes = json.dumps(CARD, ensure_ascii=False).encode("utf-8")
+    card_json = CARD
+    if args.spec:
+        card_json = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+    json_bytes = json.dumps(card_json, ensure_ascii=False).encode("utf-8")
     chara = make_chunk(b"tEXt", b"chara\x00" + base64.b64encode(json_bytes))
 
     out = bytearray(raw[:8])
@@ -83,9 +97,10 @@ def main() -> None:
         if ctype == b"IHDR":
             out += chara
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_bytes(bytes(out))
-    print(f"写好 {OUT.relative_to(ROOT)}（{len(out)} 字节）")
+    out_path = Path(args.out) if args.out else OUT
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(bytes(out))
+    print(f"写好 {out_path.resolve().relative_to(ROOT)}（{len(out)} 字节）")
 
 
 if __name__ == "__main__":

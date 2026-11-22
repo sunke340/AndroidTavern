@@ -1,0 +1,48 @@
+{
+ "spec": "chara_card_v2",
+ "spec_version": "2.0",
+ "data": {
+  "name": "WIDelay",
+  "description": "DESC-DELAY",
+  "personality": "",
+  "scenario": "",
+  "first_mes": "GREETING-DELAY",
+  "mes_example": "",
+  "creator_notes": "",
+  "system_prompt": "",
+  "post_history_instructions": "",
+  "alternate_greetings": [],
+  "tags": [],
+  "creator": "androidtavern-fixtures",
+  "character_version": "0.0.1",
+  "extensions": {},
+  "character_book": {
+   "name": "WIDelay",
+   "entries": [
+    {
+     "id": 0,
+     "keys": [
+      "alpha"
+     ],
+     "secondary_keys": [],
+     "content": "MARK-DELAY",
+     "enabled": true,
+     "insertion_order": 100,
+     "position": "before_char",
+     "selective": true,
+     "constant": false,
+     "comment": "e0",
+     "extensions": {
+      "position": 0,
+      "display_index": 0,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "selectiveLogic": 0,
+      "delay": 4
+     }
+    }
+   ]
+  }
+ }
+}
