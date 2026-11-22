@@ -24,6 +24,9 @@ import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.lorebook.LorebookScanState
 import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.prompt.PromptBuilder
+import app.tavern.core.regex.RegexEngine
+import app.tavern.core.regex.RegexPlacement
+import app.tavern.core.regex.RegexScript
 import app.tavern.core.tokenizer.Tokens
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
@@ -133,6 +136,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val bookDisabled: Set<Int> = emptySet(),
         /** 已导入的全局世界书。 */
         val worldBooks: List<WorldBookRef> = emptyList(),
+        /** 正则脚本（导入自 ST 的脚本数组）。 */
+        val regexScripts: List<RegexScript> = emptyList(),
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -161,6 +166,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val chatRepository = AppGraph.chats(application)
     private val settingsRepository = AppGraph.settings(application)
     private val worldBookRepository = AppGraph.worldBooks(application)
+    private val regexRepository = AppGraph.regex(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -172,6 +178,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshWorldBooks()
+        refreshRegexScripts()
         viewModelScope.launch {
             // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
@@ -904,6 +911,61 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---- 正则脚本 ------------------------------------------------------------
+
+    fun refreshRegexScripts() {
+        viewModelScope.launch {
+            val scripts = withContext(Dispatchers.IO) { regexRepository.scripts() }
+            _state.update { it.copy(regexScripts = scripts) }
+            AppLog.i("regex", "正则脚本 ${scripts.size} 条，启用 ${scripts.count { !it.disabled }} 条")
+        }
+    }
+
+    fun importRegexScripts(uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = getApplication<Application>().contentResolver
+                        .openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        ?: error("读不到文件")
+                    regexRepository.import(json)
+                }
+            }
+            result.onSuccess { count ->
+                _state.update { it.copy(notice = Notice(System.nanoTime(), "已导入正则脚本，共 $count 条")) }
+                refreshRegexScripts()
+            }.onFailure { error ->
+                _state.update { it.copy(notice = Notice(System.nanoTime(), "导入失败：${error.message}")) }
+            }
+        }
+    }
+
+    fun setRegexScriptDisabled(name: String, disabled: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { regexRepository.setDisabled(name, disabled) }
+            refreshRegexScripts()
+        }
+    }
+
+    /**
+     * 按 placement 跑正则脚本。
+     *
+     * 原版对用户输入是**在进聊天记录之前**改写（所以历史里存的就是改写后的文本），
+     * 对模型输出只改显示、不改存档。宏（`{{char}}` / `{{user}}`）在这里注入。
+     */
+    private fun applyRegex(text: String, placement: RegexPlacement, card: CharacterCard): String {
+        val scripts = _state.value.regexScripts
+        if (scripts.isEmpty() || text.isEmpty()) return text
+        val engine = RegexEngine(
+            substitute = { value ->
+                value.replace("{{char}}", card.name).replace("{{user}}", "User")
+            },
+        )
+        return engine.applyAll(scripts, text, placement)
+    }
+
     private fun displayNameOf(uri: Uri): String {
         runCatching {
             val projection = arrayOf(OpenableColumns.DISPLAY_NAME)
@@ -986,7 +1048,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val text = snapshot.input.trim()
+        val rawText = snapshot.input.trim()
+        val text = applyRegex(rawText, RegexPlacement.UserInput, characterCard)
         val userMessage = ChatMessage(ChatRole.User, text)
         val history = snapshot.transcript + userMessage
         // 世界书：卡内嵌书扫一遍再拼提示词。没有条目时是空结果，不会多出一条消息。

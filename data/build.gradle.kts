@@ -26,6 +26,7 @@ dependencies {
     // 上层（app/feature）必须能编译到它们。
     api(project(":core:model"))
     api(project(":core:card-format"))
+    api(project(":core:regex"))
 
     // 暂时没有额外依赖：SAF 读流、SharedPreferences、File 都是平台的。
     // 加 Room/DataStore 时再在这里加，别提前引入。

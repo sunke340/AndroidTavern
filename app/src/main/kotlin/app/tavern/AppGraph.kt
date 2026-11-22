@@ -7,6 +7,8 @@ import app.tavern.data.chat.ChatRepository
 import app.tavern.data.chat.impl.SqliteChatRepository
 import app.tavern.data.profiles.ProfileRepository
 import app.tavern.data.profiles.impl.SqliteProfileRepository
+import app.tavern.data.regex.RegexRepository
+import app.tavern.data.regex.impl.PreferencesRegexRepository
 import app.tavern.data.settings.SettingsRepository
 import app.tavern.data.settings.impl.PreferencesSettingsRepository
 import app.tavern.data.worldinfo.WorldBookRepository
@@ -35,6 +37,9 @@ object AppGraph {
     @Volatile
     private var worldBookStore: WorldBookRepository? = null
 
+    @Volatile
+    private var regexStore: RegexRepository? = null
+
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
             cardStore ?: CardStore(context.applicationContext).also { cardStore = it }
@@ -56,6 +61,12 @@ object AppGraph {
         worldBookStore ?: synchronized(this) {
             worldBookStore ?: FileWorldBookRepository(context.applicationContext)
                 .also { worldBookStore = it }
+        }
+
+    /** 正则脚本（设置→正则）。 */
+    fun regex(context: Context): RegexRepository =
+        regexStore ?: synchronized(this) {
+            regexStore ?: PreferencesRegexRepository(context.applicationContext).also { regexStore = it }
         }
 
     /** 模型档案（多套连接配置）。Key 仍由它自己的 SecretStore 管，别在这里碰明文。 */

@@ -11,6 +11,7 @@ tools/gradle-local.sh \
     :core:card-format:test \
     :core:lorebook:test \
     :core:tokenizer:test \
+    :core:regex:test \
     :core:prompt:test \
     :core:ai:test \
     :core:chat-format:test \

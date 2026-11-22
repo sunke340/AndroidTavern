@@ -1,0 +1,199 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-22T18:11:03.776Z",
+    "how": "playwright：把脚本塞进 extension_settings.regex，再调原版 getRegexedString() 抄输入输出",
+    "note": "placement: 1=USER_INPUT 2=AI_OUTPUT；isMarkdown/isPrompt 决定 markdownOnly/promptOnly 脚本在哪一侧生效"
+  },
+  "scripts": [
+    {
+      "id": "a",
+      "scriptName": "global-replace",
+      "findRegex": "/alpha/g",
+      "replaceString": "ALPHA-REPLACED",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "b",
+      "scriptName": "swap-groups",
+      "findRegex": "/(\\w+)-(\\w+)/",
+      "replaceString": "$2_$1",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "c",
+      "scriptName": "trim-strings",
+      "findRegex": "/\\[(.+?)\\]/g",
+      "replaceString": "<$1>",
+      "trimStrings": [
+        "!"
+      ],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "d",
+      "scriptName": "match-token",
+      "findRegex": "/beta/g",
+      "replaceString": "[{{match}}]",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "e",
+      "scriptName": "ai-output",
+      "findRegex": "/gamma/g",
+      "replaceString": "GAMMA-AI",
+      "trimStrings": [],
+      "placement": [
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "f",
+      "scriptName": "prompt-only",
+      "findRegex": "/delta/g",
+      "replaceString": "DELTA-PROMPT",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "g",
+      "scriptName": "first-only",
+      "findRegex": "/omega/",
+      "replaceString": "OMEGA",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    },
+    {
+      "id": "h",
+      "scriptName": "disabled-one",
+      "findRegex": "/zeta/g",
+      "replaceString": "ZETA",
+      "trimStrings": [],
+      "placement": [
+        1
+      ],
+      "disabled": true,
+      "markdownOnly": false,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null
+    }
+  ],
+  "cases": [
+    {
+      "text": "alpha beta gamma delta omega alpha",
+      "placement": 1,
+      "isMarkdown": false,
+      "isPrompt": false,
+      "output": "REPLACED_ALPHA [beta] gamma delta OMEGA ALPHA-REPLACED"
+    },
+    {
+      "text": "alpha beta gamma delta omega alpha",
+      "placement": 1,
+      "isMarkdown": false,
+      "isPrompt": true,
+      "output": "alpha beta gamma DELTA-PROMPT omega alpha"
+    },
+    {
+      "text": "alpha beta gamma delta omega alpha",
+      "placement": 2,
+      "isMarkdown": false,
+      "isPrompt": false,
+      "output": "alpha beta GAMMA-AI delta omega alpha"
+    },
+    {
+      "text": "alpha beta gamma delta omega alpha",
+      "placement": 2,
+      "isMarkdown": true,
+      "isPrompt": false,
+      "output": "alpha beta gamma delta omega alpha"
+    },
+    {
+      "text": "x-y and a-b",
+      "placement": 1,
+      "isMarkdown": false,
+      "isPrompt": false,
+      "output": "y_x and a-b"
+    },
+    {
+      "text": "keep! [a!b] tail",
+      "placement": 1,
+      "isMarkdown": false,
+      "isPrompt": false,
+      "output": "keep! <ab> tail"
+    },
+    {
+      "text": "zeta alpha",
+      "placement": 1,
+      "isMarkdown": false,
+      "isPrompt": false,
+      "output": "zeta REPLACED_ALPHA"
+    }
+  ]
+}

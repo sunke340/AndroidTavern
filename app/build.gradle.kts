@@ -71,6 +71,7 @@ dependencies {
     implementation(project(":core:prompt"))
     implementation(project(":core:lorebook"))
     implementation(project(":core:tokenizer"))
+    implementation(project(":core:regex"))
     implementation(project(":core:ai"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

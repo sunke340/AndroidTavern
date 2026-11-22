@@ -14,6 +14,7 @@ enum class SettingsPage(val title: String) {
     Sampling("采样"),
     Appearance("外观"),
     WorldBook("世界书"),
+    Regex("正则"),
     About("关于"),
 }
 

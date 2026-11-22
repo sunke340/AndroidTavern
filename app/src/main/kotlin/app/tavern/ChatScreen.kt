@@ -64,6 +64,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import app.tavern.core.regex.RegexEngine
+import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -84,6 +86,15 @@ import app.tavern.core.model.ChatRole
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
     val glassOn = state.visualEffects == VisualEffects.Glass
+
+    // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
+    val regexScripts = state.regexScripts
+    val displayText: (String) -> String = remember(regexScripts) {
+        { text ->
+            if (regexScripts.isEmpty()) text
+            else RegexEngine().applyAll(regexScripts, text, RegexPlacement.AiOutput)
+        }
+    }
 
     GlassDetailScaffold(
         title = state.cardName.ifBlank { "聊天" },
@@ -134,6 +145,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             message = ChatMessage(ChatRole.Assistant, state.streamingText),
                             style = state.effectiveMessageStyle,
                             showCursor = true,
+                            displayText = displayText,
                         )
                     }
                 }
@@ -144,6 +156,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     MessageRow(
                         message = message,
                         style = state.effectiveMessageStyle,
+                        displayText = displayText,
                         // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
                         // 位移动画会不断重放，整屏看起来在闪。
                         modifier = Modifier.animateItem(
@@ -266,15 +279,21 @@ private fun MessageRow(
     style: MessageStyle,
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
+    displayText: (String) -> String = { it },
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
+        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
     }
 }
 
 @Composable
-private fun BubbleRow(message: ChatMessage, modifier: Modifier, showCursor: Boolean) {
+private fun BubbleRow(
+    message: ChatMessage,
+    modifier: Modifier,
+    showCursor: Boolean,
+    displayText: (String) -> String,
+) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
 
@@ -297,7 +316,7 @@ private fun BubbleRow(message: ChatMessage, modifier: Modifier, showCursor: Bool
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
-                    Text(message.content, style = MaterialTheme.typography.bodyMedium)
+                    Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                     if (showCursor) StreamingCursor()
                 }
             }
@@ -307,7 +326,12 @@ private fun BubbleRow(message: ChatMessage, modifier: Modifier, showCursor: Bool
 
 /** 整行卡片样式（可选项）：信息密度低，适合长段落阅读。 */
 @Composable
-private fun CardRow(message: ChatMessage, modifier: Modifier, showCursor: Boolean) {
+private fun CardRow(
+    message: ChatMessage,
+    modifier: Modifier,
+    showCursor: Boolean,
+    displayText: (String) -> String,
+) {
     val palette = LocalTavernPalette.current
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -322,7 +346,7 @@ private fun CardRow(message: ChatMessage, modifier: Modifier, showCursor: Boolea
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row {
-                Text(message.content, style = MaterialTheme.typography.bodyMedium)
+                Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                 if (showCursor) StreamingCursor()
             }
         }

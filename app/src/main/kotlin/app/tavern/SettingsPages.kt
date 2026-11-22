@@ -87,6 +87,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 SettingsPage.Sampling -> SamplingPage(state, viewModel)
                 SettingsPage.Appearance -> AppearancePage(state, viewModel)
                 SettingsPage.WorldBook -> WorldBookPage(state, viewModel)
+                SettingsPage.Regex -> RegexPage(state, viewModel)
                 SettingsPage.About -> AboutPage(state, viewModel)
             }
             Box(modifier = Modifier.size(1.dp).padding(bottom = Space.xl))
@@ -362,6 +363,77 @@ private fun WorldBookRow(
                 contentDescription = "删除世界书 $name",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+// ---- 正则 ---------------------------------------------------------------
+
+/**
+ * 正则脚本。作用位置（placement）沿用原版数字：1=用户输入、2=模型输出、5=世界书。
+ *
+ * 这里只做"导入 / 开关"：脚本是文件，编辑仍在 PC 版做——手机上写正则是最难受的事。
+ */
+@Composable
+private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importRegexScripts(uri)
+    }
+
+    SectionLabel("正则脚本（${state.regexScripts.size} 条）")
+    if (state.regexScripts.isEmpty()) {
+        EmptyHint("还没有正则脚本。可以导入 ST 导出的脚本 JSON，或 settings.json 里的 regex 数组。")
+    } else {
+        state.regexScripts.forEach { script ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        script.name.ifBlank { script.findRegex },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        placementLabel(script) + " · " + if (script.disabled) "已停用" else "已启用",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = !script.disabled,
+                    onCheckedChange = { enabled -> viewModel.setRegexScriptDisabled(script.name, !enabled) },
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(Space.m))
+    OutlinedButton(
+        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("导入正则脚本（.json）")
+    }
+    Text(
+        "用户输入脚本在发出去之前改写（会进聊天记录）；模型输出脚本只改显示。格式与 PC 版 ST 相同。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+private fun placementLabel(script: app.tavern.core.regex.RegexScript): String = when {
+    script.placement.isEmpty() -> "未指定位置"
+    else -> script.placement.sortedBy { it.value }.joinToString("+") { placement ->
+        when (placement) {
+            app.tavern.core.regex.RegexPlacement.UserInput -> "用户输入"
+            app.tavern.core.regex.RegexPlacement.AiOutput -> "模型输出"
+            app.tavern.core.regex.RegexPlacement.WorldInfo -> "世界书"
+            app.tavern.core.regex.RegexPlacement.Reasoning -> "推理"
+            app.tavern.core.regex.RegexPlacement.SlashCommand -> "命令"
+            app.tavern.core.regex.RegexPlacement.MarkdownDisplay -> "Markdown"
         }
     }
 }

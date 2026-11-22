@@ -36,6 +36,9 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         SettingLinkRow("世界书", worldBookSummary) {
             viewModel.openSettingsPage(SettingsPage.WorldBook)
         }
+        SettingLinkRow("正则", "${state.regexScripts.count { !it.disabled }} / ${state.regexScripts.size} 条启用") {
+            viewModel.openSettingsPage(SettingsPage.Regex)
+        }
         SettingLinkRow("关于", "构建与版本信息") {
             viewModel.openSettingsPage(SettingsPage.About)
         }
