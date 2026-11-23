@@ -47,7 +47,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     GlassDetailScaffold(
         title = if (draft.isNew) "新建档案" else "编辑档案",
         onBack = viewModel::closeProfileEditor,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
         actions = {
             CapsuleIcon(
                 icon = Icons.Filled.Check,

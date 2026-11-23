@@ -88,7 +88,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
         // 顶栏只说明"这是哪一页"；卡名在下面的卡头里出现一次就够
         title = "角色详情",
         onBack = viewModel::closeDetail,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }

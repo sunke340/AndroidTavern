@@ -90,7 +90,8 @@ import app.tavern.core.model.ChatRole
 @Composable
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
-    val glassOn = state.visualEffects == VisualEffects.Glass
+    // 玻璃档要 API 33+（液态玻璃的 AGSL）；低于它只开放轻量，所以这里直接压成 false
+    val glassOn = state.visualEffects.effective() == VisualEffects.Glass
 
     // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
     val overscroll = rememberRubberOverscroll()
@@ -254,6 +255,8 @@ private fun ChatInputBar(
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
+                // 液态玻璃：整颗钮就是一块小透镜，背后的消息会在边缘被弯进来
+                liquid = LiquidGlassSpec(),
                 // 发送：淡紫磨砂。浓度是**高光能不能被看见**的决定因素，不是审美：
                 // 页面底色是 (250)；内部 16% 时亮到 (232,229,244)、22% 时 (214,208,234) ——
                 // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。

@@ -254,8 +254,20 @@ MainScreen（Destination + AnimatedContent）
 - 组合方式：`MutableInteractionSource` 同时交给 `GlassSurface`（负责缩放）和内部 `clickable`
   （`indication = null`）；页头那种"玻璃胶囊 + 图标"两层写的，用 `LocalGlassPress` 共享同一个 source。
 
+### 液态玻璃（AGSL 真折射，2026-11-23 起）
+
+- **发送钮走 `LiquidGlassSpec` + AGSL 着色器**（[ADR 0007](../docs/adr/0007-liquid-glass-agsl.md)）：
+  `sdRoundRect` 出距离场与法线 → 只在边缘带内把采样点沿法线外推（折射）→ R/B 通道错开一点点（色散）
+  → 法线点乘光方向出镜面 → 底边压内阴影。代码在 `app/LiquidGlass.kt`。
+- **玻璃档门槛是 API 33**（`glassSupported`）。低于 33 **不退回那套彩色玻璃**，直接降成轻量；
+  `VisualEffects.effective()` 是唯一入口，**渲染点不要直接比 `state.visualEffects`**。
+- 底片复用现成的 `frost` 层：**模糊挂内层节点、着色器挂外层节点**（同一节点只能有一个 `renderEffect`）。
+- 着色器失败必须兜住：`runCatching` + `AppLog.e("glass", …)` + 退回描边，不能崩。
+- 判据：底片是纯色时**看不出折射是对的**（物理如此）；要看效果得让内容从钮背后滚过去。
+
 ### 主题色按钮
 
+- 发送钮现在由 AGSL 着色器画（面/高光/内阴影都在里面），下面几条只在**退回描边样式**时生效。
 - 发送钮 = 玻璃面 + **叠加 32% 主色**（不是替换底色），停止态保持浅色面。
 - **叠加浓度决定高光能不能被看见**（2026-11-23 连改四版的核心结论）：页面底色 `(250)`，
   16% 内部 `(232,229,244)`、22% 内部 `(214,208,234)` —— 面太亮，"亮边"和面拉不开差，

@@ -37,7 +37,7 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         title = book?.name ?: "世界书",
         subtitle = book?.let { "${it.entries.size} 条" },
         onBack = viewModel::closeWorldBook,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
     ) { padding ->
         if (book == null || !book.loaded) {
             Box(

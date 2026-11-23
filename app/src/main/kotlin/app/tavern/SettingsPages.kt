@@ -67,7 +67,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     GlassDetailScaffold(
         title = page.title,
         onBack = viewModel::closeSettingsPage,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
         actions = if (page == SettingsPage.Model) {
             { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建档案") { viewModel.openProfileEditor(null) } }
         } else {
@@ -221,13 +221,16 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         onSelect = viewModel::onMessageStyleChange,
     )
 
-    SectionLabel("视觉效果")
-    SegmentedRow(
-        options = VisualEffects.entries,
-        selected = state.visualEffects,
-        label = { it.label },
-        onSelect = viewModel::setVisualEffects,
-    )
+    // 玻璃档要 API 33+（AGSL 液态玻璃）；不支持就只留轻量，不给选
+    if (glassSupported) {
+        SectionLabel("视觉效果")
+        SegmentedRow(
+            options = VisualEffects.entries,
+            selected = state.visualEffects,
+            label = { it.label },
+            onSelect = viewModel::setVisualEffects,
+        )
+    }
 
     SectionLabel("页面转场")
     SegmentedRow(

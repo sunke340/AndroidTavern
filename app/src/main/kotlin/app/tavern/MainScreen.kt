@@ -318,7 +318,8 @@ private fun TabsRoot(
     val contentOrigin = remember { mutableStateOf(Offset.Zero) }
     val contentSize = remember { mutableStateOf(IntSize.Zero) }
     // API 31 以下没有 RenderEffect：那时玻璃档按「轻量」画，连图层都不录（省一遍全屏绘制）。
-    val glassOn = state.visualEffects == VisualEffects.Glass && Build.VERSION.SDK_INT >= 31
+    // 玻璃档要 API 33+（AGSL 液态玻璃）；低于它只开放轻量
+    val glassOn = state.visualEffects.effective() == VisualEffects.Glass
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->

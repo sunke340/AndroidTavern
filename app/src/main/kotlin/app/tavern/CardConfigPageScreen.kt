@@ -40,7 +40,7 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
     GlassDetailScaffold(
         title = page.title,
         onBack = viewModel::closeCardConfigPage,
-        glass = state.visualEffects == VisualEffects.Glass,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
     ) { padding ->
         Column(
             modifier = Modifier

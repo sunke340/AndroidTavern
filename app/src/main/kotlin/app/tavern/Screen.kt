@@ -65,3 +65,12 @@ enum class VisualEffects(val label: String) {
     Glass("玻璃"),
     Off("轻量"),
 }
+
+/**
+ * **真正生效**的档位：低于 API 33 没有 AGSL，玻璃档直接降成轻量。
+ *
+ * 所有渲染点都必须用它，不要直接比 `state.visualEffects` —— 否则老系统上会画出那套
+ * 已被判定"不可用"的彩色玻璃（2026-11-23 用户要求：低版本不开放玻璃）。
+ */
+fun VisualEffects.effective(): VisualEffects =
+    if (this == VisualEffects.Glass && !glassSupported) VisualEffects.Off else this

@@ -36,10 +36,11 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -178,12 +179,41 @@ fun GlassSurface(
     rimColor: Color? = null,
     /** 是否画投影。页头整条铺到屏幕顶上时不需要（会在地面留下一条阴影）。 */
     shadow: Boolean = true,
+    /**
+     * 液态玻璃（真折射）。传 null = 老样式（半透明面 + 描边）。
+     *
+     * 只有 [glass] + [frost] 都有、且系统 ≥ API 33 时生效；否则自动退回老样式。
+     * 生效时**面、高光、内阴影全部由着色器画**，Kotlin 这层就不画了（不然会叠两层边）。
+     */
+    liquid: LiquidGlassSpec? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
     val surface = MaterialTheme.colorScheme.surface
-    val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
+    val density = LocalDensity.current
+    val pad = with(density) { GlassBlur.roundToPx() }
     var nodeOrigin by remember { mutableStateOf(Offset.Zero) }
+    var nodeSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // 液态玻璃：把这条磨砂层当"底片"喂给着色器，边缘做真折射。
+    // 首帧还没量到尺寸 → null，走老样式；量到之后重建成着色器版本。
+    val liquidEffect = remember(nodeSize, shape, liquid, fillColor, glass, frost) {
+        val spec = liquid
+        if (glass && frost != null && spec != null) {
+            buildLiquidGlassEffect(
+                nodeSize = IntSize(nodeSize.width + pad * 2, nodeSize.height + pad * 2),
+                shapeSize = nodeSize,
+                shape = shape,
+                density = density,
+                tint = fillColor ?: Color.White,
+                tintAlpha = fillColor?.alpha ?: 0f,
+                spec = spec,
+            )
+        } else {
+            null
+        }
+    }
+    val liquidOn = liquidEffect != null
 
     // 按压动画：直接吃 interaction 流，**不要**用 collectIsPressedAsState()。
     //
@@ -217,6 +247,7 @@ fun GlassSurface(
     // 缩放在外壳上：按下时投影、高光、内容一起缩，不会出现"只有图标变小"的错位。
     Box(
         modifier = modifier
+            .onSizeChanged { nodeSize = it }
             .onGloballyPositioned { nodeOrigin = it.positionInWindow() }
             .graphicsLayer {
                 scaleX = press.value
@@ -243,7 +274,19 @@ fun GlassSurface(
         // 本体：先裁形状，磨砂与底色都画在里面
         Box(Modifier.matchParentSize().clip(shape)) {
             if (glass && frost != null) {
-                Box(Modifier.matchParentSize().expandForBlur(pad)) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .expandForBlur(pad)
+                        // 先模糊再折射：模糊挂在内层节点，着色器挂在外层（同一节点只能有一个 renderEffect）
+                        .then(
+                            if (liquidOn) {
+                                Modifier.graphicsLayer { renderEffect = liquidEffect }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
                     Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
                         val origin = nodeOrigin - contentOrigin()
                         // 这个节点比玻璃面大一圈，所以先把 pad 加回来；小层是 1/FrostScale 的，换算过去。
@@ -257,19 +300,21 @@ fun GlassSurface(
                     }
                 }
             }
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(if (glass) surface.copy(alpha = GlassFillAlpha) else surface),
-            )
-            // 主题色叠加层（发送钮）：叠在玻璃面上而不是替换它，这样淡紫仍然是"磨砂上的一层色"
-            if (fillColor != null) {
-                Box(Modifier.matchParentSize().background(fillColor))
+            if (!liquidOn) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(if (glass) surface.copy(alpha = GlassFillAlpha) else surface),
+                )
+                // 主题色叠加层（发送钮）：叠在玻璃面上而不是替换它，这样淡紫仍然是"磨砂上的一层色"
+                if (fillColor != null) {
+                    Box(Modifier.matchParentSize().background(fillColor))
+                }
             }
         }
 
-        // 顶面薄光：上亮下透，玻璃才有"面"而不是一块色板
-        if (glass) {
+        // 顶面薄光：上亮下透，玻璃才有"面"而不是一块色板（液态档由着色器给镜面，不叠）
+        if (glass && !liquidOn) {
             Box(
                 Modifier
                     .matchParentSize()
@@ -298,7 +343,7 @@ fun GlassSurface(
                 .then(if (glass) Modifier.clip(shape) else Modifier)
                 .drawBehind {
                     val radius = cornerRadiusOf(shape)
-                    if (glass) {
+                    if (glass && !liquidOn) {
                         val rimTint = rimColor ?: Color.White
                         // 有色面（主题色按钮）只勾一圈细线；白玻璃面保留多层倒角（层间无色差不显圈）
                         val layers = if (fillColor != null) {
@@ -320,7 +365,7 @@ fun GlassSurface(
                                 style = Stroke(w),
                             )
                         }
-                    } else {
+                    } else if (!glass) {
                         drawRoundRect(
                             color = palette.cardBorder,
                             cornerRadius = radius,
@@ -356,6 +401,7 @@ fun GlassSurface(
     interactionSource: MutableInteractionSource? = null,
     fillColor: Color? = null,
     rimColor: Color? = null,
+    liquid: LiquidGlassSpec? = null,
     content: @Composable BoxScope.() -> Unit,
 ) = GlassSurface(
     frost = backdrop.frost,
@@ -366,5 +412,6 @@ fun GlassSurface(
     interactionSource = interactionSource,
     fillColor = fillColor,
     rimColor = rimColor,
+    liquid = liquid,
     content = content,
 )
