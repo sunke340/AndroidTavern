@@ -263,12 +263,23 @@ fun GlassSurface(
         )
 
         // 按压反馈：整块玻璃（含高光）一起轻微压暗，而不是只在图标那块画个圆盘涟漪。
+        //
+        // 注意这里**不能 clip(shape)**：白色高光是描边居中在轮廓上的，有一半画在形状外面，
+        // 裁掉的话那半圈高光不会变暗，按下去就成了"面暗了、边缘还是亮的"（用户 2026-11-23 指出）。
+        // 所以把压暗矩形往外扩半个最宽高光环，正好盖住描边露在外面的那一半。
         if (pressTint > 0.001f) {
             Box(
                 Modifier
                     .matchParentSize()
-                    .clip(shape)
-                    .drawBehind { drawRect(Color.Black.copy(alpha = pressTint)) },
+                    .drawBehind {
+                        val ring = RimLayers.maxOf { it.first }.toPx() / 2f
+                        drawRoundRect(
+                            color = Color.Black.copy(alpha = pressTint),
+                            topLeft = Offset(-ring, -ring),
+                            size = Size(size.width + ring * 2f, size.height + ring * 2f),
+                            cornerRadius = CornerRadius(size.height / 2f + ring),
+                        )
+                    },
             )
         }
 
