@@ -187,14 +187,12 @@ private fun DetailHeader(
             Modifier
                 .matchParentSize()
                 .drawBehind {
-                    // 页头遮罩：**顶部留一点透**（0.92），内容滚到下面时能隐约透出来，读起来还是玻璃；
-                    // 再低就会和标题文字打架（实底 1.0 是 2026-11-22 为了"两层文字叠加"改的，
-                    // 现在底部 28dp 的渐变尾巴已经承担了过渡，顶部可以放开一点）。
+                    // 页头遮罩：从顶部到底部**一条线性渐变**，中间不设平台、不设拐点。
+                    // 之前是"前 60% 几乎不变 + 后段突然变淡"，视觉上是一条硬台阶（用户 2026-11-23 指出）。
+                    // 代价：标题那一带的不透明度比原来低一些，靠加粗标题与下方 28dp 的尾巴保证不糊。
                     drawRect(
                         brush = Brush.verticalGradient(
-                            0.00f to background.copy(alpha = 0.92f),
-                            0.60f to background.copy(alpha = 0.90f),
-                            0.86f to background.copy(alpha = 0.55f),
+                            0.00f to background.copy(alpha = 0.94f),
                             1.00f to Color.Transparent,
                         ),
                     )
