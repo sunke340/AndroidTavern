@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`1675887`（tag `apk-m89`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
+- 代码：`4d6671e`（tag `apk-m90`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 全绿
-- 已交付 APK：`app-v73-1675887.apk`（签名固定，可覆盖安装；上一版 `app-v72-fec029e.apk`）
+- 已交付 APK：`app-v74-4d6671e.apk`（签名固定，可覆盖安装；上一版 `app-v73-1675887.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 接手先看这三件（2026-11-23 晚）
@@ -58,6 +58,17 @@
 7. **橡皮筋**：见上面「接手先看这三件」第 1 条。若还悬停，看日志 `回弹 start raw=…`：
    `raw` 是否又超过 ~444（说明上限没生效）、以及 `回弹 start` 与 fling 结束之间的间隔
 8. **液态玻璃帧率**：见上面第 2 条
+
+## 2026-11-23 21:0x：动效收口（Emil Kowalski 的三张表）
+
+| 块 | 结果 |
+|---|---|
+| 进入/退出缓动 | `Motion.Decelerate` 从 `(0,0,0,1)` 换成强 ease-out `(0.23,1,0.32,1)`；覆盖整页/tab/四标签/消息入场 |
+| 减动效 | 新增 `ReducedMotion.kt`（`rememberReduceMotion()` = `ValueAnimator.areAnimatorsEnabled()` + ON_RESUME 重读）；页面/tab/四标签 → 纯淡化、发送↔停止 → 纯淡化、按压 → 不缩放、橡皮筋松手 → 直接归零 |
+| 文档 | 新增 [docs/design/motion.md](../design/motion.md)：频率闸门、曲线/时长表、手势两段式、Never Ship 表、我们有意偏离的三处；app/AGENTS.md 加摘要 |
+
+**待真机验**：打开系统「移除动画」（设置 → 无障碍 → 移除动画）后，翻页应只淡不滑、按压不放大、
+橡皮筋松手直接回位；关掉后恢复原样（改完设置切回 App 即生效，不用重启）。
 
 ## 已知问题 / 风险（别当成已完成）
 
