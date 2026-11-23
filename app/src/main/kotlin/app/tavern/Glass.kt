@@ -212,6 +212,7 @@ fun GlassSurface(
                 density = density,
                 tint = fillColor ?: Color.White,
                 tintAlpha = fillColor?.alpha ?: 0f,
+                faceColor = surface,
                 spec = spec,
             )
         } else {
@@ -410,7 +411,9 @@ fun GlassSurface(
     interactionSource: MutableInteractionSource? = null,
     fillColor: Color? = null,
     rimColor: Color? = null,
-    liquid: LiquidGlassSpec? = null,
+    // 默认必须和另一个重载一致（`LiquidGlassSpec.Default`），写成 null 会把默认关掉 ——
+    // 曾经的后果：聊天输入框走这条重载、没显式传，于是全 App 只有它还是旧玻璃（2026-11-23）。
+    liquid: LiquidGlassSpec? = LiquidGlassSpec.Default,
     content: @Composable BoxScope.() -> Unit,
 ) = GlassSurface(
     frost = backdrop.frost,

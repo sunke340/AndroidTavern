@@ -257,10 +257,16 @@ MainScreen（Destination + AnimatedContent）
 ### 液态玻璃（AGSL 真折射，2026-11-23 起）
 
 - **液态玻璃是所有玻璃表面的默认样式**（2026-11-23 起，`GlassSurface(liquid = LiquidGlassSpec.Default)`）：
-  底栏胶囊、页头胶囊、二级页返回钮/动作钮、聊天输入框、发送钮 —— 同一套光。
-  **例外**：整条铺满屏幕的磨砂页头传 `liquid = null`（左右边就是屏幕边，折射只会是噪声）。
-  `liquid` 必须是**同一个实例**（`LiquidGlassSpec.Default`）：它被当 `remember` key，
+  底栏胶囊、页头胶囊、二级页返回钮/动作钮、聊天输入框、发送钮、整条磨砂页头 —— 同一套光。
+  `liquid` 必须是**同一个实例**（`LiquidGlassSpec.Default` / `.HeaderBand`）：它被当 `remember` key，
   每次重组新建一个 data class 会让着色器重建。
+- **`GlassSurface` 有两个重载（带 frost / 带 GlassBackdrop），两边的 `liquid` 默认值必须一致**：
+  曾经 backdrop 重载默认写成 `null`，把默认关掉了 —— 结果全 App 只有走那条重载的**聊天输入框**
+  还是旧玻璃（2026-11-23 用户一眼看出来）。
+- **横条用 `rimBottomOnly = true`（`LiquidGlassSpec.HeaderBand`）**：整条页头四边都亮会变成一颗
+  大胶囊（深色模式下特别明显）。开它之后亮度 = `clamp(n.y,0,1)`，只有下沿一条直的亮线。
+- **玻璃面颜色必须跟主题走**（`uFaceColor` = `colorScheme.surface`）：写死白的话，深色模式下
+  整块玻璃会发灰发白（2026-11-23 深色模式实拍就是这个症状）。
 - **发送钮**是第一个试点，参数见下（[ADR 0007](../docs/adr/0007-liquid-glass-agsl.md)）：
   `sdRoundRect` 出距离场与法线 → 只在边缘带内把采样点沿法线外推（折射）→ R/B 通道错开一点点（色散）
   → **上下打光**：细光线亮度 `0.28 + 0.72×|n.y|`（上下两条边最亮、左右只剩一线）、

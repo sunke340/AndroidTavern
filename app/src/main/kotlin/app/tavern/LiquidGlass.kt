@@ -66,6 +66,14 @@ data class LiquidGlassSpec(
      * 这是胶囊/圆钮最耐看的打光（2026-11-23 用户指定，原来是"左上角单侧光"）。
      */
     val sideShadow: Float = 0.02f,
+    /**
+     * 高光只画**下方**（且是直的）。
+     *
+     * 圆钮/胶囊要上下都亮；但整条页头是"一条横边"，四边都亮就变成一颗大胶囊
+     * （2026-11-23 用户：深色模式下聊天页页头看着像个大胶囊）。开这个开关后，
+     * 亮度 = `clamp(n.y, 0, 1)`：只有下沿亮、左右竖向边完全不亮 —— 线自然就是直的。
+     */
+    val rimBottomOnly: Boolean = false,
 ) {
     companion object {
         /**
@@ -75,6 +83,9 @@ data class LiquidGlassSpec(
          * 每次重组新建一个 data class 会让着色器每帧重建（实际上线会烧电）。
          */
         val Default = LiquidGlassSpec()
+
+        /** 整条磨砂页头：只下沿一道直的亮线 + 更宽的折射带（内容从下面滚过来会弯进来）。 */
+        val HeaderBand = LiquidGlassSpec(edgeDp = 8f, rimBottomOnly = true)
     }
 }
 
@@ -104,6 +115,8 @@ uniform float  uRimWidth;
 uniform float  uRimAlpha;
 uniform float  uSideShadow;
 uniform float  uSideWidth;
+uniform float3 uFaceColor;
+uniform float  uRimMode;
 uniform float4 uTint;
 
 float sdRoundRect(float2 p, float2 hs, float r) {
@@ -146,20 +159,26 @@ half4 main(float2 fragCoord) {
     }
 
     float3 rgb = float3(base.rgb);
-    rgb = mix(rgb, float3(0.985, 0.98, 1.0), uFaceWhite);
+    rgb = mix(rgb, uFaceColor, uFaceWhite);
     rgb = mix(rgb, uTint.rgb, uTint.a);
 
     // 光从**上方与下方**来：竖向上的边缘（n.y 大）出高光，左右两侧（n.x 大）压暗
     float vertical = abs(n.y);
     float horizontal = abs(n.x);
 
-    // 细光线：上下亮、左右只留一线（薄玻璃靠它立轮廓）
-    float lit = 0.28 + 0.72 * vertical;
+    // uRimMode > 0.5 = 只下方（页头横条）；否则上下都亮（圆钮/胶囊）
+    // 用 step/mix 而不是 if/ternary：AGSL 里少写一个分支更稳
+    float bottomOnly = step(0.5, uRimMode);
+    float down = clamp(n.y, 0.0, 1.0);
+    float lit = mix(0.28 + 0.72 * vertical, down, bottomOnly);
+    float glow = mix(vertical, down, bottomOnly);
+
+    // 细光线：薄玻璃靠它立轮廓（横条只在下沿画一条直的）
     float rim = (1.0 - smoothstep(0.0, uRimWidth, distIn)) * inside;
     rgb = mix(rgb, float3(1.0), rim * lit * uRimAlpha);
 
     // 上下内侧的柔和反光（湿润感），不做成厚透镜的镜面
-    rgb = rgb + (pow(vertical, 6.0) * band * inside * uSpecular);
+    rgb = rgb + (pow(glow, 6.0) * band * inside * uSpecular);
 
     // 左右两侧的内阴影：贴着左右边界最重，往里化开
     float sideMask = horizontal * (1.0 - smoothstep(0.0, uSideWidth, distIn)) * inside;
@@ -187,6 +206,8 @@ internal fun buildLiquidGlassEffect(
     density: Density,
     tint: Color,
     tintAlpha: Float,
+    /** 玻璃面的底色（跟主题走）：深色模式下必须是深色，写死白会让整块玻璃发灰。 */
+    faceColor: Color,
     spec: LiquidGlassSpec,
 ): ComposeRenderEffect? {
     if (!glassSupported) return null
@@ -207,6 +228,8 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uSideShadow", spec.sideShadow)
         // 侧阴影从边界往里化开的距离：比折射带略窄，只贴边一圈（2026-11-23 用户："左右两侧阴影太大"）
         shader.setFloatUniform("uSideWidth", spec.edgeDp * 1.0f * density.density)
+        shader.setFloatUniform("uFaceColor", faceColor.red, faceColor.green, faceColor.blue)
+        shader.setFloatUniform("uRimMode", if (spec.rimBottomOnly) 1f else 0f)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
         RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
     }.onFailure {

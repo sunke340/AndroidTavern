@@ -212,8 +212,9 @@ private fun DetailHeader(
                     bottomEnd = DetailBandCorner,
                 ),
                 shadow = false,
-                // 整条磨砂页头**不做**液态玻璃：它的左右两边就是屏幕边，折射在那儿只是噪声
-                liquid = null,
+                // 整条页头也走液态玻璃，但**只在下沿画一道直的亮线**：
+                // 四边都亮就成了一颗大胶囊（2026-11-23 用户指出，深色模式下尤其明显）。
+                liquid = LiquidGlassSpec.HeaderBand,
                 modifier = Modifier.matchParentSize(),
             ) {
                 // 玻璃面本身不带内容：标题与按钮压在上面
