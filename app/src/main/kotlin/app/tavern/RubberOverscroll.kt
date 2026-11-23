@@ -1,6 +1,7 @@
 package app.tavern
 
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -23,38 +24,53 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 列表拉到两端后的**橡皮筋**：继续拖会带阻尼地跟手，松手弹回去。
+ * 列表拉到两端后的**橡皮筋**：继续拖带阻尼跟手，松手弹回去。
  *
- * 系统的 overscroll（Android 12+ 是拉伸）在列表里只做"视觉拉伸"，位移几乎看不出来；
- * 这里用 `NestedScrollConnection` 自己接住"列表消费不掉的那部分滚动量"，
- * 换算成内容位移（[damping] 阻尼），松手用弹簧回 0。
+ * 算法照 Jetpack Compose 官方 [androidx.compose.foundation.OverscrollEffect] 的做法
+ * （`applyToScroll` 接边界剩余位移、`applyToFling` 接剩余速度、弹簧回 0），
+ * 我们这版用 `NestedScrollConnection` 实现事件部分，视觉位移单独算：
  *
- * 用法：`Modifier.rubberOverscroll(state)`，注意要挂在滚动容器上、且在 `verticalScroll` /
- * `LazyColumn` 之前（外层），这样它才在"内层滚不动"时拿到剩余的 `available`。
+ * 1. **累计"原始越界量" `raw`**（手指拖出去多少就算多少，不做逐帧阻尼）；
+ * 2. 视觉位移 `visual` = 橡皮筋公式 `raw·R·K / (R + K·raw)` —— 越拉越紧、**没有硬墙**；
+ * 3. 松手让 `raw` 用弹簧回 0，`visual` 由同一个公式自然跟随。
+ *
+ * 为什么不再"逐帧乘阻尼 + coerceIn 上限"（旧写法，2026-11-23 换掉）：
+ * ① 撞上限就是硬墙，拉到头再松手会"停在最远处"；② 逐帧阻尼和回弹动画互相覆盖，
+ * 才有"拉伸后悬停"。现在 raw 可以无限涨、视觉只是渐近，物理上不会再撞墙。
  */
 class RubberOverscrollState internal constructor() {
-    internal var offset by mutableFloatStateOf(0f)
+    /** 原始越界量（px）：手指拖出去多少。可正可负。 */
+    internal var raw by mutableFloatStateOf(0f)
 
-    /** 正在跑的回弹动画。手指一落就要掐掉它，否则新手势会被旧动画拽回去。 */
+    /** 当前视觉位移（px），= 橡皮筋公式([raw])。给 [rubberOverscroll] 的 graphicsLayer 用。 */
+    internal var visual by mutableFloatStateOf(0f)
+
+    /** 公式里的"参考尺寸"（px）：固定值，**不跟着页面高度变**，这样每页手感一致。 */
+    internal var referencePx by mutableFloatStateOf(0f)
+
+    /** 正在跑的回弹动画。手指一落就掐掉它，否则新手势会被旧动画拽回去。 */
     internal var settleJob: Job? = null
 
     /**
-     * 代数：每次手指接管 +1。回弹动画在**写 offset 之前**核对代数，变了就不写。
+     * 代数：每次手指接管 +1。回弹动画写 [raw] 之前核对代数，变了就不写。
      *
      * 为什么光 `cancel()` 不够：动画是每帧回调，`cancel()` 只是标记，
-     * 已经排进这一帧的那次回调照样会执行 —— 它会把用户刚拖出来的位移**盖回动画的轨迹**，
-     * 真机上就是"抽一下"（2026-11-23 日志里"回弹被打断 offset=0 / 回弹结束 offset=23"这一对就是它）。
+     * 已经排进这一帧的那次回调照样会执行 —— 它会把用户刚拖出来的位移盖回动画轨迹。
      */
     internal var gen: Int = 0
 
-    /**
-     * 跟手比例：0.62 表示手指拖 10dp，内容走 6.2dp。
-     * 越小越"硬"（拉不动），越大越飘。只在**起步**是这个比例，越拉阻力越大（见 `onPostScroll` 里的 room 系数）。
-     */
-    var damping: Float = 0.62f
+    /** 橡皮筋常数：越小越"硬"。0.6 时约 120dp 手指 → 64dp 位移。 */
+    var rubberConstant: Float = 0.6f
 
-    /** 最大可拉出的距离（dp），到这儿就拉不动了。 */
-    var maxStretchDp: Float = 64f
+    /** 把 [raw] 映射成视觉位移（橡皮筋公式）。 */
+    internal fun applyRaw(next: Float) {
+        raw = next
+        val r = abs(next)
+        val ref = if (referencePx > 0f) referencePx else 1f
+        val k = rubberConstant
+        val eased = (r * ref * k) / (ref + k * r)
+        visual = if (next < 0f) -eased else eased
+    }
 }
 
 @Composable
@@ -63,136 +79,86 @@ fun rememberRubberOverscroll(): RubberOverscrollState = remember { RubberOverscr
 @Composable
 fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
     val density = LocalDensity.current
-    val maxPx = with(density) { state.maxStretchDp.dp.toPx() }
+    // 参考尺寸固定 400dp：不随页面高度变，保证"每页拉到头距离一样"
+    val referencePx = with(density) { 400.dp.toPx() }
+    state.referencePx = referencePx
     val scope = rememberCoroutineScope()
 
-    val connection = remember(state, maxPx, scope) {
+    val connection = remember(state, referencePx, scope) {
         object : NestedScrollConnection {
 
-            /**
-             * 手指一上来就先夺权：把还在跑的回弹动画停掉。
-             *
-             * 不这么做的话，回弹期间用户再拉，`onPostScroll` 写进 [RubberOverscrollState.offset] 的值
-             * 下一帧就被旧动画覆盖 —— 表现是"不跟手，还在播上一次的橡皮筋"（2026-11-23 用户实测）。
-             * 停掉之后新手势直接从**当前位移**继续，阻尼照常算，视觉上就是"抓住了"。
-             *
-             * 不判断 `source`：回弹自己的动画不走 scroll 回调，不会自打断；而 Fling 阶段也不经过这里。
-             */
+            /** 手指一上来就先夺权：把还在跑的回弹动画停掉。 */
             private fun takeOver() {
                 val running = state.settleJob?.isActive == true
                 state.gen++
                 state.settleJob?.cancel()
                 state.settleJob = null
-                if (running) AppLog.i("rubber", "回弹被打断 offset=${state.offset.roundToInt()}")
+                if (running) AppLog.i("rubber", "回弹被打断 raw=${state.raw.roundToInt()}")
             }
 
-            /** 回弹初速度的上限：跟当前拉伸量挂钩（px/s），防止一次大力甩把值甩飞。 */
-            private fun startAbsLimit(absOffset: Float): Float = absOffset * 8f
+            /** 开始回弹：把 raw 弹回 0（视觉位移按公式跟着走）。 */
+            private fun startSettle(initialVelocity: Float = 0f) {
+                if (state.raw == 0f) return
+                val gen = state.gen
+                val start = state.raw
+                AppLog.i(
+                    "rubber",
+                    "回弹 start raw=${start.roundToInt()} px visual=${state.visual.roundToInt()}",
+                )
+                state.settleJob = scope.launch {
+                    animate(
+                        initialValue = start,
+                        targetValue = 0f,
+                        // 只接"往回收"的速度：朝外的速度会让它松手后继续往外撑，
+                        // 远端停住再回来 —— 那就是"拉伸后悬停"（2026-11-23）。
+                        initialVelocity = if (start * initialVelocity < 0f) initialVelocity else 0f,
+                        // 临界阻尼 + 较硬的弹簧：从静止起步也不会拖（旧值 380 时尾巴长）。
+                        animationSpec = spring(dampingRatio = 1.0f, stiffness = 700f),
+                    ) { value, _ ->
+                        if (state.gen == gen) state.applyRaw(value)
+                    }
+                    if (state.gen == gen) {
+                        AppLog.i("rubber", "回弹结束 visual=${state.visual.roundToInt()}")
+                    }
+                }
+            }
 
-            /** 往里拖时先把橡皮筋收回去，再让列表正常滚。 */
+            /** 往回拖时先把橡皮筋收回去，再让列表正常滚。 */
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 takeOver()
-                val current = state.offset
+                val current = state.raw
                 if (current == 0f || available.y == 0f) return Offset.Zero
-                // 向下拉出后往上推（或反过来）：优先抵消橡皮筋
                 if (current > 0f && available.y < 0f) {
                     val consumed = maxOf(-current, available.y)
-                    state.offset = current + consumed
+                    state.applyRaw(current + consumed)
                     return Offset(0f, consumed)
                 }
                 if (current < 0f && available.y > 0f) {
                     val consumed = minOf(-current, available.y)
-                    state.offset = current + consumed
+                    state.applyRaw(current + consumed)
                     return Offset(0f, consumed)
                 }
                 return Offset.Zero
             }
 
-            /** 列表已经滚不动了，剩下的滚动量变成内容位移。 */
+            /** 列表滚不动了：剩下的滚动量累积成原始越界量（视觉由公式决定，不做逐帧阻尼）。 */
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y == 0f) return Offset.Zero
                 takeOver()
-                val current = state.offset
-                // 渐进阻尼：起步按 damping 跟手，越接近 max 阻力越大（到顶时导数为 0，不再是硬墙）。
-                // 线性阻尼（老写法）是"全程一样重、撞上 max 突然停"，手感发硬、发死。
-                val room = (1f - abs(current) / maxPx).coerceIn(0f, 1f)
-                val target = (current + available.y * state.damping * room).coerceIn(-maxPx, maxPx)
-                state.offset = target
-                // **报告"全吃掉了"**，不要返回 `delta / damping`。
-                //
-                // 我们是滚动链的最外层，剩下的量没人再消费；报告不足（阻尼 < 1、room < 1 时必然不足）
-                // 会让系统把它当成"还没消费"，于是 Android 12+ 的 overscroll 拉伸再叠一层 ——
-                // 这就是"每个页面最大可拉距离不一样"的真凶：内容越短、越能拖动，平台拉伸叠得越多
-                // （角色卡页内容少，所以显得最长）。现在这一层由我们独占，各页面手感一致。
+                state.applyRaw(state.raw + available.y)
+                // 报告"全部吃掉"：这一层由我们独占，系统的 overscroll 拉伸不再叠一层
                 return Offset(0f, available.y)
             }
 
-            /**
-             * 开始回弹。
-             *
-             * 用独立 job：普通 scroll 回调里没法 cancel 一个 suspend 的 `animate()`，
-             * 有了 job 句柄 + 代数，手指一落就能立刻夺权。
-             * 不 join：回弹只是"视觉归位"，不该把滚动链按在那儿半秒。
-             */
-            private fun startSettle(initialVelocity: Float = 0f) {
-                val start = state.offset
-                if (start == 0f) return
-                val sign = if (start >= 0f) 1f else -1f
-                val gen = state.gen
-                val startAbs = abs(start)
-                // 松手速度只接**"往回收"的那一半**。
-                //
-                // 松手速度往外（和 offset 同向）时**丢掉**：那会让橡皮筋先继续往外撑（甚至撑过 64dp 上限），
-                // 在远端停住再回来 —— 用户看到的就是"拉伸后悬停一段时间"（2026-11-23，
-                // 日志里 start=215px v0=1718 那次，v0 是朝外的 1718px/s）。
-                // 朝内（`start * v < 0`）时全量接住，反向甩就立刻收，符合直觉。
-                val pullsBack = start * initialVelocity < 0f
-                val limit = startAbsLimit(startAbs)
-                val v0 = if (pullsBack) initialVelocity.coerceIn(-limit, limit) else 0f
-                // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
-                var grew = false
-                AppLog.i("rubber", "回弹 start=${start.roundToInt()}px v0=${v0.roundToInt()}")
-                state.settleJob = scope.launch {
-                    animate(
-                        initialValue = start,
-                        targetValue = 0f,
-                        initialVelocity = v0,
-                        animationSpec = Motion.RubberBand,
-                    ) { value, _ ->
-                        // ① 代数变了 = 手指已经接管，这一帧不许再写（否则把拖出来的位移盖回去）
-                        // ② 只许朝 0 收敛，不许反向：过冲在列表上就是"复位后又抽一下"
-                        if (state.gen == gen) {
-                            if (abs(value) > startAbs + 1f) grew = true
-                            // 两头都夹：① 不许反向（过冲）② 不许超过 64dp 上限
-                            //（只有往回那一程接速度，正常不会超，但这是最后一道保险）
-                            state.offset =
-                                (value * sign).coerceIn(0f, maxPx) * sign
-                        }
-                    }
-                    if (state.gen == gen) {
-                        AppLog.i("rubber", "回弹结束 offset=${state.offset.roundToInt()}px 反涨=$grew")
-                    }
-                }
-            }
-
-            /**
-             * 松手立即回弹：**吃掉全部速度**并立刻开始。
-             *
-             * 不能只在 `onPostFling` 里做（2026-11-23 用户："没有回弹动画了"）：
-             * 上一版我们独占滚动量之后，列表自己的 fling 会把橡皮筋的位移抹平/搅乱，
-             * `onPostFling` 到达时要么 offset 已经回到 0（直接 return，看着就是"不弹了"），
-             * 要么被拖到很晚。这里在 fling **开始之前**就接管：速度全吃、马上回弹。
-             */
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (state.offset == 0f) return Velocity.Zero
+                if (state.raw == 0f) return Velocity.Zero
                 takeOver()
                 startSettle(available.y)
                 return available
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // 兜底：万一 onPreFling 没走到（比如速度本来就被吃光了），这里再补一次
-                if (state.offset != 0f && state.settleJob?.isActive != true) {
+                if (state.raw != 0f && state.settleJob?.isActive != true) {
                     takeOver()
                     startSettle(available.y)
                 }
@@ -203,5 +169,5 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
 
     return this
         .nestedScroll(connection)
-        .graphicsLayer { translationY = state.offset }
+        .graphicsLayer { translationY = state.visual }
 }
