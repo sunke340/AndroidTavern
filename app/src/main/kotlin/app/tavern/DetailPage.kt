@@ -212,6 +212,8 @@ private fun DetailHeader(
                     bottomEnd = DetailBandCorner,
                 ),
                 shadow = false,
+                // 整条磨砂页头**不做**液态玻璃：它的左右两边就是屏幕边，折射在那儿只是噪声
+                liquid = null,
                 modifier = Modifier.matchParentSize(),
             ) {
                 // 玻璃面本身不带内容：标题与按钮压在上面

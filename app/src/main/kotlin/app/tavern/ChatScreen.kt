@@ -256,7 +256,7 @@ private fun ChatInputBar(
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
                 // 液态玻璃：整颗钮就是一块小透镜，背后的消息会在边缘被弯进来
-                liquid = LiquidGlassSpec(),
+                liquid = LiquidGlassSpec.Default,
                 // 发送：淡紫磨砂。浓度是**高光能不能被看见**的决定因素，不是审美：
                 // 页面底色是 (250)；内部 16% 时亮到 (232,229,244)、22% 时 (214,208,234) ——
                 // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。

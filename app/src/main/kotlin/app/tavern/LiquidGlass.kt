@@ -65,8 +65,18 @@ data class LiquidGlassSpec(
      * 光照模型是"上下打光"：上下边缘出高光、左右两侧压暗 —— 看起来像一根竖着受光的圆管，
      * 这是胶囊/圆钮最耐看的打光（2026-11-23 用户指定，原来是"左上角单侧光"）。
      */
-    val sideShadow: Float = 0.04f,
-)
+    val sideShadow: Float = 0.02f,
+) {
+    companion object {
+        /**
+         * 所有玻璃表面共用的默认参数。
+         *
+         * **必须是同一个实例**：`GlassSurface` 用 `liquid` 当 `remember` 的 key，
+         * 每次重组新建一个 data class 会让着色器每帧重建（实际上线会烧电）。
+         */
+        val Default = LiquidGlassSpec()
+    }
+}
 
 /**
  * AGSL 源码。全部结论都落在这一份着色器里：

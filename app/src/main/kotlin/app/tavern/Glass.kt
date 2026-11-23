@@ -186,8 +186,11 @@ fun GlassSurface(
      *
      * 只有 [glass] + [frost] 都有、且系统 ≥ API 33 时生效；否则自动退回老样式。
      * 生效时**面、高光、内阴影全部由着色器画**，Kotlin 这层就不画了（不然会叠两层边）。
+     *
+     * **默认开启**：所有玻璃表面（底栏、页头胶囊、返回钮、输入框…）共用同一套液态玻璃参数，
+     * 只有"整条铺满屏幕边缘"的页头磨砂条传 null（它的边就是屏幕边，折射只会变成噪声）。
      */
-    liquid: LiquidGlassSpec? = null,
+    liquid: LiquidGlassSpec? = LiquidGlassSpec.Default,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
