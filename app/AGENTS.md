@@ -263,9 +263,12 @@ MainScreen（Destination + AnimatedContent）
 - **`GlassSurface` 有两个重载（带 frost / 带 GlassBackdrop），两边的 `liquid` 默认值必须一致**：
   曾经 backdrop 重载默认写成 `null`，把默认关掉了 —— 结果全 App 只有走那条重载的**聊天输入框**
   还是旧玻璃（2026-11-23 用户一眼看出来）。
-- **横条用 `rimBottomOnly = true`（`LiquidGlassSpec.HeaderBand`）**：整条页头四边都亮会变成一颗
-  大胶囊（深色模式下特别明显）。开它之后亮度 = `clamp(n.y,0,1)`，只有下沿一条直的亮线。
-- **横条的投影用 `shadowBottomOnly = true`**（只在下沿投一条 10dp 的细带，模糊后向下散开）：
+- **横条 = 方案 A（`LiquidGlassSpec.HeaderBand`）**：`refraction=0` / `dispersion=0`（一条直边上做折射
+  只会让滚过的字变形）、`rimBottomOnly=true`（亮度 = `clamp(n.y,0,1)`，只有下沿一条直亮线）、
+  `faceWhite=0.80`（**面要稳定**：头顶是黑字还是空白，页头都是同一块浅板）、`sideShadow=0`。
+  形状必须是 **`RectangleShape`**：下两角留圆角时那条"直线"会在两端往上翘，看着就是"大胶囊的下半圈"
+  （用户两次提到）。
+- **横条的投影用 `shadowBottomOnly = true`**（只在下沿投一条 10dp、alpha 0.16 的细带，模糊后向下散）：
   页头整条是半透明的，**照常画"整块模糊矩形"会从面里透出来把整条糊灰**；四周均匀也没有意义
   （两边在屏幕外、顶上在状态栏后面）。模糊向上散的那一点正好当内阴影。
 - **玻璃面颜色必须跟主题走**（`uFaceColor` = `colorScheme.surface`）：写死白的话，深色模式下
@@ -277,8 +280,12 @@ MainScreen（Destination + AnimatedContent）
   代码在 `app/LiquidGlass.kt`。
 - **光照模型是"上下打光"不是单侧光**（2026-11-23 用户要求）。别再引入 `uLight` 那种单方向点乘：
   圆钮上单侧光会让一侧高光过重、另一侧发灰。
-- **薄玻璃的轮廓靠细光线（`rimWidthDp=1.1` / `rimAlpha=0.85`），不靠厚倒角**：
+- **薄玻璃的轮廓靠细光线（`rimWidthDp = 1.6dp` / `rimAlpha = 0.85`），不靠厚倒角**：
   折射带 4.5dp、强度 0.22 就够，再大就变回"厚透镜"（用户："玻璃感觉太厚了"）。
+  这个 1.6dp **所有表面共用**，不要再按表面分别调。
+- **边缘柔光（`specular`）必须和细线同宽**：早期它按 `band`（折射带 4.5dp ≈ 15px）铺，
+  在有色面上就是"一层体现厚度的渐变白"，在页头上因为按 `clamp(n.y,0,1)` 分布变成**梯形**，
+  用户先后报了这两次。现在遮罩是 `1 - smoothstep(0, uRimWidth, distIn)`，和细线同宽。
 - **面板白度 0.22 + 主题色 20%**：透但被糊过。白度 0.30 时背后什么都看不见（"太不透明了"）。
 - **玻璃档门槛是 API 33**（`glassSupported`）。低于 33 **不退回那套彩色玻璃**，直接降成轻量；
   `VisualEffects.effective()` 是唯一入口，**渲染点不要直接比 `state.visualEffects`**。
@@ -332,10 +339,21 @@ MainScreen（Destination + AnimatedContent）
   每次手指接管 +1，动画写 `offset` 前先核对代数。日志里 `回弹被打断 offset=0 / 回弹结束 offset=23`
   这一对就是它。`回弹结束` 现在带 `反涨=true|false`，用来确认 |offset| 是否单调下降。
 - `onPostFling` **不要 join 回弹动画**：会让滚动链按在那儿半秒，还可能和新手势交错。
+- **物理：累计 raw + 渐近公式，不要"逐帧乘阻尼 + 夹上限"**（这是 2026-11-23 晚重写的核心）：
+  - `raw` = 手指拖出去的原始量（fling 的位移也算，但有上限）；
+  - `visual = raw·R·K/(R+K·raw)`（R 固定 400dp、K=0.6）—— 渐近、越拉越紧、**没有硬墙**；
+  - 松手让 `raw` 用 `spring(1.0, 700)` 回 0，`visual` 由同一个公式跟随。
+  旧写法（逐帧 ×0.62、`coerceIn(±64dp)`）有两个结构性毛病：撞上限是硬墙；逐帧阻尼和回弹动画
+  互相覆盖，手感"被拽住"。
+- **`raw` 必须有上限**（由"视觉最大 64dp"反解，≈444px）：一次快速甩动撞到顶部时，fling 的
+  剩余惯性会整段灌进 raw —— 真机实测到 `raw=-10658px visual=-1149px`（328dp 位移），
+  回弹要倒着走完这一万多像素，内容就在最远处停几百毫秒，用户称之为"悬停"。
+- **fling 与手势要用 `NestedScrollSource` 区分**：到上限之后 fling 送来的位移只"吃掉"，
+  不再累积、也不 `takeOver`（否则回弹被反复重置）；**fling 一撞上限就立刻开始回弹**，
+  不要等 `onPostFling`（那可能是几百毫秒之后）。
 - **`onPostScroll` 要把 available 全部报成"已消费"**（`return available`），不要报 `delta/damping`：
   报不足的部分会被系统当成"还没消费"，交给 Android 12+ 的 overscroll 拉伸再叠一层 ——
-  表现就是**每个页面能拉的最大距离不一样**（内容越短越能拖，平台拉伸叠得越多；角色卡页最明显）。
-  我们是滚动链最外层，剩下的量本来就没人消费，独占它各页面手感才一致（2026-11-23 用户报的差异）。
+  表现就是**每个页面能拉的最大距离不一样**（内容越短越能拖；角色卡页最明显）。
 - **回弹必须能被手指打断**（2026-11-23 用户："回弹动画中再拉，不跟手，还在播上一次的动画"）。
   根因：回弹是在 `onPostFling` 里 suspending `animate(...)` 写 `offset`，普通回调里没法取消，
   用户新拖动写进去的值下一帧就被旧动画覆盖。修法：动画跑在 `settleJob` 里，
