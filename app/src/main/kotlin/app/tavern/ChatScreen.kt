@@ -126,7 +126,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 )
             }
         },
-    ) { _ ->
+    ) { padding ->
         // 列表铺满整页（连输入区底下也算）：消息能滚到输入胶囊后面，胶囊才是真玻璃。
         // 顶部/底部让位一律用 contentPadding —— 它不裁内容，滚动时会从玻璃底下过。
         // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
@@ -136,7 +136,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             modifier = Modifier.fillMaxSize().padding(horizontal = Space.m),
             contentPadding = PaddingValues(
                 top = DetailHeaderHeight,
-                bottom = ChatInputAreaHeight,
+                // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
+                // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
+                bottom = padding.calculateBottomPadding() + ChatInputAreaHeight,
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
@@ -242,6 +244,8 @@ private fun ChatInputBar(
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
+                // 发送：主题色实心（与底栏选中项同一个紫），图标反白；停止仍用原来的浅色面
+                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary,
             ) {
                 Box(
                     modifier = Modifier
@@ -267,7 +271,7 @@ private fun ChatInputBar(
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
                             contentDescription = "发送",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                         )
                     }
                 }

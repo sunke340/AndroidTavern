@@ -21,12 +21,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -65,11 +68,8 @@ private val RimLayers = listOf(
     8.0.dp to 0.09f,
 )
 
-/** 按下时整块玻璃压暗的强度；再大就显脏，0.06 是"能看出在动"的门槛附近。 */
-private const val PressTintAlpha = 0.06f
-
-/** 按下缩放：整块玻璃一起缩（含投影与高光），不做"只有图标缩"。 */
-private const val PressScale = 0.96f
+/** 按下放大：整块玻璃（投影、高光、内容）一起放，不做"只有图标动"也不压暗。 */
+private const val PressScale = 1.05f
 
 
 
@@ -146,6 +146,8 @@ fun GlassSurface(
      * 不传就没有按压反馈（列表底栏这种多按钮表面）。
      */
     interactionSource: MutableInteractionSource? = null,
+    /** 覆盖玻璃面的填充色（发送钮用主题色）。null = 原来的半透明面。 */
+    fillColor: Color? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
@@ -162,11 +164,6 @@ fun GlassSurface(
         targetValue = if (pressed) PressScale else 1f,
         animationSpec = tween(90),
         label = "glass-press-scale",
-    )
-    val pressTint by animateFloatAsState(
-        targetValue = if (pressed) PressTintAlpha else 0f,
-        animationSpec = tween(90),
-        label = "glass-press-tint",
     )
 
     // 外壳**不裁**：投影与模糊描边都要画到形状外面。
@@ -216,7 +213,13 @@ fun GlassSurface(
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(if (glass) surface.copy(alpha = GlassFillAlpha) else surface),
+                    .background(
+                        when {
+                            fillColor != null -> fillColor
+                            glass -> surface.copy(alpha = GlassFillAlpha)
+                            else -> surface
+                        },
+                    ),
             )
         }
 
@@ -262,30 +265,64 @@ fun GlassSurface(
                 },
         )
 
-        // 按压反馈：整块玻璃（含高光）一起轻微压暗，而不是只在图标那块画个圆盘涟漪。
-        //
-        // 注意这里**不能 clip(shape)**：白色高光是描边居中在轮廓上的，有一半画在形状外面，
-        // 裁掉的话那半圈高光不会变暗，按下去就成了"面暗了、边缘还是亮的"（用户 2026-11-23 指出）。
-        // 所以把压暗矩形往外扩半个最宽高光环，正好盖住描边露在外面的那一半。
-        if (pressTint > 0.001f) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawBehind {
-                        val ring = RimLayers.maxOf { it.first }.toPx() / 2f
-                        drawRoundRect(
-                            color = Color.Black.copy(alpha = pressTint),
-                            topLeft = Offset(-ring, -ring),
-                            size = Size(size.width + ring * 2f, size.height + ring * 2f),
-                            cornerRadius = CornerRadius(size.height / 2f + ring),
-                        )
-                    },
-            )
-        }
-
         content()
     }
 }
+
+/**
+ * 磨砂玻璃**带**：页头用。整条宽度画一块"糊掉的内容"，再用线性透明度遮罩往下收。
+ *
+ * 为什么页头要磨砂而不是纯色渐变：纯色遮罩要够实才挡得住滚过去的内容，
+ * 一实就变成"一条不透明的色块"；磨砂把内容**糊掉**，标题在糊底上照样清楚，
+ * 同时保留"内容从玻璃下面过"的观感（用户 2026-11-23 定的方向）。
+ *
+ * 遮罩是**一条**线性渐变（顶实底透），不做平台段 —— 与页头原先的要求一致。
+ */
+@Composable
+fun GlassBand(
+    frost: GraphicsLayer,
+    contentOrigin: () -> Offset,
+    /** 压在上面的底色（用页面背景色），给模糊层一点对比度。 */
+    background: Color,
+    modifier: Modifier = Modifier,
+) {
+    val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = modifier
+            .onGloballyPositioned { origin = it.positionInWindow() }
+            // 遮罩要把"已经画出来的东西"按 alpha 拾掉，必须离屏合成
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.00f to Color.Black,
+                        1.00f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            },
+    ) {
+        Box(Modifier.matchParentSize().expandForBlur(pad)) {
+            Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
+                val offset = origin - contentOrigin()
+                translate(left = pad.toFloat(), top = pad.toFloat()) {
+                    scale(FrostScale, FrostScale, pivot = Offset.Zero) {
+                        translate(left = -offset.x / FrostScale, top = -offset.y / FrostScale) {
+                            drawLayer(frost)
+                        }
+                    }
+                }
+            }
+        }
+        Box(Modifier.matchParentSize().background(background.copy(alpha = BandTintAlpha)))
+    }
+}
+
+/** 页头磨砂带的底色浓度：太低标题会和糊底糊在一起，太高又变回一条色块。 */
+private const val BandTintAlpha = 0.62f
 
 /** 浮层用：直接吃一个 [GlassBackdrop]。 */
 @Composable
@@ -295,6 +332,7 @@ fun GlassSurface(
     shape: Shape,
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource? = null,
+    fillColor: Color? = null,
     content: @Composable BoxScope.() -> Unit,
 ) = GlassSurface(
     frost = backdrop.frost,
@@ -303,5 +341,6 @@ fun GlassSurface(
     shape = shape,
     modifier = modifier,
     interactionSource = interactionSource,
+    fillColor = fillColor,
     content = content,
 )

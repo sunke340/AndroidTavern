@@ -1,6 +1,7 @@
 package app.tavern
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -100,6 +101,8 @@ fun GlassDetailScaffold(
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）
+    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -131,7 +134,7 @@ fun GlassDetailScaffold(
                 content(
                     PaddingValues(
                         top = contentTopInset,
-                        bottom = inner.calculateBottomPadding() + navBottom,
+                        bottom = inner.calculateBottomPadding() + navBottom + imeBottom,
                     ),
                 )
             }
@@ -183,21 +186,27 @@ private fun DetailHeader(
 
     Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight + HeaderFadeTail)) {
         // 内容从下面滚过去时淡出，标题不会和内容叠在一起
-        Box(
-            Modifier
-                .matchParentSize()
-                .drawBehind {
-                    // 页头遮罩：从顶部到底部**一条线性渐变**，中间不设平台、不设拐点。
-                    // 之前是"前 60% 几乎不变 + 后段突然变淡"，视觉上是一条硬台阶（用户 2026-11-23 指出）。
-                    // 代价：标题那一带的不透明度比原来低一些，靠加粗标题与下方 28dp 的尾巴保证不糊。
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0.00f to background.copy(alpha = 0.94f),
-                            1.00f to Color.Transparent,
-                        ),
-                    )
-                },
-        )
+        if (glass) {
+            GlassBand(
+                frost = frost,
+                contentOrigin = contentOrigin,
+                background = background,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawBehind {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.00f to background.copy(alpha = 0.94f),
+                                1.00f to Color.Transparent,
+                            ),
+                        )
+                    },
+            )
+        }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
             modifier = Modifier.fillMaxWidth().height(DetailHeaderHeight).padding(horizontal = Space.l),
@@ -250,13 +259,15 @@ private fun DetailHeader(
                     frost = frost,
                     contentOrigin = contentOrigin,
                     glass = glass,
-                    shape = RoundedCornerShape(Radius.pill),
-                    modifier = Modifier.height(DetailActionHeight),
+                    // 二级页只有一个动作，做成正圆（之前是胶囊，宽度大于高度看着像圆角矩形）
+                    shape = CircleShape,
+                    modifier = Modifier.size(DetailActionHeight),
                     interactionSource = actionPress,
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxHeight().padding(horizontal = Space.xs),
+                        modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
                     ) {
                         CompositionLocalProvider(LocalGlassPress provides actionPress) { actions() }
                     }

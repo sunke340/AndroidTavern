@@ -45,21 +45,29 @@ fun PageHeader(
     val actionPress = remember { MutableInteractionSource() }
 
     Box(modifier = modifier.fillMaxWidth().height(PageHeaderHeight + HeaderFadeTail)) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .drawBehind {
-                    // 页头遮罩：从顶部到底部**一条线性渐变**，中间不设平台、不设拐点。
-                    // 之前是"前 60% 几乎不变 + 后段突然变淡"，视觉上是一条硬台阶（用户 2026-11-23 指出）。
-                    // 代价：标题那一带的不透明度比原来低一些，靠加粗标题与下方 28dp 的尾巴保证不糊。
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0.00f to background.copy(alpha = 0.94f),
-                            1.00f to Color.Transparent,
-                        ),
-                    )
-                },
-        )
+        if (glass) {
+            // 玻璃档：整条页头是一块磨砂玻璃（内容从下面滚过去被糊掉，标题自然清楚）
+            GlassBand(
+                frost = frost,
+                contentOrigin = contentOrigin,
+                background = background,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            // 轻量/关闭：没有磨砂层可采，退回线性色罩（0.94 → 透明）
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawBehind {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.00f to background.copy(alpha = 0.94f),
+                                1.00f to Color.Transparent,
+                            ),
+                        )
+                    },
+            )
+        }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
             modifier = Modifier.fillMaxWidth().height(PageHeaderHeight).padding(horizontal = Space.l),
