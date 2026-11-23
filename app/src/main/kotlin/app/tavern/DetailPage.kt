@@ -187,12 +187,14 @@ private fun DetailHeader(
             Modifier
                 .matchParentSize()
                 .drawBehind {
-                    // 标题区域必须是实底，否则内容滚到页头下面时两层文字会叠在一起
+                    // 页头遮罩：**顶部留一点透**（0.92），内容滚到下面时能隐约透出来，读起来还是玻璃；
+                    // 再低就会和标题文字打架（实底 1.0 是 2026-11-22 为了"两层文字叠加"改的，
+                    // 现在底部 28dp 的渐变尾巴已经承担了过渡，顶部可以放开一点）。
                     drawRect(
                         brush = Brush.verticalGradient(
-                            0.00f to background,
-                            0.62f to background,
-                            0.88f to background.copy(alpha = 0.55f),
+                            0.00f to background.copy(alpha = 0.92f),
+                            0.60f to background.copy(alpha = 0.90f),
+                            0.86f to background.copy(alpha = 0.55f),
                             1.00f to Color.Transparent,
                         ),
                     )
