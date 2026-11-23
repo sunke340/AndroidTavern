@@ -124,20 +124,23 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 return Offset(0f, available.y)
             }
 
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (state.offset == 0f) return Velocity.Zero
-                takeOver()
-                // 用独立 job 跑回弹：普通 scroll 回调里没法 cancel 一个 suspend 的 animate()，
-                // 有了 job 句柄 + 代数，手指一落就能立刻夺权。
+            /**
+             * 开始回弹。
+             *
+             * 用独立 job：普通 scroll 回调里没法 cancel 一个 suspend 的 `animate()`，
+             * 有了 job 句柄 + 代数，手指一落就能立刻夺权。
+             * 不 join：回弹只是"视觉归位"，不该把滚动链按在那儿半秒。
+             */
+            private fun startSettle() {
                 val start = state.offset
+                if (start == 0f) return
                 val sign = if (start >= 0f) 1f else -1f
                 val gen = state.gen
                 // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
                 val startAbs = abs(start)
                 var grew = false
                 AppLog.i("rubber", "回弹 start=${start.roundToInt()}px")
-                // 不 join：回弹只是"视觉归位"，不该把滚动链按在这儿半秒。
-                val job = scope.launch {
+                state.settleJob = scope.launch {
                     animate(
                         initialValue = start,
                         targetValue = 0f,
@@ -154,7 +157,29 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                         AppLog.i("rubber", "回弹结束 offset=${state.offset.roundToInt()}px 反涨=$grew")
                     }
                 }
-                state.settleJob = job
+            }
+
+            /**
+             * 松手立即回弹：**吃掉全部速度**并立刻开始。
+             *
+             * 不能只在 `onPostFling` 里做（2026-11-23 用户："没有回弹动画了"）：
+             * 上一版我们独占滚动量之后，列表自己的 fling 会把橡皮筋的位移抹平/搅乱，
+             * `onPostFling` 到达时要么 offset 已经回到 0（直接 return，看着就是"不弹了"），
+             * 要么被拖到很晚。这里在 fling **开始之前**就接管：速度全吃、马上回弹。
+             */
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (state.offset == 0f) return Velocity.Zero
+                takeOver()
+                startSettle()
+                return available
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // 兜底：万一 onPreFling 没走到（比如速度本来就被吃光了），这里再补一次
+                if (state.offset != 0f && state.settleJob?.isActive != true) {
+                    takeOver()
+                    startSettle()
+                }
                 return Velocity.Zero
             }
         }

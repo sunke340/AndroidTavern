@@ -40,8 +40,15 @@ data class LiquidGlassSpec(
     val refraction: Float = 0.22f,
     /** 色散（0..1）：R/B 通道用略微不同的偏移采样，边缘出现很淡的彩色边。0 就是无色散。 */
     val dispersion: Float = 0.03f,
-    /** 上下内侧反光强度（0..1）：很淡的一层"湿润感"，不是厚玻璃那种镜面。 */
-    val specular: Float = 0.10f,
+    /**
+     * 内侧泛光强度（0..1）。**默认 0：关掉**。
+     *
+     * 它按 `band`（折射带宽度）铺，不是按 `rimWidth` —— 4.5dp ≈ 15px 的一片白，
+     * 看起来像"一层体现厚度的渐变白"，用户一直在说的高光没变细就是它（2026-11-23 用户自己指出）。
+     * 在页头上更难看：它的亮度按 `clamp(n.y,0,1)` 分布，中间亮、两头衰减 → 一条**梯形**白。
+     * 边缘的高光只留 [rimWidthDp] 那条细线。
+     */
+    val specular: Float = 0f,
     /**
      * 玻璃面白底浓度（0..1）。**不透明度主要靠它**：
      * 0.30 时背后内容基本看不见（用户："玻璃太不透明了"）；0.22 是"能看到背后、但被糊过"。
@@ -194,7 +201,8 @@ half4 main(float2 fragCoord) {
     float rim = (1.0 - smoothstep(0.0, uRimWidth, distIn)) * inside;
     rgb = mix(rgb, float3(1.0), rim * lit * uRimAlpha);
 
-    // 上下内侧的柔和反光（湿润感），不做成厚透镜的镜面
+    // 内侧泛光：默认强度 0（见 LiquidGlassSpec.specular）。它按 band 铺开 4.5dp，
+    // 会读成"厚度渐变白"，页头上还是梯形。留着这个 uniform 只为以后想调回来。
     rgb = rgb + (pow(glow, 6.0) * band * inside * uSpecular);
 
     // 左右两侧的内阴影：贴着左右边界最重，往里化开
