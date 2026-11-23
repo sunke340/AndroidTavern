@@ -241,9 +241,9 @@ private fun ChatInputBar(
                 modifier = Modifier.size(44.dp),
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize().clickable(
-                        onClick = if (streaming) viewModel::stop else viewModel::send,
-                    ),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pressFeedback(onClick = if (streaming) viewModel::stop else viewModel::send),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (streaming) {

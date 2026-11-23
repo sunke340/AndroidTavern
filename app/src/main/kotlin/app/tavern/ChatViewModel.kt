@@ -81,6 +81,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     data class WorldBookView(
         val name: String,
         val entries: List<WorldBookEntryView>,
+        /** false = 还在读文件（界面显示"读取中"）。 */
+        val loaded: Boolean = false,
     )
 
     /** 一次性提示（导入/删除的结果），用 Snackbar 显示；`id` 保证同一条不会重复弹。 */
@@ -616,9 +618,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         startSessionForCard(cardId)
     }
 
-    fun openSettingsPage(page: SettingsPage) = _state.update { it.copy(settingsPage = page) }
+    fun openSettingsPage(page: SettingsPage) = _state.update {
+        it.copy(settingsPage = page, worldBookView = null)
+    }
 
-    fun closeSettingsPage() = _state.update { it.copy(settingsPage = null) }
+    fun closeSettingsPage() = _state.update { it.copy(settingsPage = null, worldBookView = null) }
 
     // ---- 模型档案（C 批） ---------------------------------------------------
 
@@ -921,32 +925,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 点进一本书：列出条目（含生效状态）。 */
+    /** 点进一本书：先切到条目页（空列表 + 读取中），再异步填条目。 */
     fun openWorldBook(name: String) {
-        viewModelScope.launch {
-            val view = withContext(Dispatchers.IO) {
-                val book = worldBookRepository.load(name) ?: return@withContext null
-                val overrides = worldBookRepository.disabledEntries(name)
-                WorldBookView(
-                    name = name,
-                    entries = book.entries.map { entry ->
-                        WorldBookEntryView(
-                            uid = entry.uid,
-                            title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
-                                ?: "条目 ${entry.uid}",
-                            keys = entry.keys,
-                            preview = entry.content.replace("\n", " ").take(90),
-                            enabled = !entry.disabled && entry.uid !in overrides,
-                            disabledInFile = entry.disabled,
-                        )
-                    },
-                )
-            }
-            if (view == null) {
-                _state.update { it.copy(status = "这本书读不出来了：$name") }
-            } else {
-                _state.update { it.copy(worldBookView = view) }
-            }
+        _state.update { it.copy(worldBookView = WorldBookView(name = name, entries = emptyList())) }
+        viewModelScope.launch { loadWorldBook(name) }
+    }
+
+    private suspend fun loadWorldBook(name: String) {
+        val view = withContext(Dispatchers.IO) {
+            val book = worldBookRepository.load(name) ?: return@withContext null
+            val overrides = worldBookRepository.disabledEntries(name)
+            WorldBookView(
+                name = name,
+                entries = book.entries.map { entry ->
+                    WorldBookEntryView(
+                        uid = entry.uid,
+                        title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+                            ?: "条目 ${entry.uid}",
+                        keys = entry.keys,
+                        preview = entry.content.replace("\n", " ").take(90),
+                        enabled = !entry.disabled && entry.uid !in overrides,
+                        disabledInFile = entry.disabled,
+                    )
+                },
+                loaded = true,
+            )
+        }
+        if (view == null) {
+            _state.update { it.copy(status = "这本书读不出来了：$name", worldBookView = null) }
+        } else {
+            // 读的过程中用户可能已经返回了，别把页面又推回来
+            _state.update { if (it.worldBookView?.name == name) it.copy(worldBookView = view) else it }
         }
     }
 
@@ -958,7 +967,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun setWorldBookEntryEnabled(name: String, uid: Int, enabled: Boolean) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { worldBookRepository.setEntryDisabled(name, uid, !enabled) }
-            openWorldBook(name)
+            loadWorldBook(name)
             refreshWorldBooks()
         }
     }

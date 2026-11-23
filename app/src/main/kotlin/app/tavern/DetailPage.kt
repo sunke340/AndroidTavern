@@ -206,7 +206,7 @@ private fun DetailHeader(
                 modifier = Modifier.size(DetailBackSize),
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize().clickable(onClick = onBack),
+                    modifier = Modifier.fillMaxSize().pressFeedback(onClick = onBack),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(

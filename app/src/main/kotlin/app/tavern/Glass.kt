@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -37,6 +38,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
 
 /** 玻璃高斯半径。有 RenderEffect 时把放大后的磨砂再磨细一遍；没有也不影响下限。 */
 internal val GlassBlur = 12.dp
@@ -59,11 +63,59 @@ private val RimLayers = listOf(
 )
 
 /**
- * 暗部（主题色）只画在两侧的**圆头**上：只有到最两侧才最粗。
- * 整圈均匀加深会被读成"给胶囊描了道边"（用户 2026-11-23 指出：由细到粗变得太快、大部分面积一样粗）。
+ * 暗部（主题色）：只画在两侧的**圆头**上，而且切点细、最两侧粗。
+ *
+ * 整圈均匀加深会被读成"给胶囊描了道边"；等宽弧只会显得"大部分面积一样粗"
+ * （用户 2026-11-23 两轮反馈）。
  */
-private val RimCapWidth = 3.dp
+private val RimCapMaxWidth = 3.5.dp
+/** 收窄曲线：宽度 / 浓度都按 cos^Falloff 走，2 = 过了一半才开始明显变粗。 */
+private const val RimCapFalloff = 2f
+
+/** 暗带最外侧的浓度（往里按 cos^2 衰减）。 */
 private const val RimCapAlpha = 0.30f
+
+private const val PI_F = 3.1415927f
+private const val HALF_PI = PI_F / 2f
+
+/**
+ * 画一枚圆头暗带：外弧贴形状边界、内弧半径随角度收窄（切点处厚度≈0）。
+ *
+ * @param outermost 最外侧所在的角度（弧度），用它算"离最外侧多远"
+ * @param maxWidth 最粗处的厚度（px）
+ */
+private fun DrawScope.drawCapBand(
+    brush: Brush,
+    center: Offset,
+    radius: Float,
+    startAngle: Float,
+    sweep: Float,
+    outermost: Float,
+    maxWidth: Float,
+) {
+    val steps = 96
+    val path = Path()
+
+    fun pointAt(angle: Float, r: Float) = Offset(
+        x = center.x + r * cos(angle),
+        y = center.y + r * sin(angle),
+    )
+
+    for (i in 0..steps) {
+        val angle = startAngle + sweep * i / steps
+        val p = pointAt(angle, radius)
+        if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+    }
+    for (i in steps downTo 0) {
+        val angle = startAngle + sweep * i / steps
+        val c = cos(angle - outermost).coerceIn(0f, 1f)
+        val width = maxWidth * c.pow(RimCapFalloff)
+        val p = pointAt(angle, radius - width)
+        path.lineTo(p.x, p.y)
+    }
+    path.close()
+    drawPath(path = path, brush = brush)
+}
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
 private val ShadowBlur = 18.dp
@@ -216,33 +268,35 @@ fun GlassSurface(
                                 style = Stroke(width.toPx()),
                             )
                         }
-                        // 暗部只覆盖左右圆头，而且是**渐变**的：最外侧最浓，靠近上下切点化没。
-                        // 用纯色弧会留下两个硬切口，读起来像"括号"（踩过）。
+                        // 暗部只覆盖左右圆头：**切点处又细又淡，到最两侧才最粗最浓**。
+                        // 用等宽弧只能改浓淡，读起来是"均匀一条"（2026-11-23 用户指出）；
+                        // 带宽随角度按 cos^2 收窄，切点自然归零，不会有硬切口。
                         val cap = size.height
-                        val capStroke = Stroke(RimCapWidth.toPx())
-                        drawArc(
+                        val capRadius = cap / 2f
+                        val capMaxWidth = RimCapMaxWidth.toPx()
+                        drawCapBand(
                             brush = Brush.horizontalGradient(
                                 0.00f to accent.copy(alpha = RimCapAlpha),
                                 0.75f to Color.Transparent,
                             ),
-                            startAngle = 90f,
-                            sweepAngle = 180f,
-                            useCenter = false,
-                            topLeft = Offset.Zero,
-                            size = Size(cap, cap),
-                            style = capStroke,
+                            center = Offset(capRadius, capRadius),
+                            radius = capRadius,
+                            startAngle = HALF_PI,
+                            sweep = PI_F,
+                            outermost = PI_F,
+                            maxWidth = capMaxWidth,
                         )
-                        drawArc(
+                        drawCapBand(
                             brush = Brush.horizontalGradient(
                                 0.25f to Color.Transparent,
                                 1.00f to accent.copy(alpha = RimCapAlpha),
                             ),
-                            startAngle = -90f,
-                            sweepAngle = 180f,
-                            useCenter = false,
-                            topLeft = Offset(size.width - cap, 0f),
-                            size = Size(cap, cap),
-                            style = capStroke,
+                            center = Offset(size.width - capRadius, capRadius),
+                            radius = capRadius,
+                            startAngle = -HALF_PI,
+                            sweep = PI_F,
+                            outermost = 0f,
+                            maxWidth = capMaxWidth,
                         )
                     } else {
                         drawRoundRect(

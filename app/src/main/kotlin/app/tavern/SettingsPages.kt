@@ -285,54 +285,6 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
 
-    // 点进一本书：显示它的条目（可逐条开关）
-    val bookView = state.worldBookView
-    if (bookView != null) {
-        TextButton(onClick = viewModel::closeWorldBook) { Text("← 返回书单") }
-        SectionLabel("${bookView.name} · ${bookView.entries.size} 条")
-        if (bookView.entries.isEmpty()) {
-            EmptyHint("这本书里没有条目。")
-        } else {
-            bookView.entries.forEach { entry ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = Space.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(entry.title, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            entry.preview,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                        )
-                        if (entry.disabledInFile) {
-                            Text(
-                                "文件里就是关的",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = entry.enabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.setWorldBookEntryEnabled(bookView.name, entry.uid, enabled)
-                        },
-                    )
-                }
-            }
-        }
-        Text(
-            "这里的开关是应用内的覆盖，不会改导入的文件（书还能原样导回 PC 版）；扫描时以这里为准。",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-
     SectionLabel("全局世界书（${state.worldBooks.size} 本）")
     if (state.worldBooks.isEmpty()) {
         EmptyHint("还没有全局世界书。导入 PC 版的世界书 .json，打开开关后它对所有会话生效。")
@@ -356,12 +308,6 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     ) {
         Text("导入世界书（.json）")
     }
-    Text(
-        "导入后默认停用。启用后会与卡内嵌书一起参与关键字激活；条目本身开没开看书里的设置。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
     pendingDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -471,11 +417,6 @@ private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     ) {
         Text("导入正则脚本（.json）")
     }
-    Text(
-        "用户输入脚本在发出去之前改写（会进聊天记录）；模型输出脚本只改显示。格式与 PC 版 ST 相同。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 private fun placementLabel(script: app.tavern.core.regex.RegexScript): String = when {

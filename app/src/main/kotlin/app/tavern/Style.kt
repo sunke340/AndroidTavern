@@ -2,7 +2,11 @@ package app.tavern
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,9 +27,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -300,3 +307,39 @@ fun EmptyHint(text: String) {
         )
     }
 }
+
+/**
+ * 圆形按钮的按压反馈：**按下缩到 96%**，并把点击区域裁成圆形。
+ *
+ * 为什么不用默认涟漪：默认 ripple 画在节点的方形边界里（`GlassSurface` 的圆形只是底下那层背景），
+ * 圆钮按下去会闪出一个**方形**色块（2026-11-23 用户实测）。这里的做法是
+ * "裁圆 + 关掉 ripple + 用缩放做反馈"，方形永远不会出现。
+ */
+@Composable
+fun Modifier.pressFeedback(
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) PressScale else 1f,
+        animationSpec = tween(90),
+        label = "press-scale",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clip(CircleShape)
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick,
+        )
+}
+
+/** 按下的缩放比例（0.96 = 4% 收缩，肉眼能感觉到但不晃）。 */
+private const val PressScale = 0.96f

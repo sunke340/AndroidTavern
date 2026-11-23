@@ -100,6 +100,8 @@ private sealed interface Destination {
     data class CardConfig(val cardId: String, val page: CardConfigPage) : Destination
     /** 设置 → 模型 → 某条档案（三级）。 */
     data object ProfileEdit : Destination
+    /** 设置 → 世界书 → 某一本（三级）。 */
+    data class WorldBookEntries(val name: String) : Destination
 }
 
 private fun depthOf(destination: Destination): Int = when (destination) {
@@ -109,6 +111,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     Destination.Chat -> 2
     is Destination.CardConfig -> 2
     Destination.ProfileEdit -> 2
+    is Destination.WorldBookEntries -> 2
 }
 
 /** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
@@ -119,6 +122,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     is Destination.Detail -> "detail"
     is Destination.CardConfig -> "card-config/${destination.page.name}"
     Destination.ProfileEdit -> "profile-edit"
+    is Destination.WorldBookEntries -> "worldbook"
 }
 
 @Composable
@@ -134,6 +138,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val detailId = state.detailCardId
             val cardConfig = state.cardConfigPage
             val settingsPage = state.settingsPage
+            val worldBook = state.worldBookView
             val editingProfile = state.profileDraft != null
 
             val destination: Destination = when {
@@ -142,6 +147,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 detailId != null -> Destination.Detail(detailId)
                 // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
                 editingProfile -> Destination.ProfileEdit
+                // 世界书条目页叠在"设置→世界书"之上：返回落在书单
+                worldBook != null -> Destination.WorldBookEntries(worldBook.name)
                 settingsPage != null -> Destination.Settings(settingsPage)
                 else -> Destination.Tabs
             }
@@ -250,6 +257,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     is Destination.Settings -> {
                         BackHandler { viewModel.closeSettingsPage() }
                         SettingsSubPage(state = state, viewModel = viewModel)
+                    }
+
+                    is Destination.WorldBookEntries -> {
+                        BackHandler { viewModel.closeWorldBook() }
+                        WorldBookEntriesScreen(state = state, viewModel = viewModel)
                     }
 
                     is Destination.Detail -> {
