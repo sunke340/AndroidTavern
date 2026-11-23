@@ -86,6 +86,9 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 if (running) AppLog.i("rubber", "回弹被打断 offset=${state.offset.roundToInt()}")
             }
 
+            /** 回弹初速度的上限：跟当前拉伸量挂钩（px/s），防止一次大力甩把值甩飞。 */
+            private fun startAbsLimit(absOffset: Float): Float = absOffset * 8f
+
             /** 往里拖时先把橡皮筋收回去，再让列表正常滚。 */
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 takeOver()
@@ -131,19 +134,25 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
              * 有了 job 句柄 + 代数，手指一落就能立刻夺权。
              * 不 join：回弹只是"视觉归位"，不该把滚动链按在那儿半秒。
              */
-            private fun startSettle() {
+            private fun startSettle(initialVelocity: Float = 0f) {
                 val start = state.offset
                 if (start == 0f) return
                 val sign = if (start >= 0f) 1f else -1f
                 val gen = state.gen
-                // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
                 val startAbs = abs(start)
+                // 松手速度要带进弹簧：**临界阻尼从静止出发时初速度是 0，头 100ms 几乎不动** ——
+                // 用户看到的就是"拉伸后悬停一会儿才回去"（2026-11-23）。反向甩时速度是负的，
+                // 于是回弹立刻起步，正好符合"往反方向拉应该马上收"的直觉。
+                // 上限压一下，避免一次大力甩把值甩飞（写入端还有 coerce 兜底）。
+                val v0 = initialVelocity.coerceIn(-startAbsLimit(startAbs), startAbsLimit(startAbs))
+                // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
                 var grew = false
-                AppLog.i("rubber", "回弹 start=${start.roundToInt()}px")
+                AppLog.i("rubber", "回弹 start=${start.roundToInt()}px v0=${v0.roundToInt()}")
                 state.settleJob = scope.launch {
                     animate(
                         initialValue = start,
                         targetValue = 0f,
+                        initialVelocity = v0,
                         animationSpec = Motion.RubberBand,
                     ) { value, _ ->
                         // ① 代数变了 = 手指已经接管，这一帧不许再写（否则把拖出来的位移盖回去）
@@ -170,7 +179,7 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (state.offset == 0f) return Velocity.Zero
                 takeOver()
-                startSettle()
+                startSettle(available.y)
                 return available
             }
 
@@ -178,7 +187,7 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 // 兜底：万一 onPreFling 没走到（比如速度本来就被吃光了），这里再补一次
                 if (state.offset != 0f && state.settleJob?.isActive != true) {
                     takeOver()
-                    startSettle()
+                    startSettle(available.y)
                 }
                 return Velocity.Zero
             }
