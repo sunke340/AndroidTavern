@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`7b1f7cf`（tag `apk-m92`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
+- 代码：`718cd48`（tag `apk-m93`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 全绿
-- 已交付 APK：`app-v76-7b1f7cf.apk`（签名固定，可覆盖安装；上一版 `app-v75-f2ac57a.apk`）
+- 已交付 APK：`app-v77-718cd48.apk`（签名固定，可覆盖安装；上一版 `app-v76-7b1f7cf.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 接手先看这三件（2026-11-23 晚）
@@ -69,6 +69,17 @@
 
 **待真机验**：打开系统「移除动画」（设置 → 无障碍 → 移除动画）后，翻页应只淡不滑、按压不放大、
 橡皮筋松手直接回位；关掉后恢复原样（改完设置切回 App 即生效，不用重启）。
+
+## 2026-11-23 21:45：返回转场"卡片抽走"（zIndex 按深度）
+
+| 块 | 结果 |
+|---|---|
+| 结论推翻 | 之前写"AnimatedContent 做不到、只能自己写容器"是**错的**。每页 zIndex 在**它进场那一刻**定死（`remember { transitionSpec(rootScope) }`），退场页保留进场时的值 → 两层的值可以不同。Navigation 3 的 NavDisplay 就是 navigate`max+1`/pop`min-1` |
+| 改法 | `transitionSpec` 里 `ContentTransform(enter, exit, targetContentZIndex = depthOf(targetState), sizeTransform = null)`；返回时退场页整屏向右滑走，上一页从 `-1/4` 归位（与它被盖住时左移的 1/4 对齐） |
+| 当年为什么失败 | ① 退场位移是 `{0}`/`1/4` 且叠放反了 → 屏幕不动，误判成 zIndex 无效；② 改的是"进来那页"的值，而决定叠放的是"退场页进场时"的值 |
+| 文档 | app/AGENTS.md 那一节整节重写（机制 / 深度表 / 判据 / 两个混淆变量） |
+
+**待真机验**：进详情 → 再进聊天 → 返回，应当看到聊天页整屏向右滑走、详情页从左侧归位（而不是详情页滑进来盖住聊天页）。
 
 ## 已知问题 / 风险（别当成已完成）
 
