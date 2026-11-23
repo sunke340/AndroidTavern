@@ -116,7 +116,7 @@ MainScreen（Destination + AnimatedContent）
 页头是 **`PageHeader` 浮层**（在 `MainScreen` 的 TabsRoot 里渲染，跟底栏同级），页面自己不画页头：
 
 - 结构：左边大标题（`headlineMedium` 粗体），右边**玻璃胶囊**装图标动作（`GlassSurface` + `CapsuleIcon`）；
-  页头底下压一层"底色 → 透明"的渐变，内容从下面滚过去时淡出，标题不会跟列表文字叠在一起；
+  整条页头是一块**磨砂玻璃**（`GlassSurface`，铺到状态栏后面），内容从下面滚过去时被糊掉；
 - **页头必须画在"内容录图层"之外**：画在里面的话，玻璃胶囊采样的图层会带上上一帧的胶囊自己，
   每帧叠加 = 无限套娃（胶囊里能看到自己的鬼影）。同理底栏也是浮层。
 - 页面自己不再有页头，内容用 `contentPadding(top = PageHeaderHeight + …)` 让位（空态也一样）：
@@ -153,7 +153,8 @@ MainScreen（Destination + AnimatedContent）
 不要再用 `Scaffold` + `TopAppBar`：
 
 - 页头形状：左边**圆形玻璃返回钮**（`GlassSurface` + `CircleShape`）+ 大标题（可带一行副标题），
-  右边**玻璃胶囊**装图标动作（`CapsuleIcon`），底下压一层底色→透明渐变；
+  右边**圆形玻璃按钮**装图标动作（单动作时是正圆，2026-11-23 从胶囊改过来）；
+  整条页头同样是磨砂玻璃条（铺到状态栏后面）；
 - 每个二级页**自己录一份内容图层**（它在一级页的录制范围之外）。好处是切页时两页各采各的，
   不会抢同一个图层；代价是同一时刻最多两份全屏图层（过渡 240ms）。
 - 内容顶部让位：默认 `contentTopInset = DetailHeaderHeight`；需要内容**滚到玻璃页头下面**的页面
@@ -178,15 +179,15 @@ MainScreen（Destination + AnimatedContent）
   `expandForBlur(pad)` 负责这个，多出来的由外层胶囊 `clip` 裁掉。
 - **`positionInWindow` 量在没有 padding 的那层上**：同一个 LayoutNode 上带 padding 时报的是外框，
   坐标会偏。外壳管留白/阴影，胶囊本体单独一层。
-- **边缘高光是一圈"宽带"，不是一条线**：`RimLayers` 由外向内叠 4 层白（1dp@0.95 / 2.5dp@0.45 /
-  5dp@0.22 / 8dp@0.10），叠出来是"边缘最亮、往内渐淡"的 3~5dp 亮带；外半圈压在底色上当光溢出。
-  只画 1dp 会被读成描边，不是玻璃（2026-11-22 对比参考图后改的）。
-- **暗部只画在两个圆头上**（`drawArc` 半圆，3dp），不要整圈均匀加深：整圈加深会被读成"描边"，
-  而且"由细到粗"来得太快（2026-11-23 用户指出）。
+- **边缘高光是一圈"宽带"，不是一条线**：`RimLayers` 由外向内叠 4 层白
+  （1dp@0.55 / 2.5dp@0.32 / 5dp@0.18 / 8dp@0.09），叠出来是"边缘最亮、往内渐淡"的亮带。
+  透明度别调高（早期是 0.95/0.45/…）：太白会把下面的磨砂盖死，看着像实心白圈
+  （2026-11-23 用户要求高光也要透出磨砂）。
+- **深色暗带已删除**，见下面 2026-11-23 那一节，不要再加回来。
 - **不要给浮层垫矩形底色**：胶囊周边必须能看见背景和消息。曾经在底栏/输入区脚下压过
   "透明 → 底色"的渐变，结果被读成"胶囊被装进一个方形容器里"（2026-11-23 用户指出，已删）。
-- **页头遮罩要够长**：页头盒子高度 = 页头高度 + `HeaderFadeTail`(28dp)，标题只占前一截，
-  渐变在后一截收尾。实底太短会让两层文字叠在一起，渐变太短会让内容"一刀切"地出现。
+- **页头是玻璃条**（2026-11-23 起）：`GlassSurface` + 下圆角、`shadow = false`，铺到状态栏后面；
+  不再用"色罩 + 28dp 渐变尾巴"那套。
 - **二级页的输入区用 `bottomOverlay` 槽**（`GlassBackdrop`）：画在录制之外，能采磨砂，
   消息滚动时会从胶囊后面经过；列表用 `contentPadding(top/bottom)` 让位，不要裁内容。
 - **投影自己画**：模糊的黑胶囊往下压几像素（`Modifier.blur(…, BlurredEdgeTreatment.Unbounded)`）；
@@ -194,6 +195,56 @@ MainScreen（Destination + AnimatedContent）
   默认的 Rectangle 会把模糊结果裁在节点边界内，光晕直接没了。
 - 判据：切到玻璃看胶囊里的字 —— **还认得出字 = 没糊；一片糊只剩色块 = 糊上了**。
   真机没 logcat，先看 `AppLog` tag `glass` 那两行（sdk / 硬件加速 / 半径，底栏 / 内容 / 尺寸）。
+
+## 玻璃与页头（2026-11-23 第二轮，血泪版）
+
+### 玻璃表面只用 `GlassSurface`，别手写模糊
+
+页头磨砂试过两条手写路线，真机上**都只剩底色、没有糊**：
+
+1. `graphicsLayer { compositingStrategy = Offscreen }` + `drawRect(DstIn 渐变)` 遮罩 —— 整层被擦掉，
+   文字全透出来；
+2. 分条透明度（8 条，每条的 `graphicsLayer{ alpha }`）+ 父节点 `blur` —— 仍然只有底色。
+
+结论：**要磨砂就用 `GlassSurface`**（和底栏、胶囊、输入框同一条路径）。页头现在就是
+一个 `GlassSurface`：形状「上两角直角 + 下两角 20dp 圆角」、`shadow = false`，标题与动作压在上面。
+
+### GlassSurface 的圆角必须从 Shape 读
+
+投影和描边原来写死 `CornerRadius(size.height / 2f)`，只对胶囊成立；套到页头那种全宽横条会变成
+大圆角。现在用 `cornerRadiusOf(shape)`（`shape.createOutline(...)` 取 `Outline.Rounded`）。
+
+### 胶囊暗部（暗带）已删除，不要加回来
+
+2026-11-23 决策：整段删除。原因不是参数没调好，而是几何：暗带只把**圆头**向内缩、长直边不动，
+于是"可见边界"从外轮廓移到了暗带内沿——它与按外轮廓绘制的投影、按压反馈形成两套弧线，
+看起来就是形状对不上。需要厚度感就调白高光（`RimLayers`）与填充透明度，不要再用深色描边。
+
+### 按压反馈：放大，不压暗
+
+- 整块玻璃放大到 **1.25**、**170ms**、`Motion.Decelerate`（非线性）；不压暗。
+- **涟漪关掉**：ripple 画在方形点击区里，圆钮上会变成"中间一个圆盘/方块变暗"，和整块玻璃对不上。
+- 组合方式：`MutableInteractionSource` 同时交给 `GlassSurface`（负责缩放）和内部 `clickable`
+  （`indication = null`）；页头那种"玻璃胶囊 + 图标"两层写的，用 `LocalGlassPress` 共享同一个 source。
+
+### 主题色按钮
+
+- 发送钮 = 玻璃面 + **叠加 16% 主色**（不是替换底色），停止态保持浅色面。
+- 高光环 `rimColor` 要**比内部更亮**：用「主色向白调 72%」(`lerp(primary, White, 0.72f)`)，
+  直接用主色会变成一圈更深的边。
+- 纸飞机是三角形，几何居中看着偏左：图标右移 **1dp**。
+
+### 页头铺到状态栏
+
+- 页头盒子从 `y = 0` 起（含状态栏），标题行按状态栏高度下移；内容是满屏的，滚到页头下面会被糊掉。
+- 各页顶部让位 = **状态栏高度 + 页头高度 + 间距**（`PageHeaderHeight`/`DetailHeaderHeight` 本身不含状态栏）。
+
+### 键盘与橡皮筋
+
+- 内容底部让位 = **max(导航栏, 键盘)**，不能相加（键盘弹出时导航栏已被盖住，相加会多抬一个导航栏）。
+- 列表两端是橡皮筋：`Modifier.rubberOverscroll(rememberRubberOverscroll())`（`:app/RubberOverscroll.kt`），
+  阻尼 0.5、最多 56dp、松手弹簧回弹；它内部用了 `LocalDensity`，所以这个 modifier 必须标 `@Composable`，
+  且要挂在 `verticalScroll` / `LazyColumn` **之前**（外层）。
 
 ## 窗口 insets 的规矩（踩过两次）
 
