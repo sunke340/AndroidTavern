@@ -55,8 +55,9 @@ data class LiquidGlassSpec(
     /**
      * 边缘细光线的宽度（dp）。参照里的玻璃胶囊就是"一圈 1px 的光边"，靠它立住轮廓，
      * 不是靠厚倒角。别超过 1.5dp，否则又变成描边。
+     * 2026-11-23 用户要求"粗细改成现在的 2/3"：1.1dp -> 0.73dp（≈2.5px @3.5）。
      */
-    val rimWidthDp: Float = 1.1f,
+    val rimWidthDp: Float = 0.73f,
     /** 细光线亮度（0..1）：**上方与下方**最亮，左右两侧只剩一线。 */
     val rimAlpha: Float = 0.85f,
     /**
