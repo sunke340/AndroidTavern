@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.offset
@@ -16,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
@@ -102,6 +104,15 @@ private val ShadowBlur = 14.dp
 private const val ShadowAlpha = 0.10f
 
 /**
+ * 「只在下沿投影」用的那一条：高度和浓度。
+ *
+ * 整条页头是半透明的，若照常画"整块模糊矩形"，影子会从面里透出来把整条糊灰；
+ * 所以只画一条贴在形状下沿的细带，模糊后向上向下各散一点 —— 上面那点正好当内阴影。
+ */
+private val BottomShadowHeight = 10.dp
+private const val BottomShadowAlpha = 0.16f
+
+/**
  * 把刚录好的内容层 [from] 按 1/[FrostScale] 再录一份小层 —— 这份就是磨砂素材。
  * 必须在内容层 `record` 之后、同一个 DrawScope 里调用。
  */
@@ -179,8 +190,15 @@ fun GlassSurface(
      * 要的是亮边，就只能是≥白的亮度。
      */
     rimColor: Color? = null,
-    /** 是否画投影。页头整条铺到屏幕顶上时不需要（会在地面留下一条阴影）。 */
+    /** 是否画投影。 */
     shadow: Boolean = true,
+    /**
+     * 投影只投在**下沿**（整条页头用）。
+     *
+     * 页头是全宽横条，四周均匀的影子有两边在屏幕外、顶上在状态栏后面，全白画；
+     * 而且整块模糊矩形会透过半透明面把整条糊灰。只投下沿才既干净又有层次。
+     */
+    shadowBottomOnly: Boolean = false,
     /**
      * 液态玻璃（真折射）。传 null = 老样式（半透明面 + 描边）。
      *
@@ -260,7 +278,18 @@ fun GlassSurface(
                 scaleY = press.value
             },
     ) {
-        if (glass && shadow) {
+        if (glass && shadow && shadowBottomOnly) {
+            // 只投下沿：一条贴着形状底边的细带，模糊后向下散成软影、向上留一点内阴影
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(BottomShadowHeight)
+                    .align(Alignment.BottomCenter)
+                    .offset(y = BottomShadowHeight / 2)
+                    .blur(ShadowBlur * 0.6f, BlurredEdgeTreatment.Unbounded)
+                    .drawBehind { drawRect(Color.Black.copy(alpha = BottomShadowAlpha)) },
+            )
+        } else if (glass && shadow) {
             // 投影：一层模糊的黑色胶囊，四周均匀扩散（不下沉）。模糊自带渐变，内部不会出亮度台阶。
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
             //
@@ -411,6 +440,8 @@ fun GlassSurface(
     interactionSource: MutableInteractionSource? = null,
     fillColor: Color? = null,
     rimColor: Color? = null,
+    shadow: Boolean = true,
+    shadowBottomOnly: Boolean = false,
     // 默认必须和另一个重载一致（`LiquidGlassSpec.Default`），写成 null 会把默认关掉 ——
     // 曾经的后果：聊天输入框走这条重载、没显式传，于是全 App 只有它还是旧玻璃（2026-11-23）。
     liquid: LiquidGlassSpec? = LiquidGlassSpec.Default,
@@ -424,6 +455,8 @@ fun GlassSurface(
     interactionSource = interactionSource,
     fillColor = fillColor,
     rimColor = rimColor,
+    shadow = shadow,
+    shadowBottomOnly = shadowBottomOnly,
     liquid = liquid,
     content = content,
 )

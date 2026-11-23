@@ -265,6 +265,9 @@ MainScreen（Destination + AnimatedContent）
   还是旧玻璃（2026-11-23 用户一眼看出来）。
 - **横条用 `rimBottomOnly = true`（`LiquidGlassSpec.HeaderBand`）**：整条页头四边都亮会变成一颗
   大胶囊（深色模式下特别明显）。开它之后亮度 = `clamp(n.y,0,1)`，只有下沿一条直的亮线。
+- **横条的投影用 `shadowBottomOnly = true`**（只在下沿投一条 10dp 的细带，模糊后向下散开）：
+  页头整条是半透明的，**照常画"整块模糊矩形"会从面里透出来把整条糊灰**；四周均匀也没有意义
+  （两边在屏幕外、顶上在状态栏后面）。模糊向上散的那一点正好当内阴影。
 - **玻璃面颜色必须跟主题走**（`uFaceColor` = `colorScheme.surface`）：写死白的话，深色模式下
   整块玻璃会发灰发白（2026-11-23 深色模式实拍就是这个症状）。
 - **发送钮**是第一个试点，参数见下（[ADR 0007](../docs/adr/0007-liquid-glass-agsl.md)）：

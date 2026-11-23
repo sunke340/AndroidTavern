@@ -211,7 +211,9 @@ private fun DetailHeader(
                     bottomStart = DetailBandCorner,
                     bottomEnd = DetailBandCorner,
                 ),
-                shadow = false,
+                // 投影只投在下沿（整条横条四周均匀投影没有意义，还会透过半透明面把整条糊灰）
+                shadow = true,
+                shadowBottomOnly = true,
                 // 整条页头也走液态玻璃，但**只在下沿画一道直的亮线**：
                 // 四边都亮就成了一颗大胶囊（2026-11-23 用户指出，深色模式下尤其明显）。
                 liquid = LiquidGlassSpec.HeaderBand,
