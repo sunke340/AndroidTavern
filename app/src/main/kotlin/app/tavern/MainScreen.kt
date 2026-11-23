@@ -92,7 +92,8 @@ import app.tavern.data.log.AppLog
  *
  * 深度决定动画方向：深→更深 从右侧进；变浅 反向退出。
  */
-private sealed interface Destination {
+// internal：PageStack.kt 在同一个模块里要引用它（private 会报 "exposes its private-in-file parameter type"）
+internal sealed interface Destination {
     data object Tabs : Destination
     data object Chat : Destination
     data class Settings(val page: SettingsPage) : Destination
