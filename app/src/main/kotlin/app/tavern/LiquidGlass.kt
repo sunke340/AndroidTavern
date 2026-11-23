@@ -65,7 +65,7 @@ data class LiquidGlassSpec(
      * 光照模型是"上下打光"：上下边缘出高光、左右两侧压暗 —— 看起来像一根竖着受光的圆管，
      * 这是胶囊/圆钮最耐看的打光（2026-11-23 用户指定，原来是"左上角单侧光"）。
      */
-    val sideShadow: Float = 0.12f,
+    val sideShadow: Float = 0.07f,
 )
 
 /**
@@ -195,8 +195,8 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uRimWidth", spec.rimWidthDp * density.density)
         shader.setFloatUniform("uRimAlpha", spec.rimAlpha)
         shader.setFloatUniform("uSideShadow", spec.sideShadow)
-        // 侧阴影从边界往里化开的距离：比折射带宽一点，才不会是一条硬边
-        shader.setFloatUniform("uSideWidth", spec.edgeDp * 1.5f * density.density)
+        // 侧阴影从边界往里化开的距离：比折射带略窄，只贴边一圈（2026-11-23 用户："左右两侧阴影太大"）
+        shader.setFloatUniform("uSideWidth", spec.edgeDp * 1.0f * density.density)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
         RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
     }.onFailure {
