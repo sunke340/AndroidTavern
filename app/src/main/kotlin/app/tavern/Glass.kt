@@ -92,11 +92,10 @@ private const val MinPressVisibleMs = 90L
 
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
-// 模糊半径和下沉量：18dp/4dp 时灰影会绕着整个形状一圈，小圆钮（44dp）等于套了个灰环，
-// 边缘"高光"就被灰影吃掉了（2026-11-23 量：钮边缘 241，而页面底色 250 —— 看着比周围还暗）。
-// 收紧 + 下沉，让阴影只出现在下方。
+// 模糊半径：投影是**四周均匀扩散**的一圈软光晕（2026-11-23 用户：不能只往下偏）。
+// 早先 18dp 配 4dp 下沉时，小圆钮（44dp）等于套了个灰环、边缘高光被吃掉；
+// 现在只靠模糊半径控制扩散范围，不下沉。
 private val ShadowBlur = 14.dp
-private val ShadowOffsetY = 6.dp
 private const val ShadowAlpha = 0.10f
 
 /**
@@ -259,14 +258,12 @@ fun GlassSurface(
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
             //
             // 液态玻璃档再收一档（2026-11-23 用户："底部阴影感觉太明显"）：真折射本身已经
-            // 给了边缘厚度，投影只要"托住"就够，压太实会变成一圈灰边。
+            // 给了边缘厚度，投影只要均匀托一层就够，压太实会变成一圈灰边。
             val shadowAlpha = if (liquidOn) ShadowAlpha * 0.35f else ShadowAlpha
             val shadowBlur = if (liquidOn) ShadowBlur * 0.6f else ShadowBlur
-            val shadowOffset = if (liquidOn) ShadowOffsetY * 0.5f else ShadowOffsetY
             Box(
                 Modifier
                     .matchParentSize()
-                    .offset(y = shadowOffset)
                     .blur(shadowBlur, BlurredEdgeTreatment.Unbounded)
                     .drawBehind {
                         drawRoundRect(
