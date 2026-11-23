@@ -291,7 +291,8 @@ private fun ChatInputBar(
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
                             contentDescription = "发送",
-                            tint = MaterialTheme.colorScheme.primary,
+                            // 图标也是玻璃：半透明，让钮里那层磨砂透上来（纯色会像印上去的）
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
                             // 纸飞机是三角形，几何居中会显得偏左；往右挪一点才是视觉居中
                             modifier = Modifier.size(24.dp).offset(x = 1.dp),
                         )
