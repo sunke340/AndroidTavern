@@ -260,16 +260,9 @@ private fun ChatInputBar(
                 // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
                 // 停止态仍是原来的浅色面。
                 fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                // 高光环"淡紫偏白"：纯白太硬、太接近主色又会比内部暗（72% 白 = 灰紫的沟）。
-                rimColor = if (streaming) {
-                    null
-                } else {
-                    androidx.compose.ui.graphics.lerp(
-                        MaterialTheme.colorScheme.primary,
-                        androidx.compose.ui.graphics.Color.White,
-                        0.92f,
-                    )
-                },
+                // 高光环走**纯白**（默认值）。用户指出得对：这颗钮外面包着一圈投影，
+                // 边缘的"环境色"是被压暗的灰蓝(≈240)，不是页面底色(250) —— 纯白细线在那里就是亮的。
+                // 之前"白高光压不过底色"的判断错在拿页面底色当了背景。
             ) {
                 Box(
                     modifier = Modifier

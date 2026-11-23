@@ -67,6 +67,16 @@ private val RimLayers = listOf(
     8.0.dp to 0.09f,
 )
 
+/**
+ * 有色面的描边（发送钮这种）：**只勾一圈**。
+ *
+ * 为什么不能沿用 [RimLayers] 的多层叠加：那 4 层是四块**硬边**描边，面与环的色差小的时候
+ * （白玻璃）叠出来像"柔和倒角"；一旦面被染色（发送钮 32% 主色）就变成**4 个同心圈**
+ * （2026-11-23 用户截图：钮里像套了 4 个圆环）。一条细线才是"边缘立起来"。
+ */
+private val RimHairlineWidth = 1.2.dp
+private const val RimHairlineAlpha = 0.9f
+
 /** 按下放大：整块玻璃（投影、高光、内容）一起放，不做"只有图标动"也不压暗。 */
 private const val PressScale = 1.25f
 
@@ -290,7 +300,13 @@ fun GlassSurface(
                     val radius = cornerRadiusOf(shape)
                     if (glass) {
                         val rimTint = rimColor ?: Color.White
-                        RimLayers.forEach { (width, alpha) ->
+                        // 有色面（主题色按钮）只勾一圈细线；白玻璃面保留多层倒角（层间无色差不显圈）
+                        val layers = if (fillColor != null) {
+                            listOf(RimHairlineWidth to RimHairlineAlpha)
+                        } else {
+                            RimLayers
+                        }
+                        layers.forEach { (width, alpha) ->
                             val w = width.toPx()
                             val inset = w / 2f
                             drawRoundRect(
