@@ -101,7 +101,8 @@ fun GlassDetailScaffold(
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）
+    // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）。
+    // 注意是**并集**不是相加：键盘弹出时导航栏区域本来就被键盘盖住了，两个数相加会多抬一个导航栏高度。
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
@@ -134,7 +135,7 @@ fun GlassDetailScaffold(
                 content(
                     PaddingValues(
                         top = contentTopInset,
-                        bottom = inner.calculateBottomPadding() + navBottom + imeBottom,
+                        bottom = inner.calculateBottomPadding() + maxOf(navBottom, imeBottom),
                     ),
                 )
             }

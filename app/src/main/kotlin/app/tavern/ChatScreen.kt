@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -244,8 +245,8 @@ private fun ChatInputBar(
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
-                // 发送：主题色实心（与底栏选中项同一个紫），图标反白；停止仍用原来的浅色面
-                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary,
+                // 发送：淡紫磨砂（与底栏选中项同一个紫，16% 叠加），停止仍是原来的浅色面
+                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
             ) {
                 Box(
                     modifier = Modifier
@@ -271,7 +272,9 @@ private fun ChatInputBar(
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
                             contentDescription = "发送",
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = MaterialTheme.colorScheme.primary,
+                            // 纸飞机是三角形，几何居中会显得偏左；往右挪一点才是视觉居中
+                            modifier = Modifier.size(24.dp).offset(x = 1.dp),
                         )
                     }
                 }

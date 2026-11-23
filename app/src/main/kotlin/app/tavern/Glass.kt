@@ -213,14 +213,12 @@ fun GlassSurface(
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(
-                        when {
-                            fillColor != null -> fillColor
-                            glass -> surface.copy(alpha = GlassFillAlpha)
-                            else -> surface
-                        },
-                    ),
+                    .background(if (glass) surface.copy(alpha = GlassFillAlpha) else surface),
             )
+            // 主题色叠加层（发送钮）：叠在玻璃面上而不是替换它，这样淡紫仍然是"磨砂上的一层色"
+            if (fillColor != null) {
+                Box(Modifier.matchParentSize().background(fillColor))
+            }
         }
 
         // 顶面薄光：上亮下透，玻璃才有"面"而不是一块色板
@@ -288,10 +286,21 @@ fun GlassBand(
 ) {
     val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
     var origin by remember { mutableStateOf(Offset.Zero) }
+    var logged by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
-            .onGloballyPositioned { origin = it.positionInWindow() }
+            .onGloballyPositioned {
+                origin = it.positionInWindow()
+                if (!logged) {
+                    logged = true
+                    // 排障用：页头磨砂没出来时，先看这行的坐标对不对（origin 应≈ contentOrigin）
+                    app.tavern.data.log.AppLog.i(
+                        "glass",
+                        "band origin=$origin content=${contentOrigin()} size=${it.size}",
+                    )
+                }
+            }
             // 遮罩要把"已经画出来的东西"按 alpha 拾掉，必须离屏合成
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
