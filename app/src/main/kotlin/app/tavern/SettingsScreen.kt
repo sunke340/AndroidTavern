@@ -1,6 +1,8 @@
 package app.tavern
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -30,9 +32,15 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val enabledBooks = state.worldBooks.count { it.enabled }
     val worldBookSummary = "全局 ${state.worldBooks.size} 本（启用 $enabledBooks）· $bookCards 张卡带内嵌书"
 
+    // 一级页也要能"拉过头再弹回来"：橡皮筋挂在 verticalScroll 外层
+    val overscroll = rememberRubberOverscroll()
+    val scroll = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .rubberOverscroll(overscroll)
+            .verticalScroll(scroll)
             .padding(top = PageHeaderHeight + Space.s + statusBar),
     ) {
         SettingLinkRow("模型", modelSummary) { viewModel.openSettingsPage(SettingsPage.Model) }

@@ -114,11 +114,14 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 // 线性阻尼（老写法）是"全程一样重、撞上 max 突然停"，手感发硬、发死。
                 val room = (1f - abs(current) / maxPx).coerceIn(0f, 1f)
                 val target = (current + available.y * state.damping * room).coerceIn(-maxPx, maxPx)
-                val delta = target - current
-                if (delta == 0f) return Offset.Zero
                 state.offset = target
-                // 报告"已消费"的原始量（除以阻尼还原），避免系统 overscroll 再叠一层
-                return Offset(0f, delta / state.damping)
+                // **报告"全吃掉了"**，不要返回 `delta / damping`。
+                //
+                // 我们是滚动链的最外层，剩下的量没人再消费；报告不足（阻尼 < 1、room < 1 时必然不足）
+                // 会让系统把它当成"还没消费"，于是 Android 12+ 的 overscroll 拉伸再叠一层 ——
+                // 这就是"每个页面最大可拉距离不一样"的真凶：内容越短、越能拖动，平台拉伸叠得越多
+                // （角色卡页内容少，所以显得最长）。现在这一层由我们独占，各页面手感一致。
+                return Offset(0f, available.y)
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {

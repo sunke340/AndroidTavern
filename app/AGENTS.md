@@ -318,6 +318,7 @@ MainScreen（Destination + AnimatedContent）
 
 - 内容底部让位 = **max(导航栏, 键盘)**，不能相加（键盘弹出时导航栏已被盖住，相加会多抬一个导航栏）。
 - 列表两端是橡皮筋：`Modifier.rubberOverscroll(rememberRubberOverscroll())`（`:app/RubberOverscroll.kt`），
+  五个可滚动面全覆盖：会话列表、角色卡网格、聊天、世界书条目、设置**一级**页（`verticalScroll`）与二级页；
   跟手 0.62、最多 64dp、松手用 `Motion.RubberBand`（**1.0 / 380，临界阻尼**）回弹；
   它内部用了 `LocalDensity`，所以这个 modifier 必须标 `@Composable`，
   且要挂在 `verticalScroll` / `LazyColumn` **之前**（外层）。
@@ -331,6 +332,10 @@ MainScreen（Destination + AnimatedContent）
   每次手指接管 +1，动画写 `offset` 前先核对代数。日志里 `回弹被打断 offset=0 / 回弹结束 offset=23`
   这一对就是它。`回弹结束` 现在带 `反涨=true|false`，用来确认 |offset| 是否单调下降。
 - `onPostFling` **不要 join 回弹动画**：会让滚动链按在那儿半秒，还可能和新手势交错。
+- **`onPostScroll` 要把 available 全部报成"已消费"**（`return available`），不要报 `delta/damping`：
+  报不足的部分会被系统当成"还没消费"，交给 Android 12+ 的 overscroll 拉伸再叠一层 ——
+  表现就是**每个页面能拉的最大距离不一样**（内容越短越能拖，平台拉伸叠得越多；角色卡页最明显）。
+  我们是滚动链最外层，剩下的量本来就没人消费，独占它各页面手感才一致（2026-11-23 用户报的差异）。
 - **回弹必须能被手指打断**（2026-11-23 用户："回弹动画中再拉，不跟手，还在播上一次的动画"）。
   根因：回弹是在 `onPostFling` 里 suspending `animate(...)` 写 `offset`，普通回调里没法取消，
   用户新拖动写进去的值下一帧就被旧动画覆盖。修法：动画跑在 `settleJob` 里，
