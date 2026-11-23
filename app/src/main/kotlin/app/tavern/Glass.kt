@@ -71,6 +71,10 @@ private val RimLayers = listOf(
 private val RimCapMaxWidth = 1.75.dp
 /** 收窄曲线：宽度 / 浓度都按 cos^Falloff 走，2 = 过了一半才开始明显变粗。 */
 private const val RimCapFalloff = 2f
+/** 横截面分几层做"外浓内淡"（再细看不出来，只是多几次绘制）。 */
+private const val RimCapLayers = 4
+/** 横截面衰减：第 k 层乘 (1-t)^Falloff，t 是它在带子里的位置（0=外沿）。 */
+private const val RimCapInnerFalloff = 1.4f
 
 /** 暗带最外侧的浓度（往里按 cos^2 衰减）。 */
 private const val RimCapAlpha = 0.30f
@@ -94,27 +98,36 @@ private fun DrawScope.drawCapBand(
     maxWidth: Float,
 ) {
     val steps = 96
-    val path = Path()
 
-    fun pointAt(angle: Float, r: Float) = Offset(
-        x = center.x + r * cos(angle),
-        y = center.y + r * sin(angle),
-    )
+    // 沿弧归一化后的带宽系数（0..1），算一次复用
+    val widthScale = FloatArray(steps + 1) { i ->
+        val angle = startAngle + sweep * i / steps
+        cos(angle - outermost).coerceIn(0f, 1f).pow(RimCapFalloff)
+    }
 
-    for (i in 0..steps) {
-        val angle = startAngle + sweep * i / steps
-        val p = pointAt(angle, radius)
-        if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+    fun pointAt(angle: Float, r: Float) = Offset(center.x + r * cos(angle), center.y + r * sin(angle))
+
+    // 横截面切成 N 层：每层是一条薄环，透明度按"越靠内越淡"衰减。
+    // 只做一轮 path 的话，横截面是平的 —— 看起来像贴了一条紫色胶带，不像玻璃的厚度（用户 2026-11-23 指出）。
+    for (layer in 0 until RimCapLayers) {
+        val tOuter = layer / RimCapLayers.toFloat()
+        val tInner = (layer + 1) / RimCapLayers.toFloat()
+        val layerAlpha = (1f - tOuter).pow(RimCapInnerFalloff)
+
+        val path = Path()
+        for (i in 0..steps) {
+            val angle = startAngle + sweep * i / steps
+            val p = pointAt(angle, radius - maxWidth * widthScale[i] * tOuter)
+            if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+        }
+        for (i in steps downTo 0) {
+            val angle = startAngle + sweep * i / steps
+            val p = pointAt(angle, radius - maxWidth * widthScale[i] * tInner)
+            path.lineTo(p.x, p.y)
+        }
+        path.close()
+        drawPath(path = path, brush = brush, alpha = layerAlpha)
     }
-    for (i in steps downTo 0) {
-        val angle = startAngle + sweep * i / steps
-        val c = cos(angle - outermost).coerceIn(0f, 1f)
-        val width = maxWidth * c.pow(RimCapFalloff)
-        val p = pointAt(angle, radius - width)
-        path.lineTo(p.x, p.y)
-    }
-    path.close()
-    drawPath(path = path, brush = brush)
 }
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
