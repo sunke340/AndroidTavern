@@ -369,6 +369,22 @@ MainScreen（Destination + AnimatedContent）
   `onPreScroll`/`onPostScroll` 一进来先 `settleJob.cancel()` (`takeOver()`)，新手势从**当前位移**接着算。
   死循环不会出现：回弹自己不走 scroll 回调。
 
+## 动效：先查表，再动手（2026-11-23 起）
+
+完整的三张表（该不该动 / 曲线与时长 / 评审 Never Ship）在 [docs/design/motion.md](../docs/design/motion.md)。
+这里只放每次都要遵守的：
+
+- **进入/退出用强 ease-out**：`Motion.Decelerate = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)`。
+  别用 `ease-in`（起步慢，正拖住用户盯着的那一下），也别退回 `FastOutSlowInEasing`；
+  旧值 `(0,0,0,1)` 是数学极端减速，240ms 会读成"先弹一下再爬"。
+- **可被打断的东西用弹簧，不用 tween**：`tween` 重定向会从零起跑（那下顿挫就是不丝滑）；
+  弹簧带着当前速度继续走。**归位类动画阻尼必须 1.0**（欠阻尼 = "复位后再抽一下"）。
+- **减动效要自己接**：`rememberReduceMotion()`（`ReducedMotion.kt`，取
+  `ValueAnimator.areAnimatorsEnabled()` + `ON_RESUME` 重读）。系统「移除动画」开着时：
+  页面/tab/四标签切换 → 纯淡化、发送↔停止 → 纯淡化、按压 → 不缩放、橡皮筋松手 → 直接归零。
+  口径是"更少更轻不是全关"，手指直接拖出来的位移保留。**渲染点统一用它，别各自读系统设置。**
+- 频率闸门是真的：100 次/天以上的操作不加动效；说不清目的（反馈/空间连续/状态指示/避免突兀）就别做。
+
 ## 窗口 insets 的规矩（踩过两次）
 
 - `MainActivity` 必须调 `enableEdgeToEdge()`，Manifest 里钉死 `windowSoftInputMode="adjustResize"`。

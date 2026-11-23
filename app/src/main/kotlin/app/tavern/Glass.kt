@@ -246,17 +246,21 @@ fun GlassSurface(
     // 动画一次都不会播（2026-11-23 用户："有时动画不会出现"）。吃流的话每个事件都到，
     // Release 用 animateTo 打断 Press 的动画 —— Animatable 会把当前值和末速度交给新动画，
     // 所以连按是连续的（tween 会清 0 重新起跑，那一下顿挫就是不丝滑的来源）。
+    // 系统「移除动画」：放大属于装饰性反馈，是第一个该减的（淡色、描边仍在，按压不至于完全没反应）。
+    val reduceMotion = rememberReduceMotion()
     val press = remember { Animatable(1f) }
     if (interactionSource != null) {
-        LaunchedEffect(interactionSource) {
+        LaunchedEffect(interactionSource, reduceMotion) {
             var pressedAt = 0L
             interactionSource.interactions.collect { interaction ->
                 when (interaction) {
                     is PressInteraction.Press -> {
+                        if (reduceMotion) return@collect
                         pressedAt = System.currentTimeMillis()
                         launch { press.animateTo(PressScale, Motion.PressDown) }
                     }
                     is PressInteraction.Release, is PressInteraction.Cancel -> {
+                        if (reduceMotion) return@collect
                         val held = System.currentTimeMillis() - pressedAt
                         launch {
                             if (held < MinPressVisibleMs) delay(MinPressVisibleMs - held)

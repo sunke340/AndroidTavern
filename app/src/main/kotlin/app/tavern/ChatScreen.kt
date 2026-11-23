@@ -205,6 +205,8 @@ private fun ChatInputBar(
     glass: Boolean,
     backdrop: GlassBackdrop,
 ) {
+    // 系统「移除动画」：发送↔停止只淡化，不做缩放
+    val reduceMotion = rememberReduceMotion()
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
         verticalAlignment = Alignment.CenterVertically,
@@ -244,8 +246,12 @@ private fun ChatInputBar(
         AnimatedContent(
             targetState = state.isStreaming,
             transitionSpec = {
-                (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
-                    (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
+                if (reduceMotion) {
+                    fadeIn(tween(Motion.Fast)) togetherWith fadeOut(tween(Motion.Fast))
+                } else {
+                    (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
+                        (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
+                }
             },
             label = "send-stop",
         ) { streaming ->

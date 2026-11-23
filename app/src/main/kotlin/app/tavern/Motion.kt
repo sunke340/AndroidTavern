@@ -30,8 +30,16 @@ object Motion {
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-    /** 纯减速：用于"新内容出现" */
-    val Decelerate: Easing = CubicBezierEasing(0f, 0f, 0f, 1f)
+    /**
+     * 纯减速：用于"新内容出现"（进入、淡入）。
+     *
+     * **强 ease-out**，取值参照 Emil Kowalski 的 UI 缓动表（`cubic-bezier(0.23, 1, 0.32, 1)`）。
+     * 旧值 `(0, 0, 0, 1)` 是数学上的极端减速：起步斜率无穷大、后段几乎不动 ——
+     * 240ms 的翻页会读成"先弹一下再爬"，而不是"利落地到位"。
+     * 注意别退回 Material 内置的 `FastOutSlowInEasing`：那套曲线在 200ms 级位移上偏"软"，
+     * 是这套表里明确点名要换掉的一类。
+     */
+    val Decelerate: Easing = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 
     // ── 弹簧：数值取自 Material 3 Expressive 的 motion tokens（mass = 1）─────────────────────
     // 上游 component 里的用法是 `MotionScheme.expressive()` 的 default/fast spatial spec，

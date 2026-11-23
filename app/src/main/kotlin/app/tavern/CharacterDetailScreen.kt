@@ -1,6 +1,8 @@
 package app.tavern
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -75,6 +77,8 @@ private enum class DetailTab(val label: String) {
 @Composable
 fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val cardId = state.detailCardId ?: return
+    // 系统「移除动画」：四标签之间只做淡化，不做横向位移
+    val reduceMotion = rememberReduceMotion()
     val detail = state.detail
     val cardRef = state.cards.firstOrNull { it.id == cardId }
     val sessions = state.sessions.filter { it.cardId == cardId }
@@ -162,15 +166,25 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 targetState = tabIndex,
                 transitionSpec = {
                     val forward = targetState > initialState
-                    (
-                        fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
-                            slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
-                                if (forward) w / 10 else -w / 10
-                            }
-                        ) togetherWith (
-                        fadeOut(tween(Motion.Fast)) +
-                            slideOutHorizontally(tween(Motion.Fast)) { w -> if (forward) -w / 10 else w / 10 }
-                        )
+                    val enter: EnterTransition =
+                        if (reduceMotion) {
+                            fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                        } else {
+                            fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                                slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
+                                    if (forward) w / 10 else -w / 10
+                                }
+                        }
+                    val exit: ExitTransition =
+                        if (reduceMotion) {
+                            fadeOut(tween(Motion.Fast))
+                        } else {
+                            fadeOut(tween(Motion.Fast)) +
+                                slideOutHorizontally(tween(Motion.Fast)) { w ->
+                                    if (forward) -w / 10 else w / 10
+                                }
+                        }
+                    enter togetherWith exit
                 },
                 label = "detail-tab",
             ) { index ->

@@ -128,6 +128,8 @@ private fun labelOf(destination: Destination): String = when (destination) {
 @Composable
 fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 系统「移除动画」：位移类转场统一降级成淡入淡出（见 ReducedMotion.kt）
+    val reduceMotion = rememberReduceMotion()
 
     TavernTheme(mode = state.themeMode, preset = state.themePreset) {
         Surface(
@@ -195,13 +197,15 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // 两层朝同一方向错位滑动 —— 观感就成了"从右下角弹出来"。
                     // 设了 zIndex，返回时深度更大的当前页天然在顶层，才是"把一张卡抽走"。
                     val forward = depthOf(targetState) >= depthOf(initialState)
+                    // 系统「移除动画」：整页位移换成交叉淡化（保留"页面变了"的提示，去掉"页面在动"）
+                    val anim = if (reduceMotion) NavAnimation.Fade else state.navAnimation
                     // ⚠️ 硬约束（2026-11-22 从 Compose 源码 + 逐帧录屏两头确认）：
                     // AnimatedContent 给**每一个**可见内容套的都是同一个 spec 的
                     // `ZIndexModifierElement(specOnEnter.targetContentZIndex, ...)`，两层拿到同一个值，
                     // 于是永远退回"后放置的在上"= **永远是进来的那页在上层**。
                     // 给 targetContentZIndex 设 0/1/2 或 ±1 都改变不了（真机逐帧验证：246ms 里一个像素没动）。
                     // 所以：**位移只做在"进来那页"上**，退场那页只负责"活满时长 + 不露底色"。
-                    val enter: EnterTransition = when (state.navAnimation) {
+                    val enter: EnterTransition = when (anim) {
                         // 进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
                         NavAnimation.Slide ->
                             if (forward) {
@@ -213,7 +217,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         NavAnimation.Fade -> fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
                         NavAnimation.None -> EnterTransition.None
                     }
-                    val exit: ExitTransition = when (state.navAnimation) {
+                    val exit: ExitTransition = when (anim) {
                         // 退场那页在上层底下，位移看不见。这里只要求它**别提前被销毁**：
                         // exit = None 时 AnimatedContent 会在十几毫秒内就把旧页移除（实测 12–14ms），
                         // 于是动画期间露出来的是窗口底色。用满时长的位移（退 1/4 / 原地 0）把它留住。
@@ -302,6 +306,8 @@ private fun TabsRoot(
     charactersGrid: LazyGridState,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    // 系统「移除动画」：tab 切换的位移也降级成淡化
+    val reduceMotion = rememberReduceMotion()
     val notice = state.notice
     LaunchedEffect(notice?.id) {
         if (notice != null) {
@@ -419,19 +425,25 @@ private fun TabsRoot(
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
                         val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
-                        (
-                            (
+                        val enter: EnterTransition =
+                            if (reduceMotion) {
+                                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                            } else {
                                 fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
                                     slideInHorizontally(tween(Motion.Base, easing = Motion.Decelerate)) { w ->
                                         if (forward) w / 8 else -w / 8
                                     }
-                                ) togetherWith (
+                            }
+                        val exit: ExitTransition =
+                            if (reduceMotion) {
+                                fadeOut(tween(Motion.Fast))
+                            } else {
                                 fadeOut(tween(Motion.Fast)) +
                                     slideOutHorizontally(tween(Motion.Fast)) { w ->
                                         if (forward) -w / 8 else w / 8
                                     }
-                                )
-                            ).using(null)
+                            }
+                        (enter togetherWith exit).using(null)
                     },
                     label = "screen",
                 ) { screen ->

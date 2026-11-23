@@ -94,6 +94,12 @@ class RubberOverscrollState internal constructor() {
     /** 橡皮筋常数：越小越"硬"。0.6 时约 120dp 手指 → 64dp 位移。 */
     var rubberConstant: Float = 0.6f
 
+    /**
+     * 系统「移除动画」开着时：跟手照旧（那是手指直接操纵），但松手**直接归零**，不播回弹弹簧。
+     * 见 [rememberReduceMotion]。
+     */
+    internal var reduceMotion: Boolean = false
+
     /** 把 [raw] 映射成视觉位移（橡皮筋公式）。 */
     internal fun applyRaw(next: Float) {
         raw = next
@@ -109,8 +115,12 @@ class RubberOverscrollState internal constructor() {
 fun rememberRubberOverscroll(): RubberOverscrollState = remember { RubberOverscrollState() }
 
 @Composable
-fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
+fun Modifier.rubberOverscroll(
+    state: RubberOverscrollState,
+    reduceMotion: Boolean = rememberReduceMotion(),
+): Modifier {
     val density = LocalDensity.current
+    state.reduceMotion = reduceMotion
     // 参考尺寸固定 400dp：不随页面高度变，保证"每页拉到头距离一样"
     val referencePx = with(density) { 400.dp.toPx() }
     state.referencePx = referencePx
@@ -135,6 +145,11 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
             /** 开始回弹：把 raw 弹回 0（视觉位移按公式跟着走）。 */
             private fun startSettle(initialVelocity: Float = 0f) {
                 if (state.raw == 0f) return
+                // 系统「移除动画」：不做回弹动画，位移立刻归零（跟手阶段不受影响）
+                if (state.reduceMotion) {
+                    state.applyRaw(0f)
+                    return
+                }
                 val gen = state.gen
                 val start = state.raw
                 AppLog.i(
