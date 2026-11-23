@@ -91,7 +91,10 @@ private const val MinPressVisibleMs = 90L
 
 
 
-/** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
+/**
+ * 投影：一圈**四周均匀**的模糊黑影（不下沉），不用 elevation ——
+ * elevation 阴影画在内容后面，配半透明底会在内部透出亮度台阶。
+ */
 // 模糊半径：投影是**四周均匀扩散**的一圈软光晕（2026-11-23 用户：不能只往下偏）。
 // 早先 18dp 配 4dp 下沉时，小圆钮（44dp）等于套了个灰环、边缘高光被吃掉；
 // 现在只靠模糊半径控制扩散范围，不下沉。
@@ -254,20 +257,20 @@ fun GlassSurface(
             },
     ) {
         if (glass && shadow) {
-            // 投影：一层模糊的黑色胶囊，往下压几像素。模糊自带渐变，内部不会出亮度台阶。
+            // 投影：一层模糊的黑色胶囊，四周均匀扩散（不下沉）。模糊自带渐变，内部不会出亮度台阶。
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
             //
-            // 液态玻璃档再收一档（2026-11-23 用户："底部阴影感觉太明显"）：真折射本身已经
-            // 给了边缘厚度，投影只要均匀托一层就够，压太实会变成一圈灰边。
-            val shadowAlpha = if (liquidOn) ShadowAlpha * 0.35f else ShadowAlpha
-            val shadowBlur = if (liquidOn) ShadowBlur * 0.6f else ShadowBlur
+            // **不要按档位再压投影**（2026-11-23 用户："发送按钮周围没有阴影"）：
+            // "太明显"那次是下沉偏移造成的（灰影堆在下方），已经删掉偏移；再乘 0.35 就等于没有了
+            // ——量过：钮外圈只比底色暗 3~5 级（245 vs 248），而输入框是 10~14 级。
+            // 现在所有玻璃表面用同一套投影参数，只靠模糊半径决定扩散范围。
             Box(
                 Modifier
                     .matchParentSize()
-                    .blur(shadowBlur, BlurredEdgeTreatment.Unbounded)
+                    .blur(ShadowBlur, BlurredEdgeTreatment.Unbounded)
                     .drawBehind {
                         drawRoundRect(
-                            color = Color.Black.copy(alpha = shadowAlpha),
+                            color = Color.Black.copy(alpha = ShadowAlpha),
                             cornerRadius = cornerRadiusOf(shape),
                         )
                     },
