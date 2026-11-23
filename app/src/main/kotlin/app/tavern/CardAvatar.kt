@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import app.tavern.data.log.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -40,6 +41,8 @@ fun CardAvatar(cardId: String, fallbackText: String, modifier: Modifier = Modifi
 
     val bitmap by produceState(initialValue = avatarCache.get(cardId), cardId) {
         if (value != null) return@produceState
+        // 诊断用（2026-11-23）：从二级页返回时如果刷这行，说明头像缓存被挤掉、图在重解 → "重新刷出来"
+        AppLog.i("ui", "头像未命中缓存 ${cardId.take(6)}")
         val decoded = withContext(Dispatchers.IO) {
             avatarCache.get(cardId) ?: run {
                 val bytes = repository.load(cardId) ?: return@run null

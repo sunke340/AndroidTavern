@@ -212,13 +212,16 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // advance 时 max+1、pop 时 min-1 是同一套账（我们深度是全序，直接用 depth 即可）。
                     val zIndex = depthOf(targetState).toFloat()
                     val enter: EnterTransition = when (anim) {
-                        // 进：新页整屏从右滑入；返回：底下的浅页从左侧 1/4 处滑回
-                        // （1/4 是它被盖住时退场的位移量，两者对上才有"抽走卡片"的连续感）
+                        // 进：新页整屏从右滑入。
+                        // 返回：**底下那页完全不动** —— 它只是被"揭开"。
+                        // （2026-11-23 用户报："返回时三个 tab 像在互相切换、角色卡重新刷出来"。
+                        //  根因是底下那页也带了 -1/4 的位移：整页（连标题、卡片、头像）一起平移，
+                        //  读起来就是"这一页重新进场"。卡片抽走时，桌面上那张卡本来就不该动。）
                         NavAnimation.Slide ->
                             if (forward) {
                                 slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
                             } else {
-                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 }
+                                EnterTransition.None
                             }
 
                         NavAnimation.Fade -> fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
@@ -430,6 +433,11 @@ private fun TabsRoot(
                     // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
+                        // 诊断用（2026-11-23）：返回一级页时若刷这行，说明是 tab 层的 AnimatedContent 在动，
+                        // 否则就是页面里的列表/头像自己淡入（另一种修法）。
+                        if (initialState != targetState) {
+                            AppLog.i("nav", "tab 动画 ${initialState.name}->${targetState.name}")
+                        }
                         val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
                         val enter: EnterTransition =
                             if (reduceMotion) {
