@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`f2ac57a`（tag `apk-m91`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
+- 代码：`7b1f7cf`（tag `apk-m92`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 全绿
-- 已交付 APK：`app-v75-f2ac57a.apk`（签名固定，可覆盖安装；上一版 `app-v74-4d6671e.apk`）
+- 已交付 APK：`app-v76-7b1f7cf.apk`（签名固定，可覆盖安装；上一版 `app-v75-f2ac57a.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 接手先看这三件（2026-11-23 晚）
@@ -63,7 +63,7 @@
 
 | 块 | 结果 |
 |---|---|
-| 进入/退出缓动 | `Motion.Decelerate`：`(0,0,0,1)` → 强 ease-out `(0.23,1,0.32,1)` → **ease-out-quad `(0.25,0.46,0.45,0.94)`**（强曲线 75ms 就走完、读成"太快"；现在约 155ms）。要更慢先加 `Motion.Slow`，别再缓曲线 |
+| 进入/退出缓动 | `Motion.Decelerate`：`(0,0,0,1)` → 强 ease-out `(0.23,1,0.32,1)` → **ease-out-quad `(0.25,0.46,0.45,0.94)`**（强曲线 75ms 就走完、读成"太快"；现在约 155ms）；时长 240→**280ms**（用户"可以再加一点"）→ 现在约 180ms 走完。再慢继续加 `Motion.Slow`，别再缓曲线 |
 | 减动效 | 新增 `ReducedMotion.kt`（`rememberReduceMotion()` = `ValueAnimator.areAnimatorsEnabled()` + ON_RESUME 重读）；页面/tab/四标签 → 纯淡化、发送↔停止 → 纯淡化、按压 → 不缩放、橡皮筋松手 → 直接归零 |
 | 文档 | 新增 [docs/design/motion.md](../design/motion.md)：频率闸门、曲线/时长表、手势两段式、Never Ship 表、我们有意偏离的三处；app/AGENTS.md 加摘要 |
 
