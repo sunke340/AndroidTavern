@@ -68,6 +68,18 @@ class RubberOverscrollState internal constructor() {
     internal fun isFling(source: NestedScrollSource): Boolean =
         source == NestedScrollSource.Fling
 
+    /**
+     * 这次 fling 的惯性**已经用完**（它把橡皮筋顶到过上限）：此后再送来的位移一律只吃掉。
+     *
+     * **必须有这个标记，光"在上限那一刻挡一下"不够**（2026-11-23 晚第二次修）：
+     * 回弹一启动，下一帧 raw 就离开上限（弹簧 16ms 走掉 7%），上一版的守卫立刻失效 →
+     * 落进 `takeOver()` 把刚启动的回弹 cancel 掉 → 再灌满 raw → 再 startSettle……
+     * 逐帧循环，整个 fling 期间内容都被按在最远处，用户看到的就是"悬停"。
+     *
+     * 清标记的地方只有一个：**新的 Drag 位移**（真正的下一根手指）。
+     */
+    internal var flingEaten: Boolean = false
+
     /** 正在跑的回弹动画。手指一落就掐掉它，否则新手势会被旧动画拽回去。 */
     internal var settleJob: Job? = null
 
@@ -149,7 +161,10 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
 
             /** 往回拖时先把橡皮筋收回去，再让列表正常滚。 */
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // fling 不接管：它送来的位移由 onPostScroll 吃掉，绝不能让动画被反复掐死
+                if (state.isFling(source)) return Offset.Zero
                 takeOver()
+                state.flingEaten = false
                 val current = state.raw
                 if (current == 0f || available.y == 0f) return Offset.Zero
                 if (current > 0f && available.y < 0f) {
@@ -170,18 +185,32 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 if (available.y == 0f) return Offset.Zero
                 val fromFling = state.isFling(source)
                 val limit = state.rawLimit
-                // 已经到上限、而且位移是 fling 送来的：只吃掉。
-                // 不累积（否则 raw 会被灌到上万像素）、也不 takeOver（否则回弹被反复重置）。
-                if (abs(state.raw) >= limit - 0.5f) {
-                    if (fromFling) return Offset(0f, available.y)
+                if (fromFling) {
+                    // 惯性已经用完这一次 fling：剩下的位移只吃掉。
+                    // 不累积（否则 raw 被灌到上万像素）、不 takeOver（否则回弹被反复重置）、
+                    // 也不碰 rawLimit 的判断 —— 判据是"这次 fling"，不是"raw 现在恰好在上限"。
+                    if (state.flingEaten) return Offset(0f, available.y)
+                    if (abs(state.raw) >= limit - 0.5f) {
+                        takeOver()   // 先把可能还在跑的回弹掐掉，再从这里重新起一条
+                        state.flingEaten = true
+                        AppLog.i("rubber", "fling 撞上限，残余惯性丢弃 raw=${state.raw.roundToInt()}")
+                        startSettle()
+                        return Offset(0f, available.y)
+                    }
+                } else {
+                    state.flingEaten = false
                 }
                 takeOver()
                 val next = state.raw + available.y
                 if (abs(next) >= limit) {
                     state.applyRaw(if (next < 0f) -limit else limit)
-                    // **fling 一撞到上限就立刻回弹**，不等它自己跑完 —— 这是"悬停"的正面修法：
-                    // 等 fling 结束（几百毫秒）才回弹，内容就在远端干等着。
-                    if (fromFling) startSettle()
+                    // **fling 一撞到上限就立刻回弹**，不等它自己跑完 —— 等 fling 结束（几百毫秒）
+                    // 才回弹，内容就在远端干等着，那就是"悬停"。
+                    if (fromFling) {
+                        state.flingEaten = true
+                        AppLog.i("rubber", "fling 撞上限，残余惯性丢弃 raw=${state.raw.roundToInt()}")
+                        startSettle()
+                    }
                 } else {
                     state.applyRaw(next)
                 }

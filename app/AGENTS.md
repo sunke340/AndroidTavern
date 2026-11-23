@@ -351,6 +351,15 @@ MainScreen（Destination + AnimatedContent）
 - **fling 与手势要用 `NestedScrollSource` 区分**：到上限之后 fling 送来的位移只"吃掉"，
   不再累积、也不 `takeOver`（否则回弹被反复重置）；**fling 一撞上限就立刻开始回弹**，
   不要等 `onPostFling`（那可能是几百毫秒之后）。
+- **"吃掉"必须记在一个"这次 fling"的标记上（`flingEaten`），不能拿"raw 现在是否在上限"当判据**
+  （2026-11-23 晚第二次修，上一版正是栽在这里）：回弹一启动，下一帧 raw 就离开上限
+  （`spring(1.0,700)` 16ms 走掉约 7%），"在上限才挡"的守卫立刻失效 → 落进 `takeOver()`
+  把刚启动的回弹 cancel 掉 → 再灌满 → 再 startSettle，逐帧循环。**表现仍是"悬停"，
+  但时长 = 整个 fling（大初速度可达 1 秒）**；日志判据：`回弹 start` 反复出现、每两条之间夹
+  `回弹被打断 raw=-4xx`。
+  现在的规则：fling 一旦把 raw 顶到上限 → `flingEaten = true`，此后该次 fling 的所有位移
+  只吃、不累积、不 takeOver；**清标记只认 Drag 位移**（真正的新手指）。`onPreScroll` 里
+  fling 直接返回 `Offset.Zero`，不让它接管回弹。
 - **`onPostScroll` 要把 available 全部报成"已消费"**（`return available`），不要报 `delta/damping`：
   报不足的部分会被系统当成"还没消费"，交给 Android 12+ 的 overscroll 拉伸再叠一层 ——
   表现就是**每个页面能拉的最大距离不一样**（内容越短越能拖；角色卡页最明显）。
