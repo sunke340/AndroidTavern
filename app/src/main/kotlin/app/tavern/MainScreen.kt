@@ -186,6 +186,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             // 页面栈转场：自己管叠放次序（不用 AnimatedContent，理由见 PageStack.kt 顶部注释）
             PageStack(
                 target = destination,
+                state = state,
                 depthOf = { depthOf(it) },
                 // 系统「移除动画」：位移换成交叉淡化（保留"页面变了"的提示，去掉"页面在动"）
                 mode = if (reduceMotion) NavAnimation.Fade else state.navAnimation,
@@ -198,37 +199,41 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         "${labelOf(dest)} 页面移除，距上次换页 ${System.currentTimeMillis() - navAt[0]}ms",
                     )
                 },
-            ) { target ->
+            ) { target, snap ->
+                // `snap`：当前页是实时状态，离场页是"它还是当前页时"的快照
+                // （离场页如果读实时状态，会读到已经被清掉的 cardId/session → 渲染空 → 凭空消失）。
+                // BackHandler 只给当前页注册，否则离场那页在 280ms 里也能响应返回键。
+                val live = target == destination
                 when (target) {
-                    Destination.Tabs -> TabsRoot(state, viewModel, sessionsList, charactersGrid)
+                    Destination.Tabs -> TabsRoot(snap, viewModel, sessionsList, charactersGrid)
                     Destination.Chat -> {
-                        BackHandler { viewModel.closeChat() }
-                        ChatScreen(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeChat() }
+                        ChatScreen(state = snap, viewModel = viewModel)
                     }
 
                     is Destination.Settings -> {
-                        BackHandler { viewModel.closeSettingsPage() }
-                        SettingsSubPage(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeSettingsPage() }
+                        SettingsSubPage(state = snap, viewModel = viewModel)
                     }
 
                     is Destination.WorldBookEntries -> {
-                        BackHandler { viewModel.closeWorldBook() }
-                        WorldBookEntriesScreen(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeWorldBook() }
+                        WorldBookEntriesScreen(state = snap, viewModel = viewModel)
                     }
 
                     is Destination.Detail -> {
-                        BackHandler { viewModel.closeDetail() }
-                        CharacterDetailScreen(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeDetail() }
+                        CharacterDetailScreen(state = snap, viewModel = viewModel)
                     }
 
                     is Destination.CardConfig -> {
-                        BackHandler { viewModel.closeCardConfigPage() }
-                        CardConfigPageScreen(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeCardConfigPage() }
+                        CardConfigPageScreen(state = snap, viewModel = viewModel)
                     }
 
                     Destination.ProfileEdit -> {
-                        BackHandler { viewModel.closeProfileEditor() }
-                        ProfileEditScreen(state = state, viewModel = viewModel)
+                        if (live) BackHandler { viewModel.closeProfileEditor() }
+                        ProfileEditScreen(state = snap, viewModel = viewModel)
                     }
                 }
             }

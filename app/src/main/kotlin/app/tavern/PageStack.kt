@@ -9,6 +9,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -39,20 +41,32 @@ import androidx.compose.ui.zIndex
  *    整页不会重新量尺寸（这正是当年 `AnimatedContent` 的 `SizeTransform` 要关掉的东西）。
  */
 @Composable
-internal fun PageStack(
+internal fun <S> PageStack(
     target: Destination,
+    /** 当前 UI 状态。离场页会拿到它**还是当前页时**的那一份快照（见下面 [snapshots]）。 */
+    state: S,
     depthOf: (Destination) -> Int,
     mode: NavAnimation,
     modifier: Modifier = Modifier,
     /** 离场页被真正移除时回调（给 `nav` 日志用，验证转场有没有跑满）。 */
     onRemoved: (Destination) -> Unit = {},
-    content: @Composable (Destination) -> Unit,
+    content: @Composable (Destination, S) -> Unit,
 ) {
     // 参与绘制的页面（按加入顺序）。当前页永远在最后一个。
     val pages: SnapshotStateList<Destination> = remember { mutableStateListOf(target) }
     var forward by remember { mutableStateOf(true) }
     val progress = remember { Animatable(1f) }
     val latestOnRemoved by rememberUpdatedState(onRemoved)
+
+    // 每一页"作为当前页时的最后一份状态"。
+    //
+    // **这是必需的，不是优化**：页面读的是全局 UiState，而返回是把状态一起改掉的
+    // （`closeDetail()` 同时清掉 detailCardId 并把 destination 换回 Tabs）。离开的那页
+    // 如果继续读实时状态，它会读到"卡 id 已经没了" → 自己的 `?: return` 直接渲染空
+    // → 观感就是"退场页凭空消失"（2026-11-24 录屏抓到的就是这个）。
+    // 每帧只给**当前页**写快照，所以离开那页留在快照里的就是"它还是当前页时"的值。
+    val snapshots = remember { mutableStateMapOf<Destination, S>() }
+    SideEffect { snapshots[target] = state }
 
     LaunchedEffect(target) {
         if (pages.last() == target) return@LaunchedEffect
@@ -68,6 +82,7 @@ internal fun PageStack(
         }
         // 只留下目标页（从头删，目标页永远在最后，所以它的组合不会被丢掉）
         while (pages.size > 1) pages.removeAt(0)
+        snapshots.keys.retainAll(pages.toSet())
         latestOnRemoved(from)
     }
 
@@ -96,7 +111,8 @@ internal fun PageStack(
                             }
                         },
                 ) {
-                    content(dest)
+                    // 当前页用实时状态；离场页用它自己那份快照
+                    content(dest, if (dest == target) state else snapshots[dest] ?: state)
                 }
             }
         }
