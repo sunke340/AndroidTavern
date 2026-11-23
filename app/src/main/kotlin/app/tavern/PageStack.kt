@@ -39,7 +39,7 @@ import androidx.compose.ui.zIndex
  *    整页不会重新量尺寸（这正是当年 `AnimatedContent` 的 `SizeTransform` 要关掉的东西）。
  */
 @Composable
-fun PageStack(
+internal fun PageStack(
     target: Destination,
     depthOf: (Destination) -> Int,
     mode: NavAnimation,
