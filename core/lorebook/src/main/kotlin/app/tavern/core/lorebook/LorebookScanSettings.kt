@@ -5,7 +5,7 @@ package app.tavern.core.lorebook
  *
  * [maxContext] 是模型上下文长度（原版从预设的 `openai_max_context` 来），预算按它的百分比算。
  */
-public class LorebookScanSettings(
+public data class LorebookScanSettings(
     /** 全局扫描深度：每轮拿聊天最后几条去匹配关键字，默认 2。 */
     public val scanDepth: Int = 2,
     /** 预算占比（百分比），默认 25。 */
