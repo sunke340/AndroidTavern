@@ -262,7 +262,7 @@ private fun ChatInputBar(
                 // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。
                 // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
                 // 停止态仍是原来的浅色面。
-                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
                 // 高光环走**纯白**（默认值）。用户指出得对：这颗钮外面包着一圈投影，
                 // 边缘的"环境色"是被压暗的灰蓝(≈240)，不是页面底色(250) —— 纯白细线在那里就是亮的。
                 // 之前"白高光压不过底色"的判断错在拿页面底色当了背景。

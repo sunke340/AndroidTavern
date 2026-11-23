@@ -257,14 +257,20 @@ fun GlassSurface(
         if (glass && shadow) {
             // 投影：一层模糊的黑色胶囊，往下压几像素。模糊自带渐变，内部不会出亮度台阶。
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
+            //
+            // 液态玻璃档再收一档（2026-11-23 用户："底部阴影感觉太明显"）：真折射本身已经
+            // 给了边缘厚度，投影只要"托住"就够，压太实会变成一圈灰边。
+            val shadowAlpha = if (liquidOn) ShadowAlpha * 0.5f else ShadowAlpha
+            val shadowBlur = if (liquidOn) ShadowBlur * 0.75f else ShadowBlur
+            val shadowOffset = if (liquidOn) ShadowOffsetY * 0.6f else ShadowOffsetY
             Box(
                 Modifier
                     .matchParentSize()
-                    .offset(y = ShadowOffsetY)
-                    .blur(ShadowBlur, BlurredEdgeTreatment.Unbounded)
+                    .offset(y = shadowOffset)
+                    .blur(shadowBlur, BlurredEdgeTreatment.Unbounded)
                     .drawBehind {
                         drawRoundRect(
-                            color = Color.Black.copy(alpha = ShadowAlpha),
+                            color = Color.Black.copy(alpha = shadowAlpha),
                             cornerRadius = cornerRadiusOf(shape),
                         )
                     },

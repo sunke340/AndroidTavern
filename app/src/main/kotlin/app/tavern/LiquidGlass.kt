@@ -32,16 +32,26 @@ data class LiquidGlassSpec(
     /**
      * 折射带宽度（dp）：只有离边界这么近的地方才弯。
      *
-     * 7dp 是照 44dp 的发送钮调的（约占直径 16%）。太宽整颗钮都成了鱼眼，
-     * 太窄（<4dp）在小钮上只剩一像素、等于没效果。
+     * 第一版 7dp 在 44dp 的钮上太宽 —— 整块都像厚玻璃（2026-11-23 用户："玻璃感觉太厚了"）。
+     * 5.5dp 大约是直径的 12%，边缘有厚度、中心还是平的。
      */
-    val edgeDp: Float = 7f,
-    /** 折射强度（0..1）：边缘采样点往外偏多少。0.5 左右"像 3mm 厚的玻璃"。 */
-    val refraction: Float = 0.5f,
+    val edgeDp: Float = 5.5f,
+    /** 折射强度（0..1）：边缘采样点往外偏多少。0.34 像薄玻璃，0.5 以上就开始"厚"。 */
+    val refraction: Float = 0.34f,
     /** 色散（0..1）：R/B 通道用略微不同的偏移采样，边缘出现很淡的彩色边。0 就是无色散。 */
     val dispersion: Float = 0.05f,
     /** 镜面强度（0..1）：边缘朝光那一侧的高光。 */
-    val specular: Float = 0.25f,
+    val specular: Float = 0.22f,
+    /**
+     * 玻璃面白底浓度（0..1）。**不透明度主要靠它**：
+     * 0.30 时背后内容基本看不见（用户："玻璃太不透明了"）；0.14 才是"能看到背后、但被糊过"。
+     */
+    val faceWhite: Float = 0.14f,
+    /**
+     * 底边内阴影强度（0..1）：给厚度用的。0.18 在浅色面上是一条明显的灰带
+     * （用户："底部阴影感觉太明显"），现在 0.07，只在最下沿淡淡压一下。
+     */
+    val innerShadow: Float = 0.07f,
     /** 光源方向（xy，右下为正）。左上打光 = (-0.35, -0.94)。 */
     val lightX: Float = -0.35f,
     val lightY: Float = -0.94f,
@@ -67,6 +77,8 @@ uniform float  uEdge;
 uniform float  uRefraction;
 uniform float  uDispersion;
 uniform float  uSpecular;
+uniform float  uFaceWhite;
+uniform float  uInnerShadow;
 uniform float4 uTint;
 uniform float2 uLight;
 
@@ -110,7 +122,7 @@ half4 main(float2 fragCoord) {
     }
 
     float3 rgb = float3(base.rgb);
-    rgb = mix(rgb, float3(0.98, 0.975, 0.99), 0.30);
+    rgb = mix(rgb, float3(0.98, 0.975, 0.99), uFaceWhite);
     rgb = mix(rgb, uTint.rgb, uTint.a);
 
     float3 nn = normalize(float3(n, 0.85));
@@ -119,8 +131,8 @@ half4 main(float2 fragCoord) {
     rgb = rgb + (pow(facing, 5.0) * band * inside * uSpecular);
 
     float t = clamp((fragCoord.y - origin.y) / uShapeSize.y, 0.0, 1.0);
-    float inner = smoothstep(0.35, 1.0, t) * band;
-    rgb = rgb * (1.0 - 0.18 * inner);
+    float inner = smoothstep(0.55, 1.0, t) * band * inside;
+    rgb = rgb * (1.0 - uInnerShadow * inner);
 
     return half4(half3(rgb), 1.0);
 }
@@ -153,6 +165,8 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uRefraction", spec.refraction)
         shader.setFloatUniform("uDispersion", spec.dispersion)
         shader.setFloatUniform("uSpecular", spec.specular)
+        shader.setFloatUniform("uFaceWhite", spec.faceWhite)
+        shader.setFloatUniform("uInnerShadow", spec.innerShadow)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
         shader.setFloatUniform("uLight", spec.lightX, spec.lightY)
         RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
