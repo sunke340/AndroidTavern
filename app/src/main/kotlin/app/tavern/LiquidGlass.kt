@@ -43,12 +43,11 @@ data class LiquidGlassSpec(
     /**
      * 内侧泛光强度（0..1）。**默认 0：关掉**。
      *
-     * 它按 `band`（折射带宽度）铺，不是按 `rimWidth` —— 4.5dp ≈ 15px 的一片白，
-     * 看起来像"一层体现厚度的渐变白"，用户一直在说的高光没变细就是它（2026-11-23 用户自己指出）。
-     * 在页头上更难看：它的亮度按 `clamp(n.y,0,1)` 分布，中间亮、两头衰减 → 一条**梯形**白。
-     * 边缘的高光只留 [rimWidthDp] 那条细线。
+     * **宽度等于 [rimWidthDp]**（和细线同宽，1.6dp），不是原来那样按折射带 4.5dp 铺开 ——
+     * 4.5dp 那版读起来是"一层体现厚度的渐变白"，页头上还因为按 `clamp(n.y,0,1)` 分布变成梯形
+     * （2026-11-23 用户自己指出）。现在它是细线外面一点点柔光，两者叠在一起才是"边缘受光"。
      */
-    val specular: Float = 0f,
+    val specular: Float = 0.25f,
     /**
      * 玻璃面白底浓度（0..1）。**不透明度主要靠它**：
      * 0.30 时背后内容基本看不见（用户："玻璃太不透明了"）；0.22 是"能看到背后、但被糊过"。
@@ -202,9 +201,10 @@ half4 main(float2 fragCoord) {
     float rim = (1.0 - smoothstep(0.0, uRimWidth, distIn)) * inside;
     rgb = mix(rgb, float3(1.0), rim * lit * uRimAlpha);
 
-    // 内侧泛光：默认强度 0（见 LiquidGlassSpec.specular）。它按 band 铺开 4.5dp，
-    // 会读成"厚度渐变白"，页头上还是梯形。留着这个 uniform 只为以后想调回来。
-    rgb = rgb + (pow(glow, 6.0) * band * inside * uSpecular);
+    // 边缘柔光：**和细线同宽**（uRimWidth），只是把那条线往外晕开一点点。
+    // 不要再用 band（折射带 4.5dp）：那会变成一片"厚度渐变白"，页头上还是梯形。
+    float halo = 1.0 - smoothstep(0.0, uRimWidth, distIn);
+    rgb = rgb + (pow(glow, 6.0) * halo * inside * uSpecular);
 
     // 左右两侧的内阴影：贴着左右边界最重，往里化开
     float sideMask = horizontal * (1.0 - smoothstep(0.0, uSideWidth, distIn)) * inside;

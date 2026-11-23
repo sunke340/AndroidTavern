@@ -140,11 +140,15 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 val sign = if (start >= 0f) 1f else -1f
                 val gen = state.gen
                 val startAbs = abs(start)
-                // 松手速度要带进弹簧：**临界阻尼从静止出发时初速度是 0，头 100ms 几乎不动** ——
-                // 用户看到的就是"拉伸后悬停一会儿才回去"（2026-11-23）。反向甩时速度是负的，
-                // 于是回弹立刻起步，正好符合"往反方向拉应该马上收"的直觉。
-                // 上限压一下，避免一次大力甩把值甩飞（写入端还有 coerce 兜底）。
-                val v0 = initialVelocity.coerceIn(-startAbsLimit(startAbs), startAbsLimit(startAbs))
+                // 松手速度只接**"往回收"的那一半**。
+                //
+                // 松手速度往外（和 offset 同向）时**丢掉**：那会让橡皮筋先继续往外撑（甚至撑过 64dp 上限），
+                // 在远端停住再回来 —— 用户看到的就是"拉伸后悬停一段时间"（2026-11-23，
+                // 日志里 start=215px v0=1718 那次，v0 是朝外的 1718px/s）。
+                // 朝内（`start * v < 0`）时全量接住，反向甩就立刻收，符合直觉。
+                val pullsBack = start * initialVelocity < 0f
+                val limit = startAbsLimit(startAbs)
+                val v0 = if (pullsBack) initialVelocity.coerceIn(-limit, limit) else 0f
                 // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
                 var grew = false
                 AppLog.i("rubber", "回弹 start=${start.roundToInt()}px v0=${v0.roundToInt()}")
@@ -159,7 +163,10 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                         // ② 只许朝 0 收敛，不许反向：过冲在列表上就是"复位后又抽一下"
                         if (state.gen == gen) {
                             if (abs(value) > startAbs + 1f) grew = true
-                            state.offset = (value * sign).coerceAtLeast(0f) * sign
+                            // 两头都夹：① 不许反向（过冲）② 不许超过 64dp 上限
+                            //（只有往回那一程接速度，正常不会超，但这是最后一道保险）
+                            state.offset =
+                                (value * sign).coerceIn(0f, maxPx) * sign
                         }
                     }
                     if (state.gen == gen) {
