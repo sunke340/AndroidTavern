@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -88,11 +89,19 @@ fun CapsuleIcon(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
     }
+    // 没有本地 source 时自己造一个（不在玻璃胶囊里用时也要能点）
+    val press = LocalGlassPress.current ?: remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .size(HeaderActionHeight - 8.dp)
             .clip(CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(
+                interactionSource = press,
+                // 涟漪会画成"图标那块一个圆盘"，和整块玻璃对不上；按压反馈统一交给 GlassSurface
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -309,37 +318,11 @@ fun EmptyHint(text: String) {
 }
 
 /**
- * 圆形按钮的按压反馈：**按下缩到 96%**，并把点击区域裁成圆形。
+ * 玻璃表面共用的按压来源。
  *
- * 为什么不用默认涟漪：默认 ripple 画在节点的方形边界里（`GlassSurface` 的圆形只是底下那层背景），
- * 圆钮按下去会闪出一个**方形**色块（2026-11-23 用户实测）。这里的做法是
- * "裁圆 + 关掉 ripple + 用缩放做反馈"，方形永远不会出现。
+ * 为什么用 CompositionLocal：页头/详情页的"玻璃胶囊 + 图标"是两层写的（胶囊在 PageHeader，
+ * 图标由调用方传进来）。按压要同时作用到胶囊（压暗+缩放）和图标（点击），
+ * 两边得拿**同一个** interaction source；把 source 藏在 Local 里，调用方就不用改签名。
  */
-@Composable
-fun Modifier.pressFeedback(
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-): Modifier {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) PressScale else 1f,
-        animationSpec = tween(90),
-        label = "press-scale",
-    )
-    return this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
-        .clip(CircleShape)
-        .clickable(
-            interactionSource = interaction,
-            indication = null,
-            enabled = enabled,
-            onClick = onClick,
-        )
-}
+val LocalGlassPress = staticCompositionLocalOf<androidx.compose.foundation.interaction.MutableInteractionSource?> { null }
 
-/** 按下的缩放比例（0.96 = 4% 收缩，肉眼能感觉到但不晃）。 */
-private const val PressScale = 0.96f

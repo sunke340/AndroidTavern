@@ -1,11 +1,15 @@
 package app.tavern
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -23,10 +27,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -38,9 +42,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
 
 /** 玻璃高斯半径。有 RenderEffect 时把放大后的磨砂再磨细一遍；没有也不影响下限。 */
 internal val GlassBlur = 12.dp
@@ -56,79 +57,21 @@ private const val GlassFillAlpha = 0.34f
  * 由外向内叠几层（宽度, 透明度），叠加后就是"边缘最亮、往内渐淡"的厚度感。
  */
 private val RimLayers = listOf(
-    1.0.dp to 0.95f,
-    2.5.dp to 0.45f,
-    5.0.dp to 0.22f,
-    8.0.dp to 0.10f,
+    // 透明度别太高：高光是白色叠加，太白会把下面的磨砂层盖死，看起来像实心白圈。
+    // 降低后边缘仍亮，但能透出被糊过的背景（用户 2026-11-23：高光需要有磨砂感）。
+    1.0.dp to 0.55f,
+    2.5.dp to 0.32f,
+    5.0.dp to 0.18f,
+    8.0.dp to 0.09f,
 )
 
-/**
- * 暗部（主题色）：只画在两侧的**圆头**上，而且切点细、最两侧粗。
- *
- * 整圈均匀加深会被读成"给胶囊描了道边"；等宽弧只会显得"大部分面积一样粗"
- * （用户 2026-11-23 两轮反馈）。
- */
-private val RimCapMaxWidth = 1.75.dp
-/** 收窄曲线：宽度 / 浓度都按 cos^Falloff 走，2 = 过了一半才开始明显变粗。 */
-private const val RimCapFalloff = 2f
-/** 横截面分几层做"外浓内淡"（再细看不出来，只是多几次绘制）。 */
-private const val RimCapLayers = 4
-/** 横截面衰减：第 k 层乘 (1-t)^Falloff，t 是它在带子里的位置（0=外沿）。 */
-private const val RimCapInnerFalloff = 1.4f
+/** 按下时整块玻璃压暗的强度；再大就显脏，0.06 是"能看出在动"的门槛附近。 */
+private const val PressTintAlpha = 0.06f
 
-/** 暗带最外侧的浓度（往里按 cos^2 衰减）。 */
-private const val RimCapAlpha = 0.30f
+/** 按下缩放：整块玻璃一起缩（含投影与高光），不做"只有图标缩"。 */
+private const val PressScale = 0.96f
 
-private const val PI_F = 3.1415927f
-private const val HALF_PI = PI_F / 2f
 
-/**
- * 画一枚圆头暗带：外弧贴形状边界、内弧半径随角度收窄（切点处厚度≈0）。
- *
- * @param outermost 最外侧所在的角度（弧度），用它算"离最外侧多远"
- * @param maxWidth 最粗处的厚度（px）
- */
-private fun DrawScope.drawCapBand(
-    brush: Brush,
-    center: Offset,
-    radius: Float,
-    startAngle: Float,
-    sweep: Float,
-    outermost: Float,
-    maxWidth: Float,
-) {
-    val steps = 96
-
-    // 沿弧归一化后的带宽系数（0..1），算一次复用
-    val widthScale = FloatArray(steps + 1) { i ->
-        val angle = startAngle + sweep * i / steps
-        cos(angle - outermost).coerceIn(0f, 1f).pow(RimCapFalloff)
-    }
-
-    fun pointAt(angle: Float, r: Float) = Offset(center.x + r * cos(angle), center.y + r * sin(angle))
-
-    // 横截面切成 N 层：每层是一条薄环，透明度按"越靠内越淡"衰减。
-    // 只做一轮 path 的话，横截面是平的 —— 看起来像贴了一条紫色胶带，不像玻璃的厚度（用户 2026-11-23 指出）。
-    for (layer in 0 until RimCapLayers) {
-        val tOuter = layer / RimCapLayers.toFloat()
-        val tInner = (layer + 1) / RimCapLayers.toFloat()
-        val layerAlpha = (1f - tOuter).pow(RimCapInnerFalloff)
-
-        val path = Path()
-        for (i in 0..steps) {
-            val angle = startAngle + sweep * i / steps
-            val p = pointAt(angle, radius - maxWidth * widthScale[i] * tOuter)
-            if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
-        }
-        for (i in steps downTo 0) {
-            val angle = startAngle + sweep * i / steps
-            val p = pointAt(angle, radius - maxWidth * widthScale[i] * tInner)
-            path.lineTo(p.x, p.y)
-        }
-        path.close()
-        drawPath(path = path, brush = brush, alpha = layerAlpha)
-    }
-}
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
 private val ShadowBlur = 18.dp
@@ -198,16 +141,44 @@ fun GlassSurface(
     glass: Boolean,
     shape: Shape,
     modifier: Modifier = Modifier,
+    /**
+     * 按压反馈的来源。传了它，整块玻璃会一起缩一点、并整体压暗；
+     * 不传就没有按压反馈（列表底栏这种多按钮表面）。
+     */
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
     val surface = MaterialTheme.colorScheme.surface
-    val accent = MaterialTheme.colorScheme.primary
     val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
     var nodeOrigin by remember { mutableStateOf(Offset.Zero) }
 
+    val pressed = if (interactionSource != null) {
+        interactionSource.collectIsPressedAsState().value
+    } else {
+        false
+    }
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) PressScale else 1f,
+        animationSpec = tween(90),
+        label = "glass-press-scale",
+    )
+    val pressTint by animateFloatAsState(
+        targetValue = if (pressed) PressTintAlpha else 0f,
+        animationSpec = tween(90),
+        label = "glass-press-tint",
+    )
+
     // 外壳**不裁**：投影与模糊描边都要画到形状外面。
-    Box(modifier = modifier.onGloballyPositioned { nodeOrigin = it.positionInWindow() }) {
+    // 缩放在外壳上：按下时投影、高光、内容一起缩，不会出现"只有图标变小"的错位。
+    Box(
+        modifier = modifier
+            .onGloballyPositioned { nodeOrigin = it.positionInWindow() }
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            },
+    ) {
         if (glass) {
             // 投影：一层模糊的黑色胶囊，往下压几像素。模糊自带渐变，内部不会出亮度台阶。
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
@@ -281,41 +252,6 @@ fun GlassSurface(
                                 style = Stroke(width.toPx()),
                             )
                         }
-                        // 暗部只覆盖左右圆头：**切点处又细又淡，到最两侧才最粗最浓**。
-                        // 宽度随角度按 cos^2 收窄；深浅是**圆头范围内**的渐变 ——
-                        // 注意 brush 的 startX/endX 必须钉在圆头上：默认铺满整条胶囊的话，
-                        // 44dp 的圆头只占到渐变 4% 的行程，看起来就是"一片均匀的紫"（2026-11-23 修）。
-                        val cap = size.height
-                        val capRadius = cap / 2f
-                        val capMaxWidth = RimCapMaxWidth.toPx()
-                        drawCapBand(
-                            brush = Brush.horizontalGradient(
-                                0.00f to accent.copy(alpha = RimCapAlpha),
-                                0.70f to Color.Transparent,
-                                startX = 0f,
-                                endX = cap,
-                            ),
-                            center = Offset(capRadius, capRadius),
-                            radius = capRadius,
-                            startAngle = HALF_PI,
-                            sweep = PI_F,
-                            outermost = PI_F,
-                            maxWidth = capMaxWidth,
-                        )
-                        drawCapBand(
-                            brush = Brush.horizontalGradient(
-                                0.30f to Color.Transparent,
-                                1.00f to accent.copy(alpha = RimCapAlpha),
-                                startX = size.width - cap,
-                                endX = size.width,
-                            ),
-                            center = Offset(size.width - capRadius, capRadius),
-                            radius = capRadius,
-                            startAngle = -HALF_PI,
-                            sweep = PI_F,
-                            outermost = 0f,
-                            maxWidth = capMaxWidth,
-                        )
                     } else {
                         drawRoundRect(
                             color = palette.cardBorder,
@@ -325,6 +261,16 @@ fun GlassSurface(
                     }
                 },
         )
+
+        // 按压反馈：整块玻璃（含高光）一起轻微压暗，而不是只在图标那块画个圆盘涟漪。
+        if (pressTint > 0.001f) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clip(shape)
+                    .drawBehind { drawRect(Color.Black.copy(alpha = pressTint)) },
+            )
+        }
 
         content()
     }
@@ -337,6 +283,7 @@ fun GlassSurface(
     glass: Boolean,
     shape: Shape,
     modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable BoxScope.() -> Unit,
 ) = GlassSurface(
     frost = backdrop.frost,
@@ -344,5 +291,6 @@ fun GlassSurface(
     glass = glass,
     shape = shape,
     modifier = modifier,
+    interactionSource = interactionSource,
     content = content,
 )

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,6 +100,9 @@ fun GlassDetailScaffold(
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // 按压来源：缩放与压暗都发生在 GlassSurface 上，点击发生在里面的 Box 上，两者共用同一个 source
+    val backPress = remember { MutableInteractionSource() }
+    val actionPress = remember { MutableInteractionSource() }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -204,9 +209,14 @@ private fun DetailHeader(
                 glass = glass,
                 shape = CircleShape,
                 modifier = Modifier.size(DetailBackSize),
+                interactionSource = backPress,
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize().pressFeedback(onClick = onBack),
+                    modifier = Modifier.fillMaxSize().clickable(
+                        interactionSource = backPress,
+                        indication = null,
+                        onClick = onBack,
+                    ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -242,11 +252,14 @@ private fun DetailHeader(
                     glass = glass,
                     shape = RoundedCornerShape(Radius.pill),
                     modifier = Modifier.height(DetailActionHeight),
+                    interactionSource = actionPress,
                 ) {
                     Row(
                         modifier = Modifier.fillMaxHeight().padding(horizontal = Space.xs),
                         verticalAlignment = Alignment.CenterVertically,
-                    ) { actions() }
+                    ) {
+                        CompositionLocalProvider(LocalGlassPress provides actionPress) { actions() }
+                    }
                 }
             }
         }

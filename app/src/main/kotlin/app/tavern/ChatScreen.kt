@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -226,6 +227,7 @@ private fun ChatInputBar(
         }
 
         // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
+        val sendPress = remember { MutableInteractionSource() }
         AnimatedContent(
             targetState = state.isStreaming,
             transitionSpec = {
@@ -239,11 +241,16 @@ private fun ChatInputBar(
                 glass = glass,
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
+                interactionSource = sendPress,
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pressFeedback(onClick = if (streaming) viewModel::stop else viewModel::send),
+                        .clickable(
+                            interactionSource = sendPress,
+                            indication = null,
+                            onClick = if (streaming) viewModel::stop else viewModel::send,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (streaming) {

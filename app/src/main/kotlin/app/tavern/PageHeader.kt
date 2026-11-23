@@ -11,6 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -39,6 +42,7 @@ fun PageHeader(
     actions: (@Composable () -> Unit)? = null,
 ) {
     val background = MaterialTheme.colorScheme.background
+    val actionPress = remember { MutableInteractionSource() }
 
     Box(modifier = modifier.fillMaxWidth().height(PageHeaderHeight + HeaderFadeTail)) {
         Box(
@@ -74,13 +78,16 @@ fun PageHeader(
                     glass = glass,
                     shape = RoundedCornerShape(Radius.pill),
                     modifier = Modifier.height(HeaderActionHeight),
+                    interactionSource = actionPress,
                 ) {
                     // 只吃高度、不吃宽度：写成 fillMaxSize 会把胶囊撑满整行，标题的 weight(1f)
                     // 会被挤成 0 宽（2026-11-22 真机上标题直接消失）。胶囊要"包住动作"。
                     Row(
                         modifier = Modifier.fillMaxHeight().padding(horizontal = Space.xs),
                         verticalAlignment = Alignment.CenterVertically,
-                    ) { actions() }
+                    ) {
+                        CompositionLocalProvider(LocalGlassPress provides actionPress) { actions() }
+                    }
                 }
             }
         }
