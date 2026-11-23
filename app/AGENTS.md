@@ -11,8 +11,9 @@
 
 ## 当前导航（2026-11-22 起）
 
-**暂不引 `navigation-compose`**：层级只有 0–2 深，用「一个 `Destination` 状态 + `AnimatedContent`」表达，
-返回键走 `BackHandler`。等出现深链或三级以上（角色→世界书→条目编辑）再引，那时写 ADR。
+**暂不引 `navigation-compose` / Navigation 3**：层级只有 0–2 深，用「一个 `Destination` 状态 +
+自写的 `PageStack`」表达（转场原因见下面"页面转场"一节），返回键走 `BackHandler`。
+等出现深链或三级以上再引库，那时写 ADR。
 
 ```kotlin
 sealed interface Destination {
@@ -26,60 +27,47 @@ sealed interface Destination {
 // depth: Tabs=0, Settings/Detail=1, Chat/CardConfig/ProfileEdit=2
 // 转场风格可选（NavAnimation，默认「标准」）：
 //   标准：进：新页整屏从右滑入（当前页左移 1/4 做视差）
-//        返回：当前页（深）整屏向右滑走；上一页从 -1/4 滑回原位（靠 zIndex 让退场页在上）
+//        返回：当前页（深）整屏向右滑走；上一页从 -1/4 滑回原位
 //   淡入：交叉淡化；关闭：完全不要动画（排查用）
-// 叠放次序：`targetContentZIndex = depth`，返回时深的那页在上（见下面"叠放次序"一节）。
+// 叠放次序由 PageStack 按方向决定（进=新页在上，返回=旧页在上），不再依赖 AnimatedContent。
 ```
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
-### 叠放次序：zIndex 按"深度"给，**返回时深的那页在上**（2026-11-23 结案）
+### 页面转场：自写 `PageStack`，不用 `AnimatedContent`（2026-11-23 最终结案）
 
-**结论**：`AnimatedContent` 能做到"二级页盖在一级页上面滑走"，做法是给每页一个按深度递增的
-`targetContentZIndex`。之前认为"做不到、只能自己写容器"是**错的**，原因见下面"为什么当年试不出来"。
+**结论**：`AnimatedContent` **做不到**"退场那页（深）盖在上面滑走"。它给两层套的 zIndex 取自
+**同一段转场的那一个** `ContentTransform.targetContentZIndex`（源码：`ZIndexModifierElement(
+specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …)`），
+单一值只能两层一起抬或一起压；打平后由放置顺序决定，而 target 永远放在最后
+→ **进来那页永远在最上面**。改 `targetContentZIndex` 的取值、±1、按深度给，全都无效。
+（Navigation 3 的 `NavDisplay` 是在 `AnimatedContent` 之上自己维护一张 zIndex 表才做到的，
+而它要 Compose 1.10，我们锁 1.7.6。）
 
-**机制（源码）**：每个可见内容的 zIndex 在**它自己进场那一刻**就定下来，之后不再变：
+所以转场在 [PageStack.kt](../app/src/main/kotlin/app/tavern/PageStack.kt)（约 90 行）：
 
-```kotlin
-// AnimatedContent.kt —— 每个可见内容各一份 remember，没有 key
-val specOnEnter = remember { transitionSpec(rootScope) }
-...
-placeable.place(0, 0, zIndex = specOnEnter.targetContentZIndex)
-```
+- **离场页留在组合树里**（`key(dest)` 分组）——它的滚动位置与内部状态不丢；
+- **叠放由方向决定**：进 → 新页在上；返回 → 旧页（深）在上，整屏向右滑走；
+- **位移成对**：进 = 新页从右滑入 + 旧页左移 `1/4`；返回 = 旧页整屏右滑走 + 新页从 `-1/4` 归位。
+  两个 `1/4` 是同一个量（这版是用户验收过的动势，**别再改 None**）；
+- **只动 `graphicsLayer.translationX`**：整页不重新量尺寸，老 `SizeTransform` 那个坑自然消失；
+- 减动效（`rememberReduceMotion`）→ 只交叉淡化；`NavAnimation.None` → 瞬间切。
 
-所以退场那页保留的是**它进场时**拿到的值，和"进来那页现在拿到的值"可以不同。
-Navigation 3 的 `NavDisplay` 就是靠这个：navigate 时 `max+1`、pop 时 `min-1`（[NavDisplay.kt]）。
+**判据（怎么确认层次对了）**：返回时应该看到**退场页**在动（整屏右移）、它下面的页在归位；
+如果看到的是"上一页从上面滑进来盖住当前页"，就是叠放反了。逐帧证据的做法：录屏抽帧，
+拿退场页做参考算每一列差异——退场页应该还能在屏幕上找到（滑走过程中），
+而不是一帧就不见了（那就是被盖住了）。
 
-我们的深度是全序（0/1/2），所以不用计数器，直接 `targetContentZIndex = depthOf(targetState)`：
+**踩过的坑**：`Destination` 原本是 `private`，`PageStack` 在另一个文件里引用它会报
+`'public' function exposes its 'private-in-file' parameter type`；现在 `Destination` 与
+`PageStack` 都是 `internal`。
 
-| 动作 | 进来那页 | 退场那页（进场时的值） | 谁在上 |
-|---|---|---|---|
-| 进详情 0→1 | 1 | 0 | 新页 |
-| 再进聊天 1→2 | 2 | 1 | 新页 |
-| **返回 2→1** | **1** | **2** | **退场那页** ← 这时它才能"滑走" |
-| 同深度（1→1、2→2） | 相等 | 相等 | 打平 → 后放置的（新页）在上，正确 |
+### 列表不要做"出现/消失"的淡入淡出（2026-11-23）
 
-**位移的配套**（`MainScreen` 的 `transitionSpec`）：
-- 进：新页整屏从右滑入；当前页向左让 `1/4`（视差，它在底下，只露出边）。
-- 退：当前页（深）**整屏向右滑走**；上一页（浅）从 `-1/4` 滑回原位 —— 这两个位移量必须一致
-  （`1/4`），否则"退场页滑走"和"底下的页归位"对不上，看着像两张纸各动各的。
-- 曲线都用 `Motion.Decelerate`（进）与 `Motion.Standard`（退），时长 `Motion.Slow`。
-
-**为什么当年试不出来（两个混淆变量，别再踩）**：
-1. 那轮退场位移是 `{ 0 }` 或 `1/4` 且**叠放是反的** —— 屏幕上一个像素都不动，
-   归因到了"zIndex 无效"；其实是"动的那层被盖住了"。
-2. 当时改 zIndex 只对**进来那页**生效，而决定谁在上面的是**退场页进场时**的值 —— 改错了对象。
-
-**判据**：返回时应该看到当前页整屏向右滑走、上一页从左边归位。若看到"上一页从上层滑进来盖住
-当前页"，就是 zIndex 没生效：先查 `depthOf(target)` 有没有正常递增，再查
-`transitionSpec` 是不是在别处被覆盖成 `(enter togetherWith exit)`（那个 infix 把 zIndex 固定成 0f）。
-
-**退场别配比位移更短的淡出**：280ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
-后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
-
-**退场页只负责"活满时长"这条仍然成立**：`ExitTransition.None` 会让旧页在 12–14ms 内就被移除
-（实测），所以必须给它满时长的位移。日志判据：`nav ... 页面移除，距上次换页 Nms`，
-~280ms 说明转场跑了；几十毫秒说明转场没跑（问题在状态层，不在动画层）。
+`Modifier.animateItem(fadeInSpec = …)` 会在换页时把**整格卡片从 alpha 0 淡上来**
+（用户的原话是"卡片颜色由浅到深"）：换页时这棵子树被重建，新网格会被测两遍，
+第二遍里所有 item 对动画器都是"第一次见" → 触发 appearance 动画。
+**两张列表都只留 `placementSpec`，`fadeInSpec`/`fadeOutSpec` 传 `null`。**
 
 ### `AnimatedContent` 必须 `fillMaxSize()` + `using(null)`（真正的病根，2026-11-22）
 
