@@ -35,23 +35,30 @@ data class LiquidGlassSpec(
      * 第一版 7dp 在 44dp 的钮上太宽 —— 整块都像厚玻璃（2026-11-23 用户："玻璃感觉太厚了"）。
      * 5.5dp 大约是直径的 12%，边缘有厚度、中心还是平的。
      */
-    val edgeDp: Float = 5.5f,
-    /** 折射强度（0..1）：边缘采样点往外偏多少。0.34 像薄玻璃，0.5 以上就开始"厚"。 */
-    val refraction: Float = 0.34f,
+    val edgeDp: Float = 4.5f,
+    /** 折射强度（0..1）：边缘采样点往外偏多少。参照"薄玻璃胶囊"只要 0.22，0.5 以上是厚透镜。 */
+    val refraction: Float = 0.22f,
     /** 色散（0..1）：R/B 通道用略微不同的偏移采样，边缘出现很淡的彩色边。0 就是无色散。 */
-    val dispersion: Float = 0.05f,
-    /** 镜面强度（0..1）：边缘朝光那一侧的高光。 */
-    val specular: Float = 0.22f,
+    val dispersion: Float = 0.03f,
+    /** 内侧反光强度（0..1）：很淡的一层"湿润感"，不是厚玻璃那种镜面。 */
+    val specular: Float = 0.10f,
     /**
      * 玻璃面白底浓度（0..1）。**不透明度主要靠它**：
-     * 0.30 时背后内容基本看不见（用户："玻璃太不透明了"）；0.14 才是"能看到背后、但被糊过"。
+     * 0.30 时背后内容基本看不见（用户："玻璃太不透明了"）；0.22 是"能看到背后、但被糊过"。
      */
-    val faceWhite: Float = 0.14f,
+    val faceWhite: Float = 0.22f,
     /**
-     * 底边内阴影强度（0..1）：给厚度用的。0.18 在浅色面上是一条明显的灰带
-     * （用户："底部阴影感觉太明显"），现在 0.07，只在最下沿淡淡压一下。
+     * 底边内阴影强度（0..1）。薄玻璃**基本不要**这东西 —— 0.18 时是一条明显灰带
+     * （用户："底部阴影感觉太明显"），现在 0.03 只留一丝。
      */
-    val innerShadow: Float = 0.07f,
+    val innerShadow: Float = 0.03f,
+    /**
+     * 边缘细光线的宽度（dp）。参照里的玻璃胶囊就是"一圈 1px 的光边"，靠它立住轮廓，
+     * 不是靠厚倒角。别超过 1.5dp，否则又变成描边。
+     */
+    val rimWidthDp: Float = 1.1f,
+    /** 细光线亮度（0..1）：朝光那侧最亮，背光侧留一线。 */
+    val rimAlpha: Float = 0.85f,
     /** 光源方向（xy，右下为正）。左上打光 = (-0.35, -0.94)。 */
     val lightX: Float = -0.35f,
     val lightY: Float = -0.94f,
@@ -79,6 +86,8 @@ uniform float  uDispersion;
 uniform float  uSpecular;
 uniform float  uFaceWhite;
 uniform float  uInnerShadow;
+uniform float  uRimWidth;
+uniform float  uRimAlpha;
 uniform float4 uTint;
 uniform float2 uLight;
 
@@ -122,13 +131,20 @@ half4 main(float2 fragCoord) {
     }
 
     float3 rgb = float3(base.rgb);
-    rgb = mix(rgb, float3(0.98, 0.975, 0.99), uFaceWhite);
+    rgb = mix(rgb, float3(0.985, 0.98, 1.0), uFaceWhite);
     rgb = mix(rgb, uTint.rgb, uTint.a);
 
+    // 细光线：贴着边界的一圈亮线（薄玻璃靠它立轮廓），朝光侧更亮、背光侧只留一线
+    float3 lt = normalize(float3(uLight, 0.35));
+    float lit = 0.55 + 0.45 * clamp(dot(float3(n, 0.0), lt), 0.0, 1.0);
+    float rim = (1.0 - smoothstep(0.0, uRimWidth, distIn)) * inside;
+    rgb = mix(rgb, float3(1.0), rim * lit * uRimAlpha);
+
+    // 很淡的内侧反光（湿润感），不做成厚透镜的镜面
     float3 nn = normalize(float3(n, 0.85));
     float3 l = normalize(float3(uLight, 0.75));
     float facing = clamp(dot(nn, l), 0.0, 1.0);
-    rgb = rgb + (pow(facing, 5.0) * band * inside * uSpecular);
+    rgb = rgb + (pow(facing, 8.0) * band * inside * uSpecular);
 
     float t = clamp((fragCoord.y - origin.y) / uShapeSize.y, 0.0, 1.0);
     float inner = smoothstep(0.55, 1.0, t) * band * inside;
@@ -167,6 +183,8 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uSpecular", spec.specular)
         shader.setFloatUniform("uFaceWhite", spec.faceWhite)
         shader.setFloatUniform("uInnerShadow", spec.innerShadow)
+        shader.setFloatUniform("uRimWidth", spec.rimWidthDp * density.density)
+        shader.setFloatUniform("uRimAlpha", spec.rimAlpha)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
         shader.setFloatUniform("uLight", spec.lightX, spec.lightY)
         RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()

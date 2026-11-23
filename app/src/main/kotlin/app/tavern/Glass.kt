@@ -260,9 +260,9 @@ fun GlassSurface(
             //
             // 液态玻璃档再收一档（2026-11-23 用户："底部阴影感觉太明显"）：真折射本身已经
             // 给了边缘厚度，投影只要"托住"就够，压太实会变成一圈灰边。
-            val shadowAlpha = if (liquidOn) ShadowAlpha * 0.5f else ShadowAlpha
-            val shadowBlur = if (liquidOn) ShadowBlur * 0.75f else ShadowBlur
-            val shadowOffset = if (liquidOn) ShadowOffsetY * 0.6f else ShadowOffsetY
+            val shadowAlpha = if (liquidOn) ShadowAlpha * 0.35f else ShadowAlpha
+            val shadowBlur = if (liquidOn) ShadowBlur * 0.6f else ShadowBlur
+            val shadowOffset = if (liquidOn) ShadowOffsetY * 0.5f else ShadowOffsetY
             Box(
                 Modifier
                     .matchParentSize()
