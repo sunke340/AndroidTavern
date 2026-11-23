@@ -39,6 +39,15 @@ class RubberOverscrollState internal constructor() {
     internal var settleJob: Job? = null
 
     /**
+     * 代数：每次手指接管 +1。回弹动画在**写 offset 之前**核对代数，变了就不写。
+     *
+     * 为什么光 `cancel()` 不够：动画是每帧回调，`cancel()` 只是标记，
+     * 已经排进这一帧的那次回调照样会执行 —— 它会把用户刚拖出来的位移**盖回动画的轨迹**，
+     * 真机上就是"抽一下"（2026-11-23 日志里"回弹被打断 offset=0 / 回弹结束 offset=23"这一对就是它）。
+     */
+    internal var gen: Int = 0
+
+    /**
      * 跟手比例：0.62 表示手指拖 10dp，内容走 6.2dp。
      * 越小越"硬"（拉不动），越大越飘。只在**起步**是这个比例，越拉阻力越大（见 `onPostScroll` 里的 room 系数）。
      */
@@ -71,6 +80,7 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
              */
             private fun takeOver() {
                 val running = state.settleJob?.isActive == true
+                state.gen++
                 state.settleJob?.cancel()
                 state.settleJob = null
                 if (running) AppLog.i("rubber", "回弹被打断 offset=${state.offset.roundToInt()}")
@@ -114,24 +124,34 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 if (state.offset == 0f) return Velocity.Zero
                 takeOver()
-                // 用独立 job 跑回弹：`onPostFling` 自己也 await 它，保持 fling 链的顺序；
-                // 但用户中途抓列表时 takeOver() 能把它掐掉（suspend 的 animate 没法从普通回调里取消）。
+                // 用独立 job 跑回弹：普通 scroll 回调里没法 cancel 一个 suspend 的 animate()，
+                // 有了 job 句柄 + 代数，手指一落就能立刻夺权。
                 val start = state.offset
                 val sign = if (start >= 0f) 1f else -1f
+                val gen = state.gen
+                // 诊断：正常回弹的 |offset| 只该单调变小；反涨说明有人（旧动画/外部回调）又把它推出去了
+                val startAbs = abs(start)
+                var grew = false
                 AppLog.i("rubber", "回弹 start=${start.roundToInt()}px")
+                // 不 join：回弹只是"视觉归位"，不该把滚动链按在这儿半秒。
                 val job = scope.launch {
                     animate(
                         initialValue = start,
                         targetValue = 0f,
                         animationSpec = Motion.RubberBand,
                     ) { value, _ ->
-                        // 只许朝 0 收敛，不许反向：过冲（哪怕几 dp）在列表上是"复位后又抽一下"
-                        state.offset = (value * sign).coerceAtLeast(0f) * sign
+                        // ① 代数变了 = 手指已经接管，这一帧不许再写（否则把拖出来的位移盖回去）
+                        // ② 只许朝 0 收敛，不许反向：过冲在列表上就是"复位后又抽一下"
+                        if (state.gen == gen) {
+                            if (abs(value) > startAbs + 1f) grew = true
+                            state.offset = (value * sign).coerceAtLeast(0f) * sign
+                        }
+                    }
+                    if (state.gen == gen) {
+                        AppLog.i("rubber", "回弹结束 offset=${state.offset.roundToInt()}px 反涨=$grew")
                     }
                 }
                 state.settleJob = job
-                job.join()
-                AppLog.i("rubber", "回弹结束 offset=${state.offset.roundToInt()}px 被打断=${job.isCancelled}")
                 return Velocity.Zero
             }
         }

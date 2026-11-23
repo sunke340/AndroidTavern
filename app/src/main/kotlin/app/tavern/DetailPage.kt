@@ -197,7 +197,7 @@ private fun DetailHeader(
     val useBand = frosted && glass
     val tail = if (useBand) 0.dp else HeaderFadeTail
     // 色罩：到页头底边都是饱和的，只在收尾段里化开
-    val scrim = headerScrim(background, statusBar + DetailHeaderHeight, HeaderFadeTail)
+    val scrim = headerScrim(background)
 
     Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight + tail)) {
         if (useBand) {

@@ -75,28 +75,24 @@ val HeaderActionHeight: Dp = 44.dp
 val HeaderFadeTail: Dp = 28.dp
 
 /**
- * 非磨砂页头的色罩浓度：几乎不透，只在最下面 28dp 收尾段化开。
+ * 非磨砂页头的色罩浓度（**屏幕最顶端**的值，往下线性衰减到 0）。
  *
  * 2026-11-23 用户把"半透明色罩"定为**默认页头**（只有聊天页要磨砂，见 `GlassDetailScaffold` 的
- * `frostedHeader`）。两版都被判"太透"，根因不只是浓度：整条从顶到底线性衰减（0.94→0）时，
- * **标题下沿那一半只剩 25%~45%**，滚上来的字当然压不住。现在改成"饱和到页头底边、只在收尾段渐透"。
+ * `frostedHeader`）。试过三版：0.62 线性 → 太透；"饱和到页头底边再收尾"→ 浓度是**阶梯**的
+ * （前 78% 一样浓、最后 28% 突然化开，看着像两块拼的）；现在回到**一条纯线性**，只把顶端提到 0.94。
  */
-const val HeaderScrimAlpha = 0.92f
+const val HeaderScrimAlpha = 0.94f
 
 /**
- * 非磨砂页头的色罩：从屏幕顶到**页头底边**都是 [HeaderScrimAlpha]，再在 [tail] 段里收到透明。
+ * 非磨砂页头的色罩：从 `y = 0` 一条**线性**渐变到页头盒子底部（收尾段末尾）的透明。
  *
- * [headerBottom] 传"状态栏 + 页头高度"（绝对高度，不含收尾段），函数自己算转折点。
- * 收尾段必须存在，否则内容会在页头底边一刀切地出现。
+ * 渐变自己铺满它所在的那个 Box，所以只需要背景色 —— **不要加拐点/平台段**：
+ * 用户明确要"线性"，之前"前 78% 恒定 + 最后 28dp 化开"被判成"阶梯"。
  */
-fun headerScrim(background: Color, headerBottom: Dp, tail: Dp): Brush {
-    val hold = if (headerBottom + tail > 0.dp) headerBottom / (headerBottom + tail) else 1f
-    return Brush.verticalGradient(
-        0.00f to background.copy(alpha = HeaderScrimAlpha),
-        hold to background.copy(alpha = HeaderScrimAlpha),
-        1.00f to Color.Transparent,
-    )
-}
+fun headerScrim(background: Color): Brush = Brush.verticalGradient(
+    0.00f to background.copy(alpha = HeaderScrimAlpha),
+    1.00f to Color.Transparent,
+)
 
 /**
  * 页头胶囊里的图标动作：无底色、只靠图标与主色，跟截图里那种玻璃胶囊一致。

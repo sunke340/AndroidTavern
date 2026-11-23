@@ -259,8 +259,18 @@ private fun ChatInputBar(
                 // 加深到 22% 之后内部 ≈ (217,208,235)，白环才高出 30 级，"边缘带光"才成立。
                 // 停止态仍是原来的浅色面。
                 fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                // 高光环用**纯白**（默认值）。任何"主色向白调"的版本都比内部暗：
-                // 72% → (209,200,232)、92% → (244,241,249)，真机上都是一圈灰紫的边。
+                // 高光环要"淡紫偏白"，不能纯白（纯白在浅色钮上就是一圈贴纸描边），
+                // 也不能太接近主色（会比填充更暗、变成沟）。内部 (214,208,234) 时：
+                //   72% 白 = (209,200,232) 更暗 ✗ ／ 100% 白 = 一圈纯白 ✗ ／ 88% ≈ (235,230,245) ✓
+                rimColor = if (streaming) {
+                    null
+                } else {
+                    androidx.compose.ui.graphics.lerp(
+                        MaterialTheme.colorScheme.primary,
+                        androidx.compose.ui.graphics.Color.White,
+                        0.88f,
+                    )
+                },
             ) {
                 Box(
                     modifier = Modifier
