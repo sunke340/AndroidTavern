@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -44,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -205,12 +205,9 @@ private fun DetailHeader(
                 frost = frost,
                 contentOrigin = contentOrigin,
                 glass = true,
-                shape = RoundedCornerShape(
-                    topStart = 0.dp,
-                    topEnd = 0.dp,
-                    bottomStart = DetailBandCorner,
-                    bottomEnd = DetailBandCorner,
-                ),
+                // **直角**：页头不是胶囊。下两角留圆角的话，下沿那条亮线会在两端往上翘，
+                // 看起来就是"大胶囊的下半圈"（2026-11-23 用户指出）。
+                shape = RectangleShape,
                 // 投影只投在下沿（整条横条四周均匀投影没有意义，还会透过半透明面把整条糊灰）
                 shadow = true,
                 shadowBottomOnly = true,
@@ -298,5 +295,3 @@ private fun DetailHeader(
     }
 }
 
-/** 二级页玻璃条的下缘圆角。 */
-private val DetailBandCorner = 16.dp

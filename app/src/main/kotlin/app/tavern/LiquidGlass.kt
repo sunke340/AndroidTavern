@@ -55,9 +55,10 @@ data class LiquidGlassSpec(
     /**
      * 边缘细光线的宽度（dp）。参照里的玻璃胶囊就是"一圈 1px 的光边"，靠它立住轮廓，
      * 不是靠厚倒角。别超过 1.5dp，否则又变成描边。
-     * 2026-11-23 用户要求"粗细改成现在的 2/3"：1.1dp -> 0.73dp（≈2.5px @3.5）。
+     * 2026-11-23 用户要求"粗细改成现在的 2/3"：1.1dp -> 0.73dp，再"减半、保留 0.1 精度"：0.4dp。
+     * **所有玻璃表面共用这一个值**，不要再按表面分别调。
      */
-    val rimWidthDp: Float = 0.73f,
+    val rimWidthDp: Float = 0.4f,
     /** 细光线亮度（0..1）：**上方与下方**最亮，左右两侧只剩一线。 */
     val rimAlpha: Float = 0.85f,
     /**
@@ -85,8 +86,23 @@ data class LiquidGlassSpec(
          */
         val Default = LiquidGlassSpec()
 
-        /** 整条磨砂页头：只下沿一道直的亮线 + 更宽的折射带（内容从下面滚过来会弯进来）。 */
-        val HeaderBand = LiquidGlassSpec(edgeDp = 8f, rimBottomOnly = true)
+        /**
+         * 整条磨砂页头（方案 A）：**磨砂板 + 下沿一条直亮线 + 下沿软影，不做透镜**。
+         *
+         * 三个量是专门为"横条"定的：
+         * - `refraction = 0`：一条直边上做折射没有意义，只会让下面滚过的字变形；
+         * - `rimBottomOnly = true`：四边都亮会变成一颗大胶囊，只留下沿；
+         * - `faceWhite = 0.80`：**面要稳定** —— 头顶是黑字还是空白，页头都该是同一块浅板
+         *   （0.22 时它完全被头顶内容支配，就在浅灰/深灰之间漂）。
+         */
+        val HeaderBand = LiquidGlassSpec(
+            edgeDp = 8f,
+            refraction = 0f,
+            dispersion = 0f,     // 不折射就不用三通道错开采样，省两次纹理取样
+            rimBottomOnly = true,
+            faceWhite = 0.80f,
+            sideShadow = 0f,
+        )
     }
 }
 
