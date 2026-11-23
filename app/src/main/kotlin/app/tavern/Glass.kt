@@ -68,7 +68,7 @@ private val RimLayers = listOf(
  * 整圈均匀加深会被读成"给胶囊描了道边"；等宽弧只会显得"大部分面积一样粗"
  * （用户 2026-11-23 两轮反馈）。
  */
-private val RimCapMaxWidth = 3.5.dp
+private val RimCapMaxWidth = 1.75.dp
 /** 收窄曲线：宽度 / 浓度都按 cos^Falloff 走，2 = 过了一半才开始明显变粗。 */
 private const val RimCapFalloff = 2f
 
@@ -269,15 +269,18 @@ fun GlassSurface(
                             )
                         }
                         // 暗部只覆盖左右圆头：**切点处又细又淡，到最两侧才最粗最浓**。
-                        // 用等宽弧只能改浓淡，读起来是"均匀一条"（2026-11-23 用户指出）；
-                        // 带宽随角度按 cos^2 收窄，切点自然归零，不会有硬切口。
+                        // 宽度随角度按 cos^2 收窄；深浅是**圆头范围内**的渐变 ——
+                        // 注意 brush 的 startX/endX 必须钉在圆头上：默认铺满整条胶囊的话，
+                        // 44dp 的圆头只占到渐变 4% 的行程，看起来就是"一片均匀的紫"（2026-11-23 修）。
                         val cap = size.height
                         val capRadius = cap / 2f
                         val capMaxWidth = RimCapMaxWidth.toPx()
                         drawCapBand(
                             brush = Brush.horizontalGradient(
                                 0.00f to accent.copy(alpha = RimCapAlpha),
-                                0.75f to Color.Transparent,
+                                0.70f to Color.Transparent,
+                                startX = 0f,
+                                endX = cap,
                             ),
                             center = Offset(capRadius, capRadius),
                             radius = capRadius,
@@ -288,8 +291,10 @@ fun GlassSurface(
                         )
                         drawCapBand(
                             brush = Brush.horizontalGradient(
-                                0.25f to Color.Transparent,
+                                0.30f to Color.Transparent,
                                 1.00f to accent.copy(alpha = RimCapAlpha),
+                                startX = size.width - cap,
+                                endX = size.width,
                             ),
                             center = Offset(size.width - capRadius, capRadius),
                             radius = capRadius,
