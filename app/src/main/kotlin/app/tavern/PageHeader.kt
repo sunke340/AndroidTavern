@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,29 +50,26 @@ fun PageHeader(
     // 页头一直铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight + HeaderFadeTail)) {
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight)) {
         if (glass) {
-            // 玻璃档：整条页头是一块磨砂玻璃（内容从下面滚过去被糊掉，标题自然清楚）
-            GlassBand(
+            // 玻璃档：整条页头就是一块磨砂玻璃（走 GlassSurface 的成熟路径，胶囊能糊它就一定能糊）
+            GlassSurface(
                 frost = frost,
                 contentOrigin = contentOrigin,
-                background = background,
+                glass = true,
+                shape = RoundedCornerShape(
+                    topStart = 0.dp,
+                    topEnd = 0.dp,
+                    bottomStart = HeaderBandCorner,
+                    bottomEnd = HeaderBandCorner,
+                ),
+                shadow = false,
                 modifier = Modifier.matchParentSize(),
-            )
+            ) {
+                // 玻璃面本身不带内容：标题压在上面那一层
+            }
         } else {
-            // 轻量/关闭：没有磨砂层可采，退回线性色罩（0.94 → 透明）
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawBehind {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0.00f to background.copy(alpha = 0.94f),
-                                1.00f to Color.Transparent,
-                            ),
-                        )
-                    },
-            )
+            Box(Modifier.matchParentSize().background(background))
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
@@ -110,3 +108,6 @@ fun PageHeader(
         }
     }
 }
+
+/** 页头玻璃条的下缘圆角。 */
+private val HeaderBandCorner = 20.dp

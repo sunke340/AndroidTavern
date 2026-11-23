@@ -189,28 +189,26 @@ private fun DetailHeader(
     val backPress = remember { MutableInteractionSource() }
     val actionPress = remember { MutableInteractionSource() }
 
-    Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight + HeaderFadeTail)) {
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight)) {
         // 内容从下面滚过去时淡出，标题不会和内容叠在一起
         if (glass) {
-            GlassBand(
+            GlassSurface(
                 frost = frost,
                 contentOrigin = contentOrigin,
-                background = background,
+                glass = true,
+                shape = RoundedCornerShape(
+                    topStart = 0.dp,
+                    topEnd = 0.dp,
+                    bottomStart = DetailBandCorner,
+                    bottomEnd = DetailBandCorner,
+                ),
+                shadow = false,
                 modifier = Modifier.matchParentSize(),
-            )
+            ) {
+                // 玻璃面本身不带内容：标题与按钮压在上面
+            }
         } else {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawBehind {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0.00f to background.copy(alpha = 0.94f),
-                                1.00f to Color.Transparent,
-                            ),
-                        )
-                    },
-            )
+            Box(Modifier.matchParentSize().background(background))
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
@@ -285,3 +283,6 @@ private fun DetailHeader(
         }
     }
 }
+
+/** 二级页玻璃条的下缘圆角。 */
+private val DetailBandCorner = 16.dp

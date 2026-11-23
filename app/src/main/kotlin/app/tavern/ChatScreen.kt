@@ -141,7 +141,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             modifier = Modifier.fillMaxSize().padding(horizontal = Space.m).rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
-                top = DetailHeaderHeight + WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                top = DetailHeaderHeight +
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                    Space.s,
                 // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
                 // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
                 bottom = padding.calculateBottomPadding() + ChatInputAreaHeight,
@@ -252,8 +254,16 @@ private fun ChatInputBar(
                 interactionSource = sendPress,
                 // 发送：淡紫磨砂（与底栏选中项同一个紫，16% 叠加），停止仍是原来的浅色面
                 fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                // 高光环也跟着主色走，否则淡紫底配一圈白边很跳
-                rimColor = if (streaming) null else MaterialTheme.colorScheme.primary,
+                // 高光环要比内部淡紫更**亮**：往白里调 72%，而不是加深主色
+                rimColor = if (streaming) {
+                    null
+                } else {
+                    androidx.compose.ui.graphics.lerp(
+                        MaterialTheme.colorScheme.primary,
+                        androidx.compose.ui.graphics.Color.White,
+                        0.72f,
+                    )
+                },
             ) {
                 Box(
                     modifier = Modifier

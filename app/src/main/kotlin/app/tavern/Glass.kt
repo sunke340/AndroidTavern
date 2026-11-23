@@ -153,6 +153,8 @@ fun GlassSurface(
     fillColor: Color? = null,
     /** 高光环的颜色；null = 白。发送钮这种主题色按钮要传主色，否则白边很扎眼。 */
     rimColor: Color? = null,
+    /** 是否画投影。页头整条铺到屏幕顶上时不需要（会在地面留下一条阴影）。 */
+    shadow: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
@@ -182,7 +184,7 @@ fun GlassSurface(
                 scaleY = pressScale
             },
     ) {
-        if (glass) {
+        if (glass && shadow) {
             // 投影：一层模糊的黑色胶囊，往下压几像素。模糊自带渐变，内部不会出亮度台阶。
             // 必须 Unbounded：默认的 Rectangle 会把模糊结果裁到节点边界，光晕就没了。
             Box(
@@ -193,7 +195,7 @@ fun GlassSurface(
                     .drawBehind {
                         drawRoundRect(
                             color = Color.Black.copy(alpha = ShadowAlpha),
-                            cornerRadius = CornerRadius(size.height / 2f),
+                            cornerRadius = cornerRadiusOf(shape),
                         )
                     },
             )
@@ -250,7 +252,7 @@ fun GlassSurface(
             Modifier
                 .matchParentSize()
                 .drawBehind {
-                    val radius = CornerRadius(size.height / 2f)
+                    val radius = cornerRadiusOf(shape)
                     if (glass) {
                         val rimTint = rimColor ?: Color.White
                         RimLayers.forEach { (width, alpha) ->
@@ -347,6 +349,18 @@ private const val BandStrips = 8
 
 /** 页头磨砂带的底色浓度：太低标题会和糊底糊在一起，太高又变回一条色块。 */
 private const val BandTintAlpha = 0.62f
+
+/**
+ * 取形状在当前尺寸下的圆角半径。
+ *
+ * 原来投影和描边都写死 `CornerRadius(size.height / 2f)`（胶囊专用），
+ * 页头那种"只有下方两角是圆的"条形会被画成大圆角。改成从 [Shape] 的 outline 里读。
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.cornerRadiusOf(shape: Shape): CornerRadius {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    return (outline as? androidx.compose.ui.graphics.Outline.Rounded)?.roundRect?.topLeftCornerRadius
+        ?: CornerRadius.Zero
+}
 
 /** 浮层用：直接吃一个 [GlassBackdrop]。 */
 @Composable
