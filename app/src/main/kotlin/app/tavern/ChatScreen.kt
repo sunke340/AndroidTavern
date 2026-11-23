@@ -93,6 +93,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val glassOn = state.visualEffects == VisualEffects.Glass
 
     // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
+    val overscroll = rememberRubberOverscroll()
     val regexScripts = state.regexScripts
     val displayText: (String) -> String = remember(regexScripts) {
         { text ->
@@ -137,7 +138,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
         LazyColumn(
             reverseLayout = true,
-            modifier = Modifier.fillMaxSize().padding(horizontal = Space.m),
+            modifier = Modifier.fillMaxSize().padding(horizontal = Space.m).rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
                 top = DetailHeaderHeight + WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),

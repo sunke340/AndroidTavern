@@ -54,6 +54,8 @@ fun SessionsScreen(
 ) {
     // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 拉到头还能继续拖（带阻尼），松手弹回
+    val overscroll = rememberRubberOverscroll()
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
@@ -68,7 +70,7 @@ fun SessionsScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
                 state = listState,
                 contentPadding = PaddingValues(
                     top = PageHeaderHeight + Space.s + statusBar,

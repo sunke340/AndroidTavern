@@ -67,7 +67,7 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,

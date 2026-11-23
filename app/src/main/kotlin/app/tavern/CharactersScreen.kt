@@ -46,10 +46,11 @@ fun CharactersScreen(
     val palette = LocalTavernPalette.current
     // 页头一直铺到状态栏后面，网格要让出"状态栏 + 页头"的高度
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val overscroll = rememberRubberOverscroll()
 
     LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
             state = gridState,
             contentPadding = PaddingValues(
                 start = Space.l,

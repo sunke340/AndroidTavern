@@ -74,10 +74,12 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             null
         },
     ) { padding ->
+        val overscroll = rememberRubberOverscroll()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .rubberOverscroll(overscroll)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
