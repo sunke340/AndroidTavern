@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -276,22 +277,31 @@ fun GlassSurface(
 
         // 边缘高光：由外向内叠几层，边缘最亮、往内渐淡。
         //
-        // **必须 clip(shape)**（2026-11-23 用户："按钮边缘的光是纯白的"）：描边是以边界线为中心画的，
-        // 不裁的话外半个环落在**页面底色上** —— 浅色主题色按钮上就是一条纯白描边、像贴纸。
-        // 裁掉外半圈后，高光只存在于玻璃面内侧，边界由填充色与投影负责，这才像"玻璃边缘受光"。
+        // 两个几何约束（都是量像素量出来的）：
+        // ① **整条亮带画在面内侧**：描边默认以边界线为中心，外半圈落在页面底色上 ——
+        //    浅色按钮上就是一条纯白描边、像贴纸（2026-11-23 用户："边缘的光是纯白的"）。
+        //    所以把每层往内缩半个线宽，并只在玻璃档裁形状；轻量档的细描边不该被裁细。
+        // ② 只裁不缩没用：裁掉外半圈后 1dp 的层只剩 0.5dp，肉眼就是"没有高光"。
         Box(
             Modifier
                 .matchParentSize()
-                .clip(shape)
+                .then(if (glass) Modifier.clip(shape) else Modifier)
                 .drawBehind {
                     val radius = cornerRadiusOf(shape)
                     if (glass) {
                         val rimTint = rimColor ?: Color.White
                         RimLayers.forEach { (width, alpha) ->
+                            val w = width.toPx()
+                            val inset = w / 2f
                             drawRoundRect(
                                 color = rimTint.copy(alpha = alpha),
-                                cornerRadius = radius,
-                                style = Stroke(width.toPx()),
+                                topLeft = Offset(inset, inset),
+                                size = Size(size.width - w, size.height - w),
+                                cornerRadius = CornerRadius(
+                                    (radius.x - inset).coerceAtLeast(0f),
+                                    (radius.y - inset).coerceAtLeast(0f),
+                                ),
+                                style = Stroke(w),
                             )
                         }
                     } else {

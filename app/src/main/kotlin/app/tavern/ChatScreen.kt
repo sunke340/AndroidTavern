@@ -254,21 +254,20 @@ private fun ChatInputBar(
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
-                // 发送：淡紫磨砂。22% 而不是 16%：16% 时内部亮到 (232,229,244)，和页面底色 (250)
-                // 只差 18 级，白高光**再亮也压不过底色** —— 整颗钮看着是一块平色 + 一圈灰影。
-                // 加深到 22% 之后内部 ≈ (217,208,235)，白环才高出 30 级，"边缘带光"才成立。
+                // 发送：淡紫磨砂。浓度是**高光能不能被看见**的决定因素，不是审美：
+                // 页面底色是 (250)；内部 16% 时亮到 (232,229,244)、22% 时 (214,208,234) ——
+                // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。
+                // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
                 // 停止态仍是原来的浅色面。
-                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                // 高光环要"淡紫偏白"，不能纯白（纯白在浅色钮上就是一圈贴纸描边），
-                // 也不能太接近主色（会比填充更暗、变成沟）。内部 (214,208,234) 时：
-                //   72% 白 = (209,200,232) 更暗 ✗ ／ 100% 白 = 一圈纯白 ✗ ／ 88% ≈ (235,230,245) ✓
+                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                // 高光环"淡紫偏白"：纯白太硬、太接近主色又会比内部暗（72% 白 = 灰紫的沟）。
                 rimColor = if (streaming) {
                     null
                 } else {
                     androidx.compose.ui.graphics.lerp(
                         MaterialTheme.colorScheme.primary,
                         androidx.compose.ui.graphics.Color.White,
-                        0.88f,
+                        0.92f,
                     )
                 },
             ) {
