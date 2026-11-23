@@ -48,6 +48,26 @@ class RubberOverscrollState internal constructor() {
     /** 公式里的"参考尺寸"（px）：固定值，**不跟着页面高度变**，这样每页手感一致。 */
     internal var referencePx by mutableFloatStateOf(0f)
 
+    /**
+     * [raw] 的上限（px），由"允许的最大视觉位移"反解出来（默认 64dp）。
+     *
+     * **必须有**：一次快速甩动撞到顶部时，fling 的剩余惯性会整段灌进 [raw] ——
+     * 2026-11-23 日志里出现过 `raw=-10658px visual=-1149`（3 米手指行程、328dp 位移），
+     * 回弹要倒着走完这 10k 像素，于是内容在**最远处停住几百毫秒**，就是用户说的"悬停"。
+     */
+    internal var rawLimit: Float = Float.MAX_VALUE
+
+
+    /**
+     * 是否是 **fling** 送来的位移（而不是手指拖动）。
+     *
+     * 这个区分很关键：一次快速甩动撞到顶之后，fling 还会继续送几百毫秒的残余位移；
+     * 这段时间只能"吃掉"，不能再累积 [raw]、也不能打断已经开始回弹的动画，
+     * 否则内容会被反复按在远端（用户看到的就是"悬停"）。
+     */
+    private fun isFling(source: NestedScrollSource): Boolean =
+        source == NestedScrollSource.Fling
+
     /** 正在跑的回弹动画。手指一落就掐掉它，否则新手势会被旧动画拽回去。 */
     internal var settleJob: Job? = null
 
@@ -82,6 +102,10 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
     // 参考尺寸固定 400dp：不随页面高度变，保证"每页拉到头距离一样"
     val referencePx = with(density) { 400.dp.toPx() }
     state.referencePx = referencePx
+    // 由"允许的最大视觉位移"反解 raw 上限：visual = r·R·K/(R+K·r)  →  r = V·R/(K·(R−V))
+    val maxVisualPx = with(density) { 64.dp.toPx() }
+    state.rawLimit = maxVisualPx * referencePx /
+        (state.rubberConstant * (referencePx - maxVisualPx)).coerceAtLeast(1f)
     val scope = rememberCoroutineScope()
 
     val connection = remember(state, referencePx, scope) {
@@ -144,8 +168,23 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
             /** 列表滚不动了：剩下的滚动量累积成原始越界量（视觉由公式决定，不做逐帧阻尼）。 */
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y == 0f) return Offset.Zero
+                val fromFling = state.isFling(source)
+                val limit = state.rawLimit
+                // 已经到上限、而且位移是 fling 送来的：只吃掉。
+                // 不累积（否则 raw 会被灌到上万像素）、也不 takeOver（否则回弹被反复重置）。
+                if (abs(state.raw) >= limit - 0.5f) {
+                    if (fromFling) return Offset(0f, available.y)
+                }
                 takeOver()
-                state.applyRaw(state.raw + available.y)
+                val next = state.raw + available.y
+                if (abs(next) >= limit) {
+                    state.applyRaw(if (next < 0f) -limit else limit)
+                    // **fling 一撞到上限就立刻回弹**，不等它自己跑完 —— 这是"悬停"的正面修法：
+                    // 等 fling 结束（几百毫秒）才回弹，内容就在远端干等着。
+                    if (fromFling) startSettle()
+                } else {
+                    state.applyRaw(next)
+                }
                 // 报告"全部吃掉"：这一层由我们独占，系统的 overscroll 拉伸不再叠一层
                 return Offset(0f, available.y)
             }
