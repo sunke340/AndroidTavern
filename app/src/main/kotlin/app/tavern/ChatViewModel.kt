@@ -17,6 +17,7 @@ import app.tavern.core.model.ChatRole
 import app.tavern.core.model.ModelProfile
 import app.tavern.core.model.ModelProfiles
 import app.tavern.core.lorebook.LorebookEntry
+import app.tavern.core.lorebook.withDisabled
 import app.tavern.core.lorebook.LorebookGlobalScanData
 import app.tavern.core.lorebook.LorebookScanResult
 import app.tavern.core.lorebook.LorebookScanner
@@ -64,6 +65,23 @@ import java.util.Locale
  * 计时状态还没落库（只在内存里跟会话走，杀进程会重置）。
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
+
+    /** 一本全局世界书的条目列表（设置页点进去看）。 */
+    data class WorldBookEntryView(
+        val uid: Int,
+        val title: String,
+        val keys: List<String>,
+        val preview: String,
+        /** 生效状态 = 文件里的 disable **叠加** 应用里的手动开关。 */
+        val enabled: Boolean,
+        /** 文件里本来就是关的（界面要说明"文件里就是关的"）。 */
+        val disabledInFile: Boolean,
+    )
+
+    data class WorldBookView(
+        val name: String,
+        val entries: List<WorldBookEntryView>,
+    )
 
     /** 一次性提示（导入/删除的结果），用 Snackbar 显示；`id` 保证同一条不会重复弹。 */
     data class Notice(val id: Long, val text: String)
@@ -138,6 +156,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val worldBooks: List<WorldBookRef> = emptyList(),
         /** 正则脚本（导入自 ST 的脚本数组）。 */
         val regexScripts: List<RegexScript> = emptyList(),
+        /** 非 null 时显示某本全局书的条目列表。 */
+        val worldBookView: WorldBookView? = null,
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -859,7 +879,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val books = withContext(Dispatchers.IO) { worldBookRepository.list() }
             val entries = withContext(Dispatchers.IO) {
                 books.filter { it.enabled }.mapNotNull { ref ->
-                    worldBookRepository.load(ref.name)?.let { book -> ref.name to book.entries }
+                    worldBookRepository.load(ref.name)?.let { book ->
+                        val disabled = worldBookRepository.disabledEntries(ref.name)
+                        ref.name to book.entries.map { entry ->
+                            if (entry.uid in disabled) entry.withDisabled(true) else entry
+                        }
+                    }
                 }.toMap()
             }
             globalBookEntries.clear()
@@ -893,6 +918,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 AppLog.w("worldinfo", "导入世界书失败：${error.message}")
                 _state.update { it.copy(notice = Notice(System.nanoTime(), "导入失败：${error.message}")) }
             }
+        }
+    }
+
+    /** 点进一本书：列出条目（含生效状态）。 */
+    fun openWorldBook(name: String) {
+        viewModelScope.launch {
+            val view = withContext(Dispatchers.IO) {
+                val book = worldBookRepository.load(name) ?: return@withContext null
+                val overrides = worldBookRepository.disabledEntries(name)
+                WorldBookView(
+                    name = name,
+                    entries = book.entries.map { entry ->
+                        WorldBookEntryView(
+                            uid = entry.uid,
+                            title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+                                ?: "条目 ${entry.uid}",
+                            keys = entry.keys,
+                            preview = entry.content.replace("\n", " ").take(90),
+                            enabled = !entry.disabled && entry.uid !in overrides,
+                            disabledInFile = entry.disabled,
+                        )
+                    },
+                )
+            }
+            if (view == null) {
+                _state.update { it.copy(status = "这本书读不出来了：$name") }
+            } else {
+                _state.update { it.copy(worldBookView = view) }
+            }
+        }
+    }
+
+    fun closeWorldBook() {
+        _state.update { it.copy(worldBookView = null) }
+    }
+
+    /** 逐条开关。只写"应用里的覆盖"，不改导入的原始文件（书还要能原样导回 PC 版）。 */
+    fun setWorldBookEntryEnabled(name: String, uid: Int, enabled: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { worldBookRepository.setEntryDisabled(name, uid, !enabled) }
+            openWorldBook(name)
+            refreshWorldBooks()
         }
     }
 

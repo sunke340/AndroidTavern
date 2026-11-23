@@ -57,6 +57,17 @@ public class FileWorldBookRepository(context: Context) : WorldBookRepository {
         prefs.edit().putStringSet(KEY_ENABLED, current).apply()
     }
 
+    override fun disabledEntries(name: String): Set<Int> =
+        prefs.getStringSet(entryKey(name), emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+
+    override fun setEntryDisabled(name: String, uid: Int, disabled: Boolean) {
+        val current = disabledEntries(name).toMutableSet()
+        if (disabled) current += uid else current -= uid
+        prefs.edit().putStringSet(entryKey(name), current.map { it.toString() }.toSet()).apply()
+    }
+
+    private fun entryKey(name: String): String = "disabled\u0000$name"
+
     private fun files(): List<File> =
         dir.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json") }.sortedBy { it.name }
 

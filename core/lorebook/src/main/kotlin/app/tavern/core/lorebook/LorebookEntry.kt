@@ -131,3 +131,45 @@ public class LorebookEntry(
 
     override fun toString(): String = "LorebookEntry($id, keys=$keys)"
 }
+
+/**
+ * 只改"开/关"这一个字段。字段全是 `val`，所以只能重建；世界书条目的开关是应用侧最常见的操作。
+ */
+public fun LorebookEntry.withDisabled(disabled: Boolean): LorebookEntry = LorebookEntry(
+    world = world,
+    uid = uid,
+    keys = keys,
+    secondaryKeys = secondaryKeys,
+    content = content,
+    constant = constant,
+    selective = selective,
+    order = order,
+    position = position,
+    disabled = disabled,
+    probability = probability,
+    useProbability = useProbability,
+    depth = depth,
+    selectiveLogic = selectiveLogic,
+    group = group,
+    groupOverride = groupOverride,
+    groupWeight = groupWeight,
+    scanDepth = scanDepth,
+    caseSensitive = caseSensitive,
+    matchWholeWords = matchWholeWords,
+    useGroupScoring = useGroupScoring,
+    excludeRecursion = excludeRecursion,
+    preventRecursion = preventRecursion,
+    delayUntilRecursion = delayUntilRecursion,
+    sticky = sticky,
+    cooldown = cooldown,
+    delay = delay,
+    triggers = triggers,
+    ignoreBudget = ignoreBudget,
+    role = role,
+    matchPersonaDescription = matchPersonaDescription,
+    matchCharacterDescription = matchCharacterDescription,
+    matchCharacterPersonality = matchCharacterPersonality,
+    matchCharacterDepthPrompt = matchCharacterDepthPrompt,
+    matchScenario = matchScenario,
+    matchCreatorNotes = matchCreatorNotes,
+)

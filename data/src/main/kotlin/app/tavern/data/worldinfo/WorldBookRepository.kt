@@ -31,4 +31,10 @@ public interface WorldBookRepository {
     public fun load(name: String): WorldBookFile?
 
     public fun setEnabled(name: String, enabled: Boolean)
+
+    /** 这本书里被手动关掉的条目 uid（覆盖文件里的 `disable`）。 */
+    public fun disabledEntries(name: String): Set<Int>
+
+    /** 逐条开关：覆盖文件里的 `disable`，不改文件本身（书还能原样导回 PC 版）。 */
+    public fun setEntryDisabled(name: String, uid: Int, disabled: Boolean)
 }
