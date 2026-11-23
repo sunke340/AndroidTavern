@@ -1,20 +1,17 @@
 package app.tavern
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,10 +21,8 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -70,9 +65,6 @@ private val RimLayers = listOf(
 
 /** 按下放大：整块玻璃（投影、高光、内容）一起放，不做"只有图标动"也不压暗。 */
 private const val PressScale = 1.25f
-
-/** 按压动画时长：90ms 太快（看不出过程），170ms 才有"弹一下"的手感。 */
-private const val PressDurationMs = 170
 
 
 
@@ -167,12 +159,16 @@ fun GlassSurface(
     } else {
         false
     }
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) PressScale else 1f,
-        // 非线性：先快后慢（Decelerate），配 170ms 才有弹性感
-        animationSpec = tween(PressDurationMs, easing = Motion.Decelerate),
-        label = "glass-press-scale",
-    )
+    // 弹簧而不是 tween：连按/按住不放时，动画从**当前速度**接着走；
+    // tween 每次换目标都把速度清 0 重新起跑，那一下顿挫就是"不够丝滑"（2026-11-23 用户反馈）。
+    // Animatable 被下次 animateTo 打断时会把末速度交给新动画，所以快速连按是连续的。
+    val press = remember { Animatable(1f) }
+    LaunchedEffect(pressed) {
+        press.animateTo(
+            targetValue = if (pressed) PressScale else 1f,
+            animationSpec = if (pressed) Motion.PressDown else Motion.PressUp,
+        )
+    }
 
     // 外壳**不裁**：投影与模糊描边都要画到形状外面。
     // 缩放在外壳上：按下时投影、高光、内容一起缩，不会出现"只有图标变小"的错位。
@@ -180,8 +176,8 @@ fun GlassSurface(
         modifier = modifier
             .onGloballyPositioned { nodeOrigin = it.positionInWindow() }
             .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
+                scaleX = press.value
+                scaleY = press.value
             },
     ) {
         if (glass && shadow) {
@@ -275,80 +271,6 @@ fun GlassSurface(
         content()
     }
 }
-
-/**
- * 磨砂玻璃**带**：页头用。整条宽度画一块"糊掉的内容"，再用线性透明度遮罩往下收。
- *
- * 为什么页头要磨砂而不是纯色渐变：纯色遮罩要够实才挡得住滚过去的内容，
- * 一实就变成"一条不透明的色块"；磨砂把内容**糊掉**，标题在糊底上照样清楚，
- * 同时保留"内容从玻璃下面过"的观感（用户 2026-11-23 定的方向）。
- *
- * 遮罩是**一条**线性渐变（顶实底透），不做平台段 —— 与页头原先的要求一致。
- */
-@Composable
-fun GlassBand(
-    frost: GraphicsLayer,
-    contentOrigin: () -> Offset,
-    /** 压在上面的底色（用页面背景色），给模糊层一点对比度。 */
-    background: Color,
-    modifier: Modifier = Modifier,
-) {
-    var origin by remember { mutableStateOf(Offset.Zero) }
-    var bandSize by remember { mutableStateOf(IntSize.Zero) }
-
-    Box(
-        modifier = modifier.onGloballyPositioned {
-            origin = it.positionInWindow()
-            bandSize = it.size
-        },
-    ) {
-        // 磨砂层：按条切开，每条一个透明度（上实下透），整块再统一模糊一次。
-        // 为什么不用 DstIn 遮罩：在真机上它把整层都擦掉了（页头变透明、文字全透出来），
-        // 换成"分条透明度 + 父节点模糊"，只用最普通的绘制路径。
-        Box(Modifier.matchParentSize().blur(GlassBlur)) {
-            Column(Modifier.fillMaxSize()) {
-                val stripHeight = if (bandSize.height > 0) bandSize.height / BandStrips.toFloat() else 0f
-                repeat(BandStrips) { index ->
-                    val stripAlpha = 1f - index / (BandStrips - 1f)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .clipToBounds()
-                            .graphicsLayer { alpha = stripAlpha },
-                    ) {
-                        Canvas(Modifier.fillMaxSize()) {
-                            val offset = origin + Offset(0f, index * stripHeight) - contentOrigin()
-                            scale(FrostScale, FrostScale, pivot = Offset.Zero) {
-                                translate(left = -offset.x / FrostScale, top = -offset.y / FrostScale) {
-                                    drawLayer(frost)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 底色：一条线性渐变（顶实底透），不加平台段
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.00f to background.copy(alpha = BandTintAlpha),
-                        1.00f to Color.Transparent,
-                    ),
-                ),
-        )
-    }
-}
-
-/** 磨砂带切几条；8 条配 12dp 模糊，肉眼看不出台阶。 */
-private const val BandStrips = 8
-
-/** 页头磨砂带的底色浓度：太低标题会和糊底糊在一起，太高又变回一条色块。 */
-private const val BandTintAlpha = 0.62f
 
 /**
  * 取形状在当前尺寸下的圆角半径。

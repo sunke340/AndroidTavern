@@ -2,7 +2,6 @@ package app.tavern
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,7 +23,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -86,6 +83,13 @@ fun GlassDetailScaffold(
     glass: Boolean,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    /**
+     * 整条页头是否**磨砂**。默认 false = 半透明色罩（和一级页一致）。
+     *
+     * 只有聊天页传 true：那页的消息一直在标题正下方滚，必须糊掉才不会跟标题打架。
+     * 其余二级页（设置、角色详情、档案编辑）里内容不在标题下面滚，色罩足够，磨砂反而显脏。
+     */
+    frostedHeader: Boolean = false,
     /** 内容区顶部让位。传 0 表示页面自己用 `contentPadding` 让位，这样内容能滚到玻璃页头下面。 */
     contentTopInset: Dp = DetailHeaderHeight,
     actions: (@Composable () -> Unit)? = null,
@@ -162,6 +166,7 @@ fun GlassDetailScaffold(
                 subtitle = subtitle,
                 onBack = onBack,
                 glass = glass,
+                frosted = frostedHeader,
                 frost = frost,
                 contentOrigin = { origin.value },
                 actions = actions,
@@ -178,6 +183,7 @@ private fun DetailHeader(
     subtitle: String?,
     onBack: () -> Unit,
     glass: Boolean,
+    frosted: Boolean,
     frost: GraphicsLayer,
     contentOrigin: () -> Offset,
     actions: (@Composable () -> Unit)?,
@@ -189,10 +195,12 @@ private fun DetailHeader(
     // 按压来源：缩放/压暗在 GlassSurface 上，点击在里面的 Box 上，两者共用同一个 source
     val backPress = remember { MutableInteractionSource() }
     val actionPress = remember { MutableInteractionSource() }
+    // 磨砂条收到页头底边就结束；半透明色罩还要往下多一段收尾，内容才不会一刀切地出现
+    val useBand = frosted && glass
+    val tail = if (useBand) 0.dp else HeaderFadeTail
 
-    Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight)) {
-        // 内容从下面滚过去时淡出，标题不会和内容叠在一起
-        if (glass) {
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight + tail)) {
+        if (useBand) {
             GlassSurface(
                 frost = frost,
                 contentOrigin = contentOrigin,
@@ -209,7 +217,18 @@ private fun DetailHeader(
                 // 玻璃面本身不带内容：标题与按钮压在上面
             }
         } else {
-            Box(Modifier.matchParentSize().background(background))
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawBehind {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.00f to background.copy(alpha = HeaderScrimAlpha),
+                                1.00f to Color.Transparent,
+                            ),
+                        )
+                    },
+            )
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾

@@ -116,7 +116,7 @@ MainScreen（Destination + AnimatedContent）
 页头是 **`PageHeader` 浮层**（在 `MainScreen` 的 TabsRoot 里渲染，跟底栏同级），页面自己不画页头：
 
 - 结构：左边大标题（`headlineMedium` 粗体），右边**玻璃胶囊**装图标动作（`GlassSurface` + `CapsuleIcon`）；
-  整条页头是一块**磨砂玻璃**（`GlassSurface`，铺到状态栏后面），内容从下面滚过去时被糊掉；
+  页头底下是**半透明色罩**（不是磨砂，磨砂只有聊天页有），从状态栏后面铺下来；
 - **页头必须画在"内容录图层"之外**：画在里面的话，玻璃胶囊采样的图层会带上上一帧的胶囊自己，
   每帧叠加 = 无限套娃（胶囊里能看到自己的鬼影）。同理底栏也是浮层。
 - 页面自己不再有页头，内容用 `contentPadding(top = PageHeaderHeight + …)` 让位（空态也一样）：
@@ -154,7 +154,7 @@ MainScreen（Destination + AnimatedContent）
 
 - 页头形状：左边**圆形玻璃返回钮**（`GlassSurface` + `CircleShape`）+ 大标题（可带一行副标题），
   右边**圆形玻璃按钮**装图标动作（单动作时是正圆，2026-11-23 从胶囊改过来）；
-  整条页头同样是磨砂玻璃条（铺到状态栏后面）；
+  页头底下默认是**半透明色罩**（`frostedHeader = false`），只有聊天页传 `true` 变成磨砂条；
 - 每个二级页**自己录一份内容图层**（它在一级页的录制范围之外）。好处是切页时两页各采各的，
   不会抢同一个图层；代价是同一时刻最多两份全屏图层（过渡 240ms）。
 - 内容顶部让位：默认 `contentTopInset = DetailHeaderHeight`；需要内容**滚到玻璃页头下面**的页面
@@ -186,8 +186,9 @@ MainScreen（Destination + AnimatedContent）
 - **深色暗带已删除**，见下面 2026-11-23 那一节，不要再加回来。
 - **不要给浮层垫矩形底色**：胶囊周边必须能看见背景和消息。曾经在底栏/输入区脚下压过
   "透明 → 底色"的渐变，结果被读成"胶囊被装进一个方形容器里"（2026-11-23 用户指出，已删）。
-- **页头是玻璃条**（2026-11-23 起）：`GlassSurface` + 下圆角、`shadow = false`，铺到状态栏后面；
-  不再用"色罩 + 28dp 渐变尾巴"那套。
+- **页头默认是半透明色罩**（2026-11-23 定调，同一天先改成磨砂、当天又收回来）：只有聊天页是
+  磨砂条（`GlassSurface` + 下圆角、`shadow = false`，`GlassDetailScaffold(frostedHeader = true)`）；
+  其余页头一律"色罩 + `HeaderFadeTail` 28dp 渐变尾巴"。`GlassBand` 这个手写磨砂带已经删了，别再写。
 - **二级页的输入区用 `bottomOverlay` 槽**（`GlassBackdrop`）：画在录制之外，能采磨砂，
   消息滚动时会从胶囊后面经过；列表用 `contentPadding(top/bottom)` 让位，不要裁内容。
 - **投影自己画**：模糊的黑胶囊往下压几像素（`Modifier.blur(…, BlurredEdgeTreatment.Unbounded)`）；
@@ -206,8 +207,16 @@ MainScreen（Destination + AnimatedContent）
    文字全透出来；
 2. 分条透明度（8 条，每条的 `graphicsLayer{ alpha }`）+ 父节点 `blur` —— 仍然只有底色。
 
-结论：**要磨砂就用 `GlassSurface`**（和底栏、胶囊、输入框同一条路径）。页头现在就是
-一个 `GlassSurface`：形状「上两角直角 + 下两角 20dp 圆角」、`shadow = false`，标题与动作压在上面。
+结论：**要磨砂就用 `GlassSurface`**（和底栏、胶囊、输入框同一条路径）。
+
+**只有聊天页的页头是磨砂条**（2026-11-23 用户第二次定调）：它是唯一一个"内容一直在标题正下方滚"
+的页头，必须糊掉才不跟标题打架 —— `GlassSurface`、形状「上两角直角 + 下两角 16dp 圆角」、
+`shadow = false`，标题与动作压在上面。
+
+其余所有页头（一级三页 + 设置/角色详情/档案编辑）是**半透明色罩**：从 `y = 0` 到
+`状态栏 + 页头高度 + HeaderFadeTail(28dp)` 一条线性渐变，`背景色@HeaderScrimAlpha(0.62)` → 透明。
+色罩比磨砂多那 28dp 收尾，内容才不会在页头底边"一刀切"地出现。入口是
+`GlassDetailScaffold(frostedHeader = …)`，**默认 false**；只有 `ChatScreen` 传 true。
 
 ### GlassSurface 的圆角必须从 Shape 读
 
@@ -222,7 +231,12 @@ MainScreen（Destination + AnimatedContent）
 
 ### 按压反馈：放大，不压暗
 
-- 整块玻璃放大到 **1.25**、**170ms**、`Motion.Decelerate`（非线性）；不压暗。
+- 整块玻璃放大到 **1.25**；不压暗。
+- **用弹簧，不用 `tween`**（2026-11-23 用户："放大缩小不够丝滑"）。按下 `Motion.PressDown`
+  （0.6 / 800）、松开 `Motion.PressUp`（0.8 / 380），数值抄的是 Material 3 **Expressive** 的
+  spatial spring tokens。实现必须是 `Animatable` + `LaunchedEffect(pressed)`：
+  `animateFloatAsState` 配 `tween` 每次换目标都把速度清 0 重新起跑，快速连按会顿一下；
+  `Animatable` 被下次 `animateTo` 打断时会把末速度交给新动画，才是连续的。
 - **涟漪关掉**：ripple 画在方形点击区里，圆钮上会变成"中间一个圆盘/方块变暗"，和整块玻璃对不上。
 - 组合方式：`MutableInteractionSource` 同时交给 `GlassSurface`（负责缩放）和内部 `clickable`
   （`indication = null`）；页头那种"玻璃胶囊 + 图标"两层写的，用 `LocalGlassPress` 共享同一个 source。
@@ -230,21 +244,33 @@ MainScreen（Destination + AnimatedContent）
 ### 主题色按钮
 
 - 发送钮 = 玻璃面 + **叠加 16% 主色**（不是替换底色），停止态保持浅色面。
-- 高光环 `rimColor` 要**比内部更亮**：用「主色向白调 72%」(`lerp(primary, White, 0.72f)`)，
-  直接用主色会变成一圈更深的边。
+- 高光环 `rimColor` 必须**比内部更亮**，判据是**亮度**不是色相：内部 = 白玻面(0.34) + 16% 主色，
+  真机截图像素 ≈ `(225,220,240)`，已经很亮。所以 `lerp(primary, White, t)` 的 `t` 要大到
+  结果亮度**超过**内部 —— 「向白调 72%」= `(209,200,232)`，**比内部还暗**，画出来就是一圈
+  深灰紫的沟（2026-11-23 用户两次指出，我第二次才量像素确认）。现在用 **0.92**。
+  别用主色本身，也别凭"它偏白"就以为够亮 —— 拿截图量。
 - 纸飞机是三角形，几何居中看着偏左：图标右移 **1dp**。
 
 ### 页头铺到状态栏
 
-- 页头盒子从 `y = 0` 起（含状态栏），标题行按状态栏高度下移；内容是满屏的，滚到页头下面会被糊掉。
+- 页头盒子从 `y = 0` 起（含状态栏），标题行按状态栏高度下移；内容是满屏的，滚到页头下面
+  会被磨砂糊掉（聊天）或从色罩里淡出（其它页）。
 - 各页顶部让位 = **状态栏高度 + 页头高度 + 间距**（`PageHeaderHeight`/`DetailHeaderHeight` 本身不含状态栏）。
 
 ### 键盘与橡皮筋
 
 - 内容底部让位 = **max(导航栏, 键盘)**，不能相加（键盘弹出时导航栏已被盖住，相加会多抬一个导航栏）。
 - 列表两端是橡皮筋：`Modifier.rubberOverscroll(rememberRubberOverscroll())`（`:app/RubberOverscroll.kt`），
-  阻尼 0.5、最多 56dp、松手弹簧回弹；它内部用了 `LocalDensity`，所以这个 modifier 必须标 `@Composable`，
+  跟手 0.62、最多 64dp、松手用 `Motion.RubberBand`（0.72 / 380）回弹；
+  它内部用了 `LocalDensity`，所以这个 modifier 必须标 `@Composable`，
   且要挂在 `verticalScroll` / `LazyColumn` **之前**（外层）。
+- **阻尼要渐进**：老写法 `offset += available * 0.5` 是全程一样重、撞上 max 突然停，手感发硬；
+  现在乘一个 `room = 1 - |offset| / max`，起步跟手、越拉越紧、到顶导数为 0（不再是硬墙）。
+- **回弹必须能被手指打断**（2026-11-23 用户："回弹动画中再拉，不跟手，还在播上一次的动画"）。
+  根因：回弹是在 `onPostFling` 里 suspending `animate(...)` 写 `offset`，普通回调里没法取消，
+  用户新拖动写进去的值下一帧就被旧动画覆盖。修法：动画跑在 `settleJob` 里，
+  `onPreScroll`/`onPostScroll` 一进来先 `settleJob.cancel()` (`takeOver()`)，新手势从**当前位移**接着算。
+  死循环不会出现：回弹自己不走 scroll 回调。
 
 ## 窗口 insets 的规矩（踩过两次）
 

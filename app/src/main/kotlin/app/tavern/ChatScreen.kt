@@ -107,6 +107,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = state.status,
         onBack = viewModel::closeChat,
         glass = glassOn,
+        // 聊天页是唯一一个"内容一直在标题下面滚"的页头 —— 只有它上磨砂
+        frostedHeader = true,
         // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
         contentTopInset = 0.dp,
         // 输入区画在录制之外：可以采磨砂，消息从胶囊后面滚过去
@@ -254,14 +256,16 @@ private fun ChatInputBar(
                 interactionSource = sendPress,
                 // 发送：淡紫磨砂（与底栏选中项同一个紫，16% 叠加），停止仍是原来的浅色面
                 fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                // 高光环要比内部淡紫更**亮**：往白里调 72%，而不是加深主色
+                // 高光环必须比内部淡紫**更亮**。内部是"白玻面 + 16% 主色"，实测已经很亮
+                // （截图采样 ≈ 225,220,240），所以主色只向白调 72% 还是**更暗** ——
+                // 真机上就是一圈深灰紫的沟（2026-11-23 用户第二次指出）。调到 92% 才真的更亮。
                 rimColor = if (streaming) {
                     null
                 } else {
                     androidx.compose.ui.graphics.lerp(
                         MaterialTheme.colorScheme.primary,
                         androidx.compose.ui.graphics.Color.White,
-                        0.72f,
+                        0.92f,
                     )
                 },
             ) {

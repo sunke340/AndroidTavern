@@ -1,10 +1,8 @@
 package app.tavern
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
  * 如果胶囊画在录制范围内，它采样的图层里会带上上一帧的胶囊自己，每帧叠加就是无限套娃
  * （胶囊里能看到自己的鬼影）。所以页头跟底栏同级，都浮在录制层上面。
  *
- * 页头底下压一层"底色 → 透明"的渐变：内容从下面滚过去时自然淡出，标题不会跟列表文字叠在一起。
+ * 页头底下压一层"底色 → 透明"的**半透明色罩**（不是磨砂）：内容从下面滚过去时自然淡出，
+ * 标题不会跟列表文字叠在一起。磨砂页头只留给聊天页（见 `GlassDetailScaffold` 的
+ * `frostedHeader`）—— 一级页的内容不会一直在标题正下方滚，没必要上磨砂。
  */
 @Composable
 fun PageHeader(
@@ -51,27 +50,20 @@ fun PageHeader(
     // 页头一直铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight)) {
-        if (glass) {
-            // 玻璃档：整条页头就是一块磨砂玻璃（走 GlassSurface 的成熟路径，胶囊能糊它就一定能糊）
-            GlassSurface(
-                frost = frost,
-                contentOrigin = contentOrigin,
-                glass = true,
-                shape = RoundedCornerShape(
-                    topStart = 0.dp,
-                    topEnd = 0.dp,
-                    bottomStart = HeaderBandCorner,
-                    bottomEnd = HeaderBandCorner,
-                ),
-                shadow = false,
-                modifier = Modifier.matchParentSize(),
-            ) {
-                // 玻璃面本身不带内容：标题压在上面那一层
-            }
-        } else {
-            Box(Modifier.matchParentSize().background(background))
-        }
+    // 高度 = 状态栏 + 页头 + 收尾段：色罩一直渐透到收尾段末尾，内容才不会在页头底边"一刀切"
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight + HeaderFadeTail)) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .drawBehind {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.00f to background.copy(alpha = HeaderScrimAlpha),
+                            1.00f to Color.Transparent,
+                        ),
+                    )
+                },
+        )
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
             modifier = Modifier
@@ -109,6 +101,3 @@ fun PageHeader(
         }
     }
 }
-
-/** 页头玻璃条的下缘圆角。 */
-private val HeaderBandCorner = 20.dp

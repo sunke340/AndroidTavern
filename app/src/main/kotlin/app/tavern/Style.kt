@@ -73,6 +73,15 @@ val HeaderActionHeight: Dp = 44.dp
 val HeaderFadeTail: Dp = 28.dp
 
 /**
+ * 非磨砂页头的色罩浓度：内容能明显透出来，标题照样压得住。
+ *
+ * 2026-11-23 用户把"半透明色罩"定为**默认页头**（只有聊天页要磨砂，见 `GlassDetailScaffold` 的
+ * `frostedHeader`）。取值对齐上一轮玻璃档 GlassBand 的 tint（0.62）—— 那是用户实际看过、
+ * 并称之为"半透明"的那一版。轻量档早期用过 0.94（几乎不透），如果这版显得太透，改这一个常量即可。
+ */
+const val HeaderScrimAlpha = 0.62f
+
+/**
  * 页头胶囊里的图标动作：无底色、只靠图标与主色，跟截图里那种玻璃胶囊一致。
  *
  * 图标只能从 `material-icons-core` 取（见 app/AGENTS.md），拿不准的就用文字。
