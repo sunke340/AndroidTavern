@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -40,6 +40,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /** 玻璃高斯半径。有 RenderEffect 时把放大后的磨砂再磨细一遍；没有也不影响下限。 */
 internal val GlassBlur = 12.dp
@@ -66,11 +69,22 @@ private val RimLayers = listOf(
 /** 按下放大：整块玻璃（投影、高光、内容）一起放，不做"只有图标动"也不压暗。 */
 private const val PressScale = 1.25f
 
+/**
+ * 一次"按下去"至少占用的时长（ms）。
+ *
+ * 快速点按时 Press 和 Release 可能只隔十几毫秒，弹簧还没来得及长到能看见就收回来了 ——
+ * 用户看到的是"点了但没反应"。给一个下限，反馈才稳定出现（2026-11-23 用户反馈）。
+ */
+private const val MinPressVisibleMs = 90L
+
 
 
 /** 投影：模糊的黑胶囊垫在下面，不用 elevation（elevation 阴影会被半透明底透成亮度台阶）。 */
-private val ShadowBlur = 18.dp
-private val ShadowOffsetY = 4.dp
+// 模糊半径和下沉量：18dp/4dp 时灰影会绕着整个形状一圈，小圆钮（44dp）等于套了个灰环，
+// 边缘"高光"就被灰影吃掉了（2026-11-23 量：钮边缘 241，而页面底色 250 —— 看着比周围还暗）。
+// 收紧 + 下沉，让阴影只出现在下方。
+private val ShadowBlur = 14.dp
+private val ShadowOffsetY = 6.dp
 private const val ShadowAlpha = 0.10f
 
 /**
@@ -143,7 +157,13 @@ fun GlassSurface(
     interactionSource: MutableInteractionSource? = null,
     /** 覆盖玻璃面的填充色（发送钮用主题色）。null = 原来的半透明面。 */
     fillColor: Color? = null,
-    /** 高光环的颜色；null = 白。发送钮这种主题色按钮要传主色，否则白边很扎眼。 */
+    /**
+     * 高光环的颜色；null = 纯白。
+     *
+     * **主题色按钮也不要传主色（或其调白版）**：内部是"白玻面 + 淡色叠加"，已经很亮，
+     * 任何带主色的环都比内部暗 —— 真机上是一圈灰紫的沟（2026-11-23 量了像素才认）。
+     * 要的是亮边，就只能是≥白的亮度。
+     */
     rimColor: Color? = null,
     /** 是否画投影。页头整条铺到屏幕顶上时不需要（会在地面留下一条阴影）。 */
     shadow: Boolean = true,
@@ -154,20 +174,32 @@ fun GlassSurface(
     val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
     var nodeOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    val pressed = if (interactionSource != null) {
-        interactionSource.collectIsPressedAsState().value
-    } else {
-        false
-    }
-    // 弹簧而不是 tween：连按/按住不放时，动画从**当前速度**接着走；
-    // tween 每次换目标都把速度清 0 重新起跑，那一下顿挫就是"不够丝滑"（2026-11-23 用户反馈）。
-    // Animatable 被下次 animateTo 打断时会把末速度交给新动画，所以快速连按是连续的。
+    // 按压动画：直接吃 interaction 流，**不要**用 collectIsPressedAsState()。
+    //
+    // 布尔状态会吞事件：快速点按时 Press 和 Release 落在同一帧里，重组只看到最终的 false，
+    // 动画一次都不会播（2026-11-23 用户："有时动画不会出现"）。吃流的话每个事件都到，
+    // Release 用 animateTo 打断 Press 的动画 —— Animatable 会把当前值和末速度交给新动画，
+    // 所以连按是连续的（tween 会清 0 重新起跑，那一下顿挫就是不丝滑的来源）。
     val press = remember { Animatable(1f) }
-    LaunchedEffect(pressed) {
-        press.animateTo(
-            targetValue = if (pressed) PressScale else 1f,
-            animationSpec = if (pressed) Motion.PressDown else Motion.PressUp,
-        )
+    if (interactionSource != null) {
+        LaunchedEffect(interactionSource) {
+            var pressedAt = 0L
+            interactionSource.interactions.collect { interaction ->
+                when (interaction) {
+                    is PressInteraction.Press -> {
+                        pressedAt = System.currentTimeMillis()
+                        launch { press.animateTo(PressScale, Motion.PressDown) }
+                    }
+                    is PressInteraction.Release, is PressInteraction.Cancel -> {
+                        val held = System.currentTimeMillis() - pressedAt
+                        launch {
+                            if (held < MinPressVisibleMs) delay(MinPressVisibleMs - held)
+                            press.animateTo(1f, Motion.PressUp)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // 外壳**不裁**：投影与模糊描边都要画到形状外面。

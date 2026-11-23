@@ -20,8 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 
@@ -49,20 +47,15 @@ fun PageHeader(
     val actionPress = remember { MutableInteractionSource() }
     // 页头一直铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 色罩：到页头底边都是饱和的，只在 28dp 收尾段里化开（线性衰减会压不住标题下沿的字）
+    val scrim = headerScrim(background, statusBar + PageHeaderHeight, HeaderFadeTail)
 
     // 高度 = 状态栏 + 页头 + 收尾段：色罩一直渐透到收尾段末尾，内容才不会在页头底边"一刀切"
     Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight + HeaderFadeTail)) {
         Box(
             Modifier
                 .matchParentSize()
-                .drawBehind {
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0.00f to background.copy(alpha = HeaderScrimAlpha),
-                            1.00f to Color.Transparent,
-                        ),
-                    )
-                },
+                .drawBehind { drawRect(brush = scrim) },
         )
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾

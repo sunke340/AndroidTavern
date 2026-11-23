@@ -56,8 +56,10 @@ object Motion {
     val PressUp: SpringSpec<Float> = spring(dampingRatio = 0.8f, stiffness = 380f)
 
     /**
-     * 橡皮筋回位：default spatial 再把阻尼放松到 0.72 —— 松手后有一记很小的回弹，
-     * 像真的橡皮筋，而不是被"吸"回去。再低（0.55）会晃两下，显得廉价。
+     * 橡皮筋回位：**临界阻尼**（1.0 / 380）—— 一路收回 0，不过冲。
+     *
+     * 这里特意不弹：0.72 时弹簧会越过 0 再回来，在大位移（64dp）上就是"复位后又抽一下"
+     * （2026-11-23 用户实测）。橡皮筋的"弹"应该来自拉动时的阻尼，不是回位时晃。
      */
-    val RubberBand: SpringSpec<Float> = spring(dampingRatio = 0.72f, stiffness = 380f)
+    val RubberBand: SpringSpec<Float> = spring(dampingRatio = 1.0f, stiffness = 380f)
 }

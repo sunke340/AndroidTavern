@@ -44,8 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -198,6 +196,8 @@ private fun DetailHeader(
     // 磨砂条收到页头底边就结束；半透明色罩还要往下多一段收尾，内容才不会一刀切地出现
     val useBand = frosted && glass
     val tail = if (useBand) 0.dp else HeaderFadeTail
+    // 色罩：到页头底边都是饱和的，只在收尾段里化开
+    val scrim = headerScrim(background, statusBar + DetailHeaderHeight, HeaderFadeTail)
 
     Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight + tail)) {
         if (useBand) {
@@ -217,18 +217,7 @@ private fun DetailHeader(
                 // 玻璃面本身不带内容：标题与按钮压在上面
             }
         } else {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawBehind {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0.00f to background.copy(alpha = HeaderScrimAlpha),
-                                1.00f to Color.Transparent,
-                            ),
-                        )
-                    },
-            )
+            Box(Modifier.matchParentSize().drawBehind { drawRect(brush = scrim) })
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾

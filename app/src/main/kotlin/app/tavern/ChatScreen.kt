@@ -254,20 +254,13 @@ private fun ChatInputBar(
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
                 interactionSource = sendPress,
-                // 发送：淡紫磨砂（与底栏选中项同一个紫，16% 叠加），停止仍是原来的浅色面
-                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                // 高光环必须比内部淡紫**更亮**。内部是"白玻面 + 16% 主色"，实测已经很亮
-                // （截图采样 ≈ 225,220,240），所以主色只向白调 72% 还是**更暗** ——
-                // 真机上就是一圈深灰紫的沟（2026-11-23 用户第二次指出）。调到 92% 才真的更亮。
-                rimColor = if (streaming) {
-                    null
-                } else {
-                    androidx.compose.ui.graphics.lerp(
-                        MaterialTheme.colorScheme.primary,
-                        androidx.compose.ui.graphics.Color.White,
-                        0.92f,
-                    )
-                },
+                // 发送：淡紫磨砂。22% 而不是 16%：16% 时内部亮到 (232,229,244)，和页面底色 (250)
+                // 只差 18 级，白高光**再亮也压不过底色** —— 整颗钮看着是一块平色 + 一圈灰影。
+                // 加深到 22% 之后内部 ≈ (217,208,235)，白环才高出 30 级，"边缘带光"才成立。
+                // 停止态仍是原来的浅色面。
+                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                // 高光环用**纯白**（默认值）。任何"主色向白调"的版本都比内部暗：
+                // 72% → (209,200,232)、92% → (244,241,249)，真机上都是一圈灰紫的边。
             ) {
                 Box(
                     modifier = Modifier

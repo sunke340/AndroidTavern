@@ -213,10 +213,13 @@ MainScreen（Destination + AnimatedContent）
 的页头，必须糊掉才不跟标题打架 —— `GlassSurface`、形状「上两角直角 + 下两角 16dp 圆角」、
 `shadow = false`，标题与动作压在上面。
 
-其余所有页头（一级三页 + 设置/角色详情/档案编辑）是**半透明色罩**：从 `y = 0` 到
-`状态栏 + 页头高度 + HeaderFadeTail(28dp)` 一条线性渐变，`背景色@HeaderScrimAlpha(0.62)` → 透明。
+其余所有页头（一级三页 + 设置/角色详情/档案编辑）是**半透明色罩**：`headerScrim(...)`
+（`Style.kt`）= **到页头底边一直是 `HeaderScrimAlpha`(0.92)**，只在 `HeaderFadeTail`(28dp) 收尾段里收到透明。
 色罩比磨砂多那 28dp 收尾，内容才不会在页头底边"一刀切"地出现。入口是
 `GlassDetailScaffold(frostedHeader = …)`，**默认 false**；只有 `ChatScreen` 传 true。
+
+**别写"从顶到底一条线性渐变（0.9→0）"**：那样标题下沿只有 25%~45% 的浓度，滚上来的字压不住，
+用户连判两版"太透"。必须"先饱和、再在收尾段化开"。
 
 ### GlassSurface 的圆角必须从 Shape 读
 
@@ -234,21 +237,28 @@ MainScreen（Destination + AnimatedContent）
 - 整块玻璃放大到 **1.25**；不压暗。
 - **用弹簧，不用 `tween`**（2026-11-23 用户："放大缩小不够丝滑"）。按下 `Motion.PressDown`
   （0.6 / 800）、松开 `Motion.PressUp`（0.8 / 380），数值抄的是 Material 3 **Expressive** 的
-  spatial spring tokens。实现必须是 `Animatable` + `LaunchedEffect(pressed)`：
-  `animateFloatAsState` 配 `tween` 每次换目标都把速度清 0 重新起跑，快速连按会顿一下；
-  `Animatable` 被下次 `animateTo` 打断时会把末速度交给新动画，才是连续的。
+  spatial spring tokens。实现是 `Animatable` + **`interactionSource.interactions.collect`**：
+  `Animatable` 被下次 `animateTo` 打断时会把当前值和末速度交给新动画，所以连按是连续的。
+- **别用 `collectIsPressedAsState()` 驱动按压动画**（2026-11-23 用户："有时动画不出现"）：
+  `pressed` 是布尔状态，快速点按时 Press 和 Release 落在**同一帧**里，重组只看到最终的 `false`，
+  动画一次都不播。吃 interaction 流则每个事件都到。
+- 另配一条下限 `MinPressVisibleMs = 90ms`：Release 若来得太早，先等满 90ms 再收回，
+  否则"按下去"这一下肉眼看不见（点得再快也有反馈）。
 - **涟漪关掉**：ripple 画在方形点击区里，圆钮上会变成"中间一个圆盘/方块变暗"，和整块玻璃对不上。
 - 组合方式：`MutableInteractionSource` 同时交给 `GlassSurface`（负责缩放）和内部 `clickable`
   （`indication = null`）；页头那种"玻璃胶囊 + 图标"两层写的，用 `LocalGlassPress` 共享同一个 source。
 
 ### 主题色按钮
 
-- 发送钮 = 玻璃面 + **叠加 16% 主色**（不是替换底色），停止态保持浅色面。
-- 高光环 `rimColor` 必须**比内部更亮**，判据是**亮度**不是色相：内部 = 白玻面(0.34) + 16% 主色，
-  真机截图像素 ≈ `(225,220,240)`，已经很亮。所以 `lerp(primary, White, t)` 的 `t` 要大到
-  结果亮度**超过**内部 —— 「向白调 72%」= `(209,200,232)`，**比内部还暗**，画出来就是一圈
-  深灰紫的沟（2026-11-23 用户两次指出，我第二次才量像素确认）。现在用 **0.92**。
-  别用主色本身，也别凭"它偏白"就以为够亮 —— 拿截图量。
+- 发送钮 = 玻璃面 + **叠加 22% 主色**（不是替换底色），停止态保持浅色面。
+- 高光环 `rimColor` **只能是纯白**（默认值 null）。判据是**亮度**不是色相：内部是"白玻面 + 淡色叠加"，
+  已经很亮，任何带主色的环都更暗 —— 「向白调 72%」= `(209,200,232)`、「92%」= `(244,241,249)`，
+  真机上都是深灰紫的沟（2026-11-23 我连着改了三版，最后靠截图采样才认）。
+- **叠加色不能太淡**：16% 时内部 ≈ `(232,229,244)`，和页面底色 `(250)` 只差 18 级 ——
+  白环再亮也压不过底色，整颗钮读起来是"一块平色 + 一圈灰影"。22% 时内部 ≈ `(217,208,235)`，
+  白环高出 30 级，"边缘带光"才成立。
+- **投影会吃掉高光**：`ShadowBlur=18dp / offsetY=4dp` 时灰影绕着形状一整圈（44dp 的小圆钮等于
+  套了个灰环，钮边缘亮度只有 241，比页面底色的 250 还暗）。现在是 `14dp / 6dp`，阴影只落在下方。
 - 纸飞机是三角形，几何居中看着偏左：图标右移 **1dp**。
 
 ### 页头铺到状态栏
@@ -261,11 +271,14 @@ MainScreen（Destination + AnimatedContent）
 
 - 内容底部让位 = **max(导航栏, 键盘)**，不能相加（键盘弹出时导航栏已被盖住，相加会多抬一个导航栏）。
 - 列表两端是橡皮筋：`Modifier.rubberOverscroll(rememberRubberOverscroll())`（`:app/RubberOverscroll.kt`），
-  跟手 0.62、最多 64dp、松手用 `Motion.RubberBand`（0.72 / 380）回弹；
+  跟手 0.62、最多 64dp、松手用 `Motion.RubberBand`（**1.0 / 380，临界阻尼**）回弹；
   它内部用了 `LocalDensity`，所以这个 modifier 必须标 `@Composable`，
   且要挂在 `verticalScroll` / `LazyColumn` **之前**（外层）。
 - **阻尼要渐进**：老写法 `offset += available * 0.5` 是全程一样重、撞上 max 突然停，手感发硬；
   现在乘一个 `room = 1 - |offset| / max`，起步跟手、越拉越紧、到顶导数为 0（不再是硬墙）。
+- **回弹时要按住"不许过冲"**（2026-11-23 用户："复位后再抽一下"）：欠阻尼弹簧会越过 0 再回来，
+  64dp 的位移上就是肉眼可见的一次反向抽动。现在弹簧取临界阻尼，并且写 `offset` 时按方向
+  `coerceAtLeast(0f)`，保证只朝 0 收敛。
 - **回弹必须能被手指打断**（2026-11-23 用户："回弹动画中再拉，不跟手，还在播上一次的动画"）。
   根因：回弹是在 `onPostFling` 里 suspending `animate(...)` 写 `offset`，普通回调里没法取消，
   用户新拖动写进去的值下一帧就被旧动画覆盖。修法：动画跑在 `settleJob` 里，

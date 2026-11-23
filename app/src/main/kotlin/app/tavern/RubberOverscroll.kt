@@ -16,9 +16,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import app.tavern.data.log.AppLog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 列表拉到两端后的**橡皮筋**：继续拖会带阻尼地跟手，松手弹回去。
@@ -68,8 +70,10 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
              * 不判断 `source`：回弹自己的动画不走 scroll 回调，不会自打断；而 Fling 阶段也不经过这里。
              */
             private fun takeOver() {
+                val running = state.settleJob?.isActive == true
                 state.settleJob?.cancel()
                 state.settleJob = null
+                if (running) AppLog.i("rubber", "回弹被打断 offset=${state.offset.roundToInt()}")
             }
 
             /** 往里拖时先把橡皮筋收回去，再让列表正常滚。 */
@@ -112,15 +116,22 @@ fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
                 takeOver()
                 // 用独立 job 跑回弹：`onPostFling` 自己也 await 它，保持 fling 链的顺序；
                 // 但用户中途抓列表时 takeOver() 能把它掐掉（suspend 的 animate 没法从普通回调里取消）。
+                val start = state.offset
+                val sign = if (start >= 0f) 1f else -1f
+                AppLog.i("rubber", "回弹 start=${start.roundToInt()}px")
                 val job = scope.launch {
                     animate(
-                        initialValue = state.offset,
+                        initialValue = start,
                         targetValue = 0f,
                         animationSpec = Motion.RubberBand,
-                    ) { value, _ -> state.offset = value }
+                    ) { value, _ ->
+                        // 只许朝 0 收敛，不许反向：过冲（哪怕几 dp）在列表上是"复位后又抽一下"
+                        state.offset = (value * sign).coerceAtLeast(0f) * sign
+                    }
                 }
                 state.settleJob = job
                 job.join()
+                AppLog.i("rubber", "回弹结束 offset=${state.offset.roundToInt()}px 被打断=${job.isCancelled}")
                 return Velocity.Zero
             }
         }
