@@ -42,15 +42,34 @@ sealed interface Destination {
 zIndex 等于没设，只能退回"后放置的在上"，而 target 是最后放置的 —— 所以**永远是进来那页在上**，
 退场那页的位移永远看不见。文档里"能设 zIndex 改变叠放"在这版实现上对**同一过渡内的两层**不成立。
 
+**源码级复核（2026-11-23，用户要求"查资料确认"）**：`animation-android:1.7.6` 的
+`AnimatedContent.kt` 里，每个可见内容都套同一个
+
+```kotlin
+ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)   // 同一个 spec！
+// 内部：placeable.place(0, 0, zIndex = zIndex)
+```
+
+`specOnEnter` 是**当前这一段转场**的 `ContentTransform`，两个可见内容拿到的是**同一个值**，
+所以 zIndex 必然打平；打平后由放置顺序决定，而 `currentlyVisible` 把 target 放在最后
+（源码注释原话：*"This makes the composable associated with the targetState get placed last,
+so the target composable will be displayed on top"*）→ 永远是进来那页在上。
+
+**这不是 1.7.6 的 bug**：`androidx-main`（2026-11-23 拉的最新源码）是同一行
+`ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)`，API 也没有
+"每层一个 zIndex"的入口。**结论：真做不到，要"二级页盖在上面滑走"只能自己管容器**
+（`Box` + 两个孩子各自 `Modifier.zIndex` + 自己维护离场页的生命周期与动画进度）。
+所以除非换个观感诉求，**不要为这个重写导航**：现在这条路已经把"上一页从左侧压回"做对了。
+
 结论与规矩：
 
 1. **位移只做在"进来那页"（enter）上**；返回的观感靠"上一页从左侧滑回"，不要指望"当前页滑出去"。
 2. **退场那页（exit）只负责"活满时长"**。`ExitTransition.None` 会让旧页在 12–14ms 内就被移除
    （实测日志），动画期间露出来的是窗口底色。所以给它一个满时长、位移为 0 的 slideOut 占位。
 3. 判据：**「返回完全没动画」＝ 动的那层在下层**。先看 `nav ... 页面移除，距上次换页 Nms` 这行日志：
-   ~240ms 说明转场跑了（那就是叠放问题），几十毫秒说明转场没跑（问题在状态层）。
+   ~280ms 说明转场跑了（那就是叠放问题），几十毫秒说明转场没跑（问题在状态层）。
 
-**退场别配比位移更短的淡出**：240ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
+**退场别配比位移更短的淡出**：280ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
 后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
 
 ### `AnimatedContent` 必须 `fillMaxSize()` + `using(null)`（真正的病根，2026-11-22）
@@ -156,7 +175,7 @@ MainScreen（Destination + AnimatedContent）
   右边**圆形玻璃按钮**装图标动作（单动作时是正圆，2026-11-23 从胶囊改过来）；
   页头底下默认是**半透明色罩**（`frostedHeader = false`），只有聊天页传 `true` 变成磨砂条；
 - 每个二级页**自己录一份内容图层**（它在一级页的录制范围之外）。好处是切页时两页各采各的，
-  不会抢同一个图层；代价是同一时刻最多两份全屏图层（过渡 240ms）。
+  不会抢同一个图层；代价是同一时刻最多两份全屏图层（过渡 280ms）。
 - 内容顶部让位：默认 `contentTopInset = DetailHeaderHeight`；需要内容**滚到玻璃页头下面**的页面
   （聊天）传 `0.dp`，改用列表的 `contentPadding` 让位 —— `contentPadding` 不会裁内容，滚动时会从玻璃底下过。
 
@@ -377,7 +396,7 @@ MainScreen（Destination + AnimatedContent）
 - **进入曲线 = `Motion.Decelerate = CubicBezierEasing(0.25f, 0.46f, 0.45f, 0.94f)`**（ease-out-quad）。
   它换过三次，判据是"位移摊在哪个时段"：240ms 的翻页用强 ease-out `(0.23,1,0.32,1)` 时
   前 10% 的时间就走掉 40% 位移、约 75ms 视觉走完 —— 用户反馈"太快"；现在约 155ms 走完。
-  **要更慢先加时长（`Motion.Slow` 240→280），不要再把曲线往缓推**（会变成起步发木）。
+  **要更慢先加时长（`Motion.Slow` 现在就是 280，240→280 是用户验收后的值），不要再把曲线往缓推**（会变成起步发木）。
   别用 `ease-in`，也别退回 `FastOutSlowInEasing` 或 `(0,0,0,1)`。
 - **可被打断的东西用弹簧，不用 tween**：`tween` 重定向会从零起跑（那下顿挫就是不丝滑）；
   弹簧带着当前速度继续走。**归位类动画阻尼必须 1.0**（欠阻尼 = "复位后再抽一下"）。

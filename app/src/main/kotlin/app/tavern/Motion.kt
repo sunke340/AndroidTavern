@@ -24,8 +24,14 @@ object Motion {
     /** 主要过渡：页面切换、消息入场 */
     const val Base = 180
 
-    /** 位移较大的过渡：列表重排 */
-    const val Slow = 240
+    /**
+     * 位移较大的过渡：整页滑动、列表重排。
+     *
+     * 240 → **280**（2026-11-23）：曲线从强 ease-out 换成 ease-out-quad 之后（运动摊到了整段时长里），
+     * 用户第一版仍觉得"可以再加一点时长"。280 仍在 Emil 的"UI < 300ms"之内，
+     * 换成 ease-out-quad 后约 180ms 视觉走完。**再嫌慢就上调这里，不要动曲线**（曲线再缓会起步发木）。
+     */
+    const val Slow = 280
 
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)

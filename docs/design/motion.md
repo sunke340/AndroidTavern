@@ -67,7 +67,7 @@ Motion.Standard   = CubicBezierEasing(0.2f, 0f, 0f, 1f)            // 退场位�
 | 按压反馈 | 100–160ms | 弹簧 0.6/800 与 0.8/380（约 120ms 到位） |
 | 提示条、小弹层 | 125–200ms | `Motion.Fast` 120 / `Motion.Base` 180 |
 | 下拉、选择器 | 150–250ms | `Motion.Base` 180 |
-| 弹层、抽屉、整页切换 | 200–500ms | `Motion.Slow` 240 |
+| 弹层、抽屉、整页切换 | 200–500ms | `Motion.Slow` **280**（ease-out-quad 下约 180ms 视觉走完） |
 
 **UI 动效一律 <300ms**，弹层/整页切换是唯一的例外档。
 
