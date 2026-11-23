@@ -100,9 +100,6 @@ fun GlassDetailScaffold(
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // 按压来源：缩放与压暗都发生在 GlassSurface 上，点击发生在里面的 Box 上，两者共用同一个 source
-    val backPress = remember { MutableInteractionSource() }
-    val actionPress = remember { MutableInteractionSource() }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -180,6 +177,9 @@ private fun DetailHeader(
     modifier: Modifier = Modifier,
 ) {
     val background = MaterialTheme.colorScheme.background
+    // 按压来源：缩放/压暗在 GlassSurface 上，点击在里面的 Box 上，两者共用同一个 source
+    val backPress = remember { MutableInteractionSource() }
+    val actionPress = remember { MutableInteractionSource() }
 
     Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight + HeaderFadeTail)) {
         // 内容从下面滚过去时淡出，标题不会和内容叠在一起
