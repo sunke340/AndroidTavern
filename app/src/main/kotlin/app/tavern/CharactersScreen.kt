@@ -65,10 +65,14 @@ fun CharactersScreen(
                 val shape = RoundedCornerShape(Radius.card)
                 Column(
                     modifier = Modifier
+                        // 只做"位置变化"动画，**不要出现/消失的淡入淡出**（2026-11-23 用户报：
+                        // 从二级页返回时卡片"颜色由浅到深"再显出来）。换页时这棵子树是重建的，
+                        // 新的 LazyGrid 会被测两遍，第二遍里所有 item 对动画器都是"第一次见"
+                        // → fadeInSpec 把它们整体从 alpha 0 淡上来。传 null 就只留 placement。
                         .animateItem(
-                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                            fadeInSpec = null,
                             placementSpec = tween(Motion.Slow, easing = Motion.Standard),
-                            fadeOutSpec = tween(Motion.Fast),
+                            fadeOutSpec = null,
                         )
                         .fillMaxWidth()
                         .clip(shape)

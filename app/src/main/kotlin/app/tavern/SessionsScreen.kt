@@ -80,16 +80,14 @@ fun SessionsScreen(
             ) {
                 items(state.sessions, key = { it.id }) { session ->
                     ListRow(
+                        // 同上（见角色卡页那条注释）：只做位置动画，不做出现/消失的淡入淡出。
                         modifier = Modifier.animateItem(
-                            fadeInSpec = androidx.compose.animation.core.tween(
-                                Motion.Base,
-                                easing = Motion.Decelerate,
-                            ),
+                            fadeInSpec = null,
                             placementSpec = androidx.compose.animation.core.tween(
                                 Motion.Slow,
                                 easing = Motion.Standard,
                             ),
-                            fadeOutSpec = androidx.compose.animation.core.tween(Motion.Fast),
+                            fadeOutSpec = null,
                         ),
                         title = session.cardName,
                         subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
