@@ -25,52 +25,61 @@ sealed interface Destination {
 }
 // depth: Tabs=0, Settings/Detail=1, Chat/CardConfig/ProfileEdit=2
 // 转场风格可选（NavAnimation，默认「标准」）：
-//   标准：进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
+//   标准：进：新页整屏从右滑入（当前页左移 1/4 做视差）
+//        返回：当前页（深）整屏向右滑走；上一页从 -1/4 滑回原位（靠 zIndex 让退场页在上）
 //   淡入：交叉淡化；关闭：完全不要动画（排查用）
-// 注意：位移**只能做在"进来那页"上**，见下面"永远是 target 在上层"那条。
+// 叠放次序：`targetContentZIndex = depth`，返回时深的那页在上（见下面"叠放次序"一节）。
 ```
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
-### 永远是"进来的那页"在上层：zIndex 救不了（踩了四轮，2026-11-22 结案）
+### 叠放次序：zIndex 按"深度"给，**返回时深的那页在上**（2026-11-23 结案）
 
-现象演进：返回"像从右下角弹出" → 改方向没用 → 改 `targetContentZIndex`（0/1/2）没用 →
-改 ±1 没用 → 录屏逐帧发现"返回时画面 246ms 里一个像素没动，一帧就切完了"。
+**结论**：`AnimatedContent` 能做到"二级页盖在一级页上面滑走"，做法是给每页一个按深度递增的
+`targetContentZIndex`。之前认为"做不到、只能自己写容器"是**错的**，原因见下面"为什么当年试不出来"。
 
-真因（读 Compose `AnimatedContent.kt` 源码确认）：它给**每一个**可见内容套的都是同一个 spec 的
-`ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)`。两层拿到同一个值，
-zIndex 等于没设，只能退回"后放置的在上"，而 target 是最后放置的 —— 所以**永远是进来那页在上**，
-退场那页的位移永远看不见。文档里"能设 zIndex 改变叠放"在这版实现上对**同一过渡内的两层**不成立。
-
-**源码级复核（2026-11-23，用户要求"查资料确认"）**：`animation-android:1.7.6` 的
-`AnimatedContent.kt` 里，每个可见内容都套同一个
+**机制（源码）**：每个可见内容的 zIndex 在**它自己进场那一刻**就定下来，之后不再变：
 
 ```kotlin
-ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)   // 同一个 spec！
-// 内部：placeable.place(0, 0, zIndex = zIndex)
+// AnimatedContent.kt —— 每个可见内容各一份 remember，没有 key
+val specOnEnter = remember { transitionSpec(rootScope) }
+...
+placeable.place(0, 0, zIndex = specOnEnter.targetContentZIndex)
 ```
 
-`specOnEnter` 是**当前这一段转场**的 `ContentTransform`，两个可见内容拿到的是**同一个值**，
-所以 zIndex 必然打平；打平后由放置顺序决定，而 `currentlyVisible` 把 target 放在最后
-（源码注释原话：*"This makes the composable associated with the targetState get placed last,
-so the target composable will be displayed on top"*）→ 永远是进来那页在上。
+所以退场那页保留的是**它进场时**拿到的值，和"进来那页现在拿到的值"可以不同。
+Navigation 3 的 `NavDisplay` 就是靠这个：navigate 时 `max+1`、pop 时 `min-1`（[NavDisplay.kt]）。
 
-**这不是 1.7.6 的 bug**：`androidx-main`（2026-11-23 拉的最新源码）是同一行
-`ZIndexModifierElement(specOnEnter.targetContentZIndex, stateForContent)`，API 也没有
-"每层一个 zIndex"的入口。**结论：真做不到，要"二级页盖在上面滑走"只能自己管容器**
-（`Box` + 两个孩子各自 `Modifier.zIndex` + 自己维护离场页的生命周期与动画进度）。
-所以除非换个观感诉求，**不要为这个重写导航**：现在这条路已经把"上一页从左侧压回"做对了。
+我们的深度是全序（0/1/2），所以不用计数器，直接 `targetContentZIndex = depthOf(targetState)`：
 
-结论与规矩：
+| 动作 | 进来那页 | 退场那页（进场时的值） | 谁在上 |
+|---|---|---|---|
+| 进详情 0→1 | 1 | 0 | 新页 |
+| 再进聊天 1→2 | 2 | 1 | 新页 |
+| **返回 2→1** | **1** | **2** | **退场那页** ← 这时它才能"滑走" |
+| 同深度（1→1、2→2） | 相等 | 相等 | 打平 → 后放置的（新页）在上，正确 |
 
-1. **位移只做在"进来那页"（enter）上**；返回的观感靠"上一页从左侧滑回"，不要指望"当前页滑出去"。
-2. **退场那页（exit）只负责"活满时长"**。`ExitTransition.None` 会让旧页在 12–14ms 内就被移除
-   （实测日志），动画期间露出来的是窗口底色。所以给它一个满时长、位移为 0 的 slideOut 占位。
-3. 判据：**「返回完全没动画」＝ 动的那层在下层**。先看 `nav ... 页面移除，距上次换页 Nms` 这行日志：
-   ~280ms 说明转场跑了（那就是叠放问题），几十毫秒说明转场没跑（问题在状态层）。
+**位移的配套**（`MainScreen` 的 `transitionSpec`）：
+- 进：新页整屏从右滑入；当前页向左让 `1/4`（视差，它在底下，只露出边）。
+- 退：当前页（深）**整屏向右滑走**；上一页（浅）从 `-1/4` 滑回原位 —— 这两个位移量必须一致
+  （`1/4`），否则"退场页滑走"和"底下的页归位"对不上，看着像两张纸各动各的。
+- 曲线都用 `Motion.Decelerate`（进）与 `Motion.Standard`（退），时长 `Motion.Slow`。
+
+**为什么当年试不出来（两个混淆变量，别再踩）**：
+1. 那轮退场位移是 `{ 0 }` 或 `1/4` 且**叠放是反的** —— 屏幕上一个像素都不动，
+   归因到了"zIndex 无效"；其实是"动的那层被盖住了"。
+2. 当时改 zIndex 只对**进来那页**生效，而决定谁在上面的是**退场页进场时**的值 —— 改错了对象。
+
+**判据**：返回时应该看到当前页整屏向右滑走、上一页从左边归位。若看到"上一页从上层滑进来盖住
+当前页"，就是 zIndex 没生效：先查 `depthOf(target)` 有没有正常递增，再查
+`transitionSpec` 是不是在别处被覆盖成 `(enter togetherWith exit)`（那个 infix 把 zIndex 固定成 0f）。
 
 **退场别配比位移更短的淡出**：280ms 位移 + 180ms 淡出的组合会让退场页提前变透明，
 后面露出的就是窗口底色，观感是"闪一下"。页面切换只留纯位移，不叠 fade。
+
+**退场页只负责"活满时长"这条仍然成立**：`ExitTransition.None` 会让旧页在 12–14ms 内就被移除
+（实测），所以必须给它满时长的位移。日志判据：`nav ... 页面移除，距上次换页 Nms`，
+~280ms 说明转场跑了；几十毫秒说明转场没跑（问题在状态层，不在动画层）。
 
 ### `AnimatedContent` 必须 `fillMaxSize()` + `using(null)`（真正的病根，2026-11-22）
 

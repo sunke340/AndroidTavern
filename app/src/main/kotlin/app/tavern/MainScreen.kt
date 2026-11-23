@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -188,55 +189,60 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 // 而它与默认开启的 SizeTransform 组合起来会把换页变成"新页面从 0 长到满屏"。
                 modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
-                    // 叠放次序由深度决定：深的总在上面。
-                    //
-                    // 不设 zIndex 时 AnimatedContent 默认把**新进来的内容放在最上层**
-                    // （官方文档原话：among content with the same zIndex, the incoming
-                    // target content will be on top, as it will be placed last），
-                    // 于是"返回"变成：上一级（浅的那页）从上层滑进来，盖住正在退场的当前页，
-                    // 两层朝同一方向错位滑动 —— 观感就成了"从右下角弹出来"。
-                    // 设了 zIndex，返回时深度更大的当前页天然在顶层，才是"把一张卡抽走"。
+                    // 叠放次序由深度决定（zIndex 的推导见下面那段注释）。
+                    // 不设 zIndex 时 AnimatedContent 把**新进来的内容放在最上层**
+                    // （官方文档原话：among content with the same zIndex, the incoming target
+                    // content will be on top, as it will be placed last），于是"返回"变成：
+                    // 上一级（浅的那页）从上层滑进来盖住当前页 —— 观感是"从右下角弹出来"。
                     val forward = depthOf(targetState) >= depthOf(initialState)
                     // 系统「移除动画」：整页位移换成交叉淡化（保留"页面变了"的提示，去掉"页面在动"）
                     val anim = if (reduceMotion) NavAnimation.Fade else state.navAnimation
-                    // ⚠️ 硬约束（2026-11-22 从 Compose 源码 + 逐帧录屏两头确认）：
-                    // AnimatedContent 给**每一个**可见内容套的都是同一个 spec 的
-                    // `ZIndexModifierElement(specOnEnter.targetContentZIndex, ...)`，两层拿到同一个值，
-                    // 于是永远退回"后放置的在上"= **永远是进来的那页在上层**。
-                    // 给 targetContentZIndex 设 0/1/2 或 ±1 都改变不了（真机逐帧验证：246ms 里一个像素没动）。
-                    // 所以：**位移只做在"进来那页"上**，退场那页只负责"活满时长 + 不露底色"。
+                    // ── 叠放次序：按"深度"给每页一个 zIndex（2026-11-23 晚，抄 Navigation 3 的做法）──
+                    //
+                    // AnimatedContent 里**每页的 zIndex 在它自己进场那一刻就定死了**
+                    // （源码：`val specOnEnter = remember { transitionSpec(rootScope) }`，
+                    //  placement 时 `place(0, 0, zIndex = specOnEnter.targetContentZIndex)`）。
+                    // 也就是说：**退场那页保留的是它进场时的值**，和进来那页的值可以不同 ——
+                    // 之前以为"两层必然打平"是错的，那次实验的变量在退场位移≈0，看不出来。
+                    //
+                    // 于是：深的那页进场时拿更大的 zIndex（0/1/2 就是层级深度）。
+                    //   进详情 0→1：新页 1 > 旧页 0，新页在上 ✓
+                    //   返回   2→1：进来的是浅页（1），退场的是深页（进场时拿的 2）→ **深页在上** ✓
+                    // 这就是"二级页盖在一级页上面滑走"能成立的原因；Navigation 3 的 NavDisplay
+                    // advance 时 max+1、pop 时 min-1 是同一套账（我们深度是全序，直接用 depth 即可）。
+                    val zIndex = depthOf(targetState).toFloat()
                     val enter: EnterTransition = when (anim) {
-                        // 进：新页整屏从右滑入；返回：上一页从左侧 1/3 处滑回（当前页原位被覆盖）
+                        // 进：新页整屏从右滑入；返回：底下的浅页从左侧 1/4 处滑回
+                        // （1/4 是它被盖住时退场的位移量，两者对上才有"抽走卡片"的连续感）
                         NavAnimation.Slide ->
                             if (forward) {
                                 slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { it }
                             } else {
-                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 3 }
+                                slideInHorizontally(tween(Motion.Slow, easing = Motion.Decelerate)) { -it / 4 }
                             }
 
                         NavAnimation.Fade -> fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
                         NavAnimation.None -> EnterTransition.None
                     }
                     val exit: ExitTransition = when (anim) {
-                        // 退场那页在上层底下，位移看不见。这里只要求它**别提前被销毁**：
-                        // exit = None 时 AnimatedContent 会在十几毫秒内就把旧页移除（实测 12–14ms），
-                        // 于是动画期间露出来的是窗口底色。用满时长的位移（退 1/4 / 原地 0）把它留住。
+                        // 进：当前页被盖住，向左让 1/4（视差）
+                        // 返回：当前页在**上层**，整屏向右滑走 —— 这才是"卡片被抽走"
                         NavAnimation.Slide ->
                             if (forward) {
                                 slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { -it / 4 }
                             } else {
-                                slideOutHorizontally(tween(Motion.Slow)) { 0 }
+                                slideOutHorizontally(tween(Motion.Slow, easing = Motion.Standard)) { it }
                             }
 
                         NavAnimation.Fade -> fadeOut(tween(Motion.Base))
                         NavAnimation.None -> ExitTransition.None
                     }
-                    // using(null) = 关掉尺寸动画。这是上一轮录屏逐帧查出的另一个病根：
+                    // sizeTransform = null = 关掉尺寸动画。这是上一轮录屏逐帧查出的另一个病根：
                     // AnimatedContent 默认带 SizeTransform，容器尺寸会在旧页→新页之间弹簧动画，
                     // 两页在重建瞬间量出的尺寸不一致时容器从 ~0 弹到满屏，里面的 fillMaxSize 内容
                     // 被压在窄框里重排、超出的被裁掉 —— 看着像"内容从屏幕中央长出来"。
-                    // sizeTransform 的 setter 是 internal，只能 using(null)。
-                    (enter togetherWith exit).using(null)
+                    // （setter 是 internal，走构造参数或 `using(null)` 都行。）
+                    ContentTransform(enter, exit, targetContentZIndex = zIndex, sizeTransform = null)
                 },
                 label = "destination",
             ) { target ->
