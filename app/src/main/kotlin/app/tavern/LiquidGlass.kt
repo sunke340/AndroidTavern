@@ -40,7 +40,7 @@ data class LiquidGlassSpec(
     val refraction: Float = 0.22f,
     /** 色散（0..1）：R/B 通道用略微不同的偏移采样，边缘出现很淡的彩色边。0 就是无色散。 */
     val dispersion: Float = 0.03f,
-    /** 内侧反光强度（0..1）：很淡的一层"湿润感"，不是厚玻璃那种镜面。 */
+    /** 上下内侧反光强度（0..1）：很淡的一层"湿润感"，不是厚玻璃那种镜面。 */
     val specular: Float = 0.10f,
     /**
      * 玻璃面白底浓度（0..1）。**不透明度主要靠它**：
@@ -48,20 +48,24 @@ data class LiquidGlassSpec(
      */
     val faceWhite: Float = 0.22f,
     /**
-     * 底边内阴影强度（0..1）。薄玻璃**基本不要**这东西 —— 0.18 时是一条明显灰带
-     * （用户："底部阴影感觉太明显"），现在 0.03 只留一丝。
+     * 底边内阴影强度（0..1）。**已经归零**：现在的光照是"上下出高光、左右压暗"，
+     * 底部再压一道灰带会破坏上下对称（2026-11-23 用户要求）。留着这个字段只为以后调。
      */
-    val innerShadow: Float = 0.03f,
+    val innerShadow: Float = 0f,
     /**
      * 边缘细光线的宽度（dp）。参照里的玻璃胶囊就是"一圈 1px 的光边"，靠它立住轮廓，
      * 不是靠厚倒角。别超过 1.5dp，否则又变成描边。
      */
     val rimWidthDp: Float = 1.1f,
-    /** 细光线亮度（0..1）：朝光那侧最亮，背光侧留一线。 */
+    /** 细光线亮度（0..1）：**上方与下方**最亮，左右两侧只剩一线。 */
     val rimAlpha: Float = 0.85f,
-    /** 光源方向（xy，右下为正）。左上打光 = (-0.35, -0.94)。 */
-    val lightX: Float = -0.35f,
-    val lightY: Float = -0.94f,
+    /**
+     * 左右两侧的内阴影强度（0..1）。
+     *
+     * 光照模型是"上下打光"：上下边缘出高光、左右两侧压暗 —— 看起来像一根竖着受光的圆管，
+     * 这是胶囊/圆钮最耐看的打光（2026-11-23 用户指定，原来是"左上角单侧光"）。
+     */
+    val sideShadow: Float = 0.12f,
 )
 
 /**
@@ -88,8 +92,9 @@ uniform float  uFaceWhite;
 uniform float  uInnerShadow;
 uniform float  uRimWidth;
 uniform float  uRimAlpha;
+uniform float  uSideShadow;
+uniform float  uSideWidth;
 uniform float4 uTint;
-uniform float2 uLight;
 
 float sdRoundRect(float2 p, float2 hs, float r) {
     float2 q = abs(p) - hs + r;
@@ -134,17 +139,21 @@ half4 main(float2 fragCoord) {
     rgb = mix(rgb, float3(0.985, 0.98, 1.0), uFaceWhite);
     rgb = mix(rgb, uTint.rgb, uTint.a);
 
-    // 细光线：贴着边界的一圈亮线（薄玻璃靠它立轮廓），朝光侧更亮、背光侧只留一线
-    float3 lt = normalize(float3(uLight, 0.35));
-    float lit = 0.55 + 0.45 * clamp(dot(float3(n, 0.0), lt), 0.0, 1.0);
+    // 光从**上方与下方**来：竖向上的边缘（n.y 大）出高光，左右两侧（n.x 大）压暗
+    float vertical = abs(n.y);
+    float horizontal = abs(n.x);
+
+    // 细光线：上下亮、左右只留一线（薄玻璃靠它立轮廓）
+    float lit = 0.28 + 0.72 * vertical;
     float rim = (1.0 - smoothstep(0.0, uRimWidth, distIn)) * inside;
     rgb = mix(rgb, float3(1.0), rim * lit * uRimAlpha);
 
-    // 很淡的内侧反光（湿润感），不做成厚透镜的镜面
-    float3 nn = normalize(float3(n, 0.85));
-    float3 l = normalize(float3(uLight, 0.75));
-    float facing = clamp(dot(nn, l), 0.0, 1.0);
-    rgb = rgb + (pow(facing, 8.0) * band * inside * uSpecular);
+    // 上下内侧的柔和反光（湿润感），不做成厚透镜的镜面
+    rgb = rgb + (pow(vertical, 6.0) * band * inside * uSpecular);
+
+    // 左右两侧的内阴影：贴着左右边界最重，往里化开
+    float sideMask = horizontal * (1.0 - smoothstep(0.0, uSideWidth, distIn)) * inside;
+    rgb = rgb * (1.0 - uSideShadow * sideMask);
 
     float t = clamp((fragCoord.y - origin.y) / uShapeSize.y, 0.0, 1.0);
     float inner = smoothstep(0.55, 1.0, t) * band * inside;
@@ -185,8 +194,10 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uInnerShadow", spec.innerShadow)
         shader.setFloatUniform("uRimWidth", spec.rimWidthDp * density.density)
         shader.setFloatUniform("uRimAlpha", spec.rimAlpha)
+        shader.setFloatUniform("uSideShadow", spec.sideShadow)
+        // 侧阴影从边界往里化开的距离：比折射带宽一点，才不会是一条硬边
+        shader.setFloatUniform("uSideWidth", spec.edgeDp * 1.5f * density.density)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
-        shader.setFloatUniform("uLight", spec.lightX, spec.lightY)
         RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
     }.onFailure {
         // 真机没 logcat：着色器编译失败必须留痕，否则只会看到"按钮没效果"
