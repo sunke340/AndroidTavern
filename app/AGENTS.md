@@ -374,9 +374,11 @@ MainScreen（Destination + AnimatedContent）
 完整的三张表（该不该动 / 曲线与时长 / 评审 Never Ship）在 [docs/design/motion.md](../docs/design/motion.md)。
 这里只放每次都要遵守的：
 
-- **进入/退出用强 ease-out**：`Motion.Decelerate = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)`。
-  别用 `ease-in`（起步慢，正拖住用户盯着的那一下），也别退回 `FastOutSlowInEasing`；
-  旧值 `(0,0,0,1)` 是数学极端减速，240ms 会读成"先弹一下再爬"。
+- **进入曲线 = `Motion.Decelerate = CubicBezierEasing(0.25f, 0.46f, 0.45f, 0.94f)`**（ease-out-quad）。
+  它换过三次，判据是"位移摊在哪个时段"：240ms 的翻页用强 ease-out `(0.23,1,0.32,1)` 时
+  前 10% 的时间就走掉 40% 位移、约 75ms 视觉走完 —— 用户反馈"太快"；现在约 155ms 走完。
+  **要更慢先加时长（`Motion.Slow` 240→280），不要再把曲线往缓推**（会变成起步发木）。
+  别用 `ease-in`，也别退回 `FastOutSlowInEasing` 或 `(0,0,0,1)`。
 - **可被打断的东西用弹簧，不用 tween**：`tween` 重定向会从零起跑（那下顿挫就是不丝滑）；
   弹簧带着当前速度继续走。**归位类动画阻尼必须 1.0**（欠阻尼 = "复位后再抽一下"）。
 - **减动效要自己接**：`rememberReduceMotion()`（`ReducedMotion.kt`，取

@@ -41,14 +41,24 @@
 **Compose 里的对应值**（`Motion.kt`）：
 
 ```kotlin
-Motion.Decelerate = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)   // 强 ease-out，进/淡入
-Motion.Standard   = CubicBezierEasing(0.2f, 0f, 0f, 1f)       // 退场位移
+Motion.Decelerate = CubicBezierEasing(0.25f, 0.46f, 0.45f, 0.94f)  // ease-out-quad，进/淡入
+Motion.Standard   = CubicBezierEasing(0.2f, 0f, 0f, 1f)            // 退场位移（M3 emphasized）
 ```
 
 - **禁止 `ease-in`**：它起步慢，正好把用户盯着看的那一刻拖住。同样 200ms，ease-out 感觉更快。
-- **不要退回 Material 内置的 `FastOutSlowInEasing`**：那套曲线在 200–240ms 的位移上偏"软"，
-  上面的表明确点名要换成强曲线。旧值 `(0,0,0,1)` 也不要：那是数学极端减速（起步斜率无穷大、
-  后段几乎不动），240ms 翻页会读成"先弹一下再爬"。
+- **进入曲线怎么选，别看"是不是 ease-out"，看它把位移摊在哪里**。240ms 的翻页实测
+  （数字 = 该时刻已走完全程的百分比）：
+
+  | 曲线 | 10% 时间 | 25% | 50% | 视觉上走完 |
+  |---|---|---|---|---|
+  | `(0,0,0,1)` | — | — | — | 起步斜率无穷大，读成"弹射" |
+  | `(0.23,1,0.32,1)` 强 ease-out | 40% | 78% | 97% | ~75ms（240ms 只用掉 1/3） |
+  | `(0.25,0.46,0.45,0.94)` **现在** | 19% | 45% | 77% | ~155ms |
+
+  强曲线在数学上更"利落"，但用户的实际反馈是"翻页有点太快"—— 因为它 75ms 就走完，
+  剩下的 165ms 是几乎不动的尾巴。所以：**要"更快"调曲线，要"更慢"先调时长**
+  （`Motion.Slow` 240 → 280），把曲线再往缓推会变成"起步发木"。
+- **别退回 `FastOutSlowInEasing`**（Material 内置那套偏软），也别用 `(0,0,0,1)`。
 
 **时长**：
 
