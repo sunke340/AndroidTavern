@@ -41,6 +41,7 @@ class RubberOverscrollState internal constructor() {
 @Composable
 fun rememberRubberOverscroll(): RubberOverscrollState = remember { RubberOverscrollState() }
 
+@Composable
 fun Modifier.rubberOverscroll(state: RubberOverscrollState): Modifier {
     val density = LocalDensity.current
     val maxPx = with(density) { state.maxStretchDp.dp.toPx() }
