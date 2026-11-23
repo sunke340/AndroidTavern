@@ -65,7 +65,7 @@ data class LiquidGlassSpec(
      * 光照模型是"上下打光"：上下边缘出高光、左右两侧压暗 —— 看起来像一根竖着受光的圆管，
      * 这是胶囊/圆钮最耐看的打光（2026-11-23 用户指定，原来是"左上角单侧光"）。
      */
-    val sideShadow: Float = 0.07f,
+    val sideShadow: Float = 0.04f,
 )
 
 /**
