@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -43,8 +46,10 @@ fun PageHeader(
 ) {
     val background = MaterialTheme.colorScheme.background
     val actionPress = remember { MutableInteractionSource() }
+    // 页头一直铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Box(modifier = modifier.fillMaxWidth().height(PageHeaderHeight + HeaderFadeTail)) {
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + PageHeaderHeight + HeaderFadeTail)) {
         if (glass) {
             // 玻璃档：整条页头是一块磨砂玻璃（内容从下面滚过去被糊掉，标题自然清楚）
             GlassBand(
@@ -70,7 +75,11 @@ fun PageHeader(
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
-            modifier = Modifier.fillMaxWidth().height(PageHeaderHeight).padding(horizontal = Space.l),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = statusBar)
+                .height(PageHeaderHeight)
+                .padding(horizontal = Space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

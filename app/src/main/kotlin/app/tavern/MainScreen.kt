@@ -387,7 +387,8 @@ private fun TabsRoot(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding())
+                    // 不再给状态栏让位：内容铺满整屏，滚到页头（含状态栏）下面时会被磨砂糊掉，
+                    // 状态栏因此和页头连成一片（用户 2026-11-23 要求）。
                     .onGloballyPositioned {
                         contentOrigin.value = it.positionInWindow()
                         contentSize.value = it.size
@@ -453,9 +454,7 @@ private fun TabsRoot(
                 glass = glassOn,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = padding.calculateTopPadding()),
+                modifier = Modifier.align(Alignment.TopCenter),
                 actions = headerActions,
             )
 

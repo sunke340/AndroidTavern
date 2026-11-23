@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -41,6 +44,8 @@ fun CharactersScreen(
     bottomPadding: Dp = 0.dp,
 ) {
     val palette = LocalTavernPalette.current
+    // 页头一直铺到状态栏后面，网格要让出"状态栏 + 页头"的高度
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -49,7 +54,7 @@ fun CharactersScreen(
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = PageHeaderHeight + Space.s,
+                top = PageHeaderHeight + Space.s + statusBar,
                 bottom = Space.l + bottomPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),

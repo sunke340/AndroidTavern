@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.width
@@ -104,6 +105,7 @@ fun GlassDetailScaffold(
     // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）。
     // 注意是**并集**不是相加：键盘弹出时导航栏区域本来就被键盘盖住了，两个数相加会多抬一个导航栏高度。
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -117,7 +119,7 @@ fun GlassDetailScaffold(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
+                    // 内容铺到状态栏后面：页头（含状态栏）磨砂盖住它，滚过去的内容会被糊掉
                     .onGloballyPositioned { origin.value = it.positionInWindow() }
                     .drawWithContent {
                         if (glass) {
@@ -134,7 +136,7 @@ fun GlassDetailScaffold(
             ) {
                 content(
                     PaddingValues(
-                        top = contentTopInset,
+                        top = contentTopInset + statusBar,
                         bottom = inner.calculateBottomPadding() + maxOf(navBottom, imeBottom),
                     ),
                 )
@@ -162,7 +164,7 @@ fun GlassDetailScaffold(
                 frost = frost,
                 contentOrigin = { origin.value },
                 actions = actions,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+                modifier = Modifier.align(Alignment.TopCenter),
             )
         }
     }
@@ -181,11 +183,13 @@ private fun DetailHeader(
     modifier: Modifier = Modifier,
 ) {
     val background = MaterialTheme.colorScheme.background
+    // 页头铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 按压来源：缩放/压暗在 GlassSurface 上，点击在里面的 Box 上，两者共用同一个 source
     val backPress = remember { MutableInteractionSource() }
     val actionPress = remember { MutableInteractionSource() }
 
-    Box(modifier = modifier.fillMaxWidth().height(DetailHeaderHeight + HeaderFadeTail)) {
+    Box(modifier = modifier.fillMaxWidth().height(statusBar + DetailHeaderHeight + HeaderFadeTail)) {
         // 内容从下面滚过去时淡出，标题不会和内容叠在一起
         if (glass) {
             GlassBand(
@@ -210,7 +214,11 @@ private fun DetailHeader(
         }
         Row(
             // 标题只占页头本身的高度；多出来的 tail 专门留给渐变收尾
-            modifier = Modifier.fillMaxWidth().height(DetailHeaderHeight).padding(horizontal = Space.l),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = statusBar)
+                .height(DetailHeaderHeight)
+                .padding(horizontal = Space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             GlassSurface(

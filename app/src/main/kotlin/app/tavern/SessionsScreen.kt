@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,6 +52,8 @@ fun SessionsScreen(
     // 悬浮底栏压在内容上，列表底部要让出它的高度，否则最后一行被胶囊压住。
     bottomPadding: Dp = 0.dp,
 ) {
+    // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
@@ -57,7 +62,7 @@ fun SessionsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = Space.l)
-                    .padding(top = PageHeaderHeight + Space.l),
+                    .padding(top = PageHeaderHeight + Space.l + statusBar),
             ) {
                 EmptyHint("还没有会话。点右上「＋」选一张卡开始。")
             }
@@ -66,7 +71,7 @@ fun SessionsScreen(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
                 contentPadding = PaddingValues(
-                    top = PageHeaderHeight + Space.s,
+                    top = PageHeaderHeight + Space.s + statusBar,
                     bottom = Space.l + bottomPadding,
                 ),
                 verticalArrangement = Arrangement.Top,

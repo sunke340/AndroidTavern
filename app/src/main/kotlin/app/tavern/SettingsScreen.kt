@@ -2,6 +2,9 @@ package app.tavern
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -21,6 +24,8 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         " · 最大输出 ${state.maxTokensText.takeIf { it != "0" } ?: "不限"}"
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +
         if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
+    // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
     val enabledBooks = state.worldBooks.count { it.enabled }
     val worldBookSummary = "全局 ${state.worldBooks.size} 本（启用 $enabledBooks）· $bookCards 张卡带内嵌书"
@@ -28,7 +33,7 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = PageHeaderHeight + Space.s),
+            .padding(top = PageHeaderHeight + Space.s + statusBar),
     ) {
         SettingLinkRow("模型", modelSummary) { viewModel.openSettingsPage(SettingsPage.Model) }
         SettingLinkRow("采样", samplingSummary) { viewModel.openSettingsPage(SettingsPage.Sampling) }

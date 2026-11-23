@@ -6,8 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
@@ -21,15 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -69,7 +69,10 @@ private val RimLayers = listOf(
 )
 
 /** 按下放大：整块玻璃（投影、高光、内容）一起放，不做"只有图标动"也不压暗。 */
-private const val PressScale = 1.05f
+private const val PressScale = 1.25f
+
+/** 按压动画时长：90ms 太快（看不出过程），170ms 才有"弹一下"的手感。 */
+private const val PressDurationMs = 170
 
 
 
@@ -148,6 +151,8 @@ fun GlassSurface(
     interactionSource: MutableInteractionSource? = null,
     /** 覆盖玻璃面的填充色（发送钮用主题色）。null = 原来的半透明面。 */
     fillColor: Color? = null,
+    /** 高光环的颜色；null = 白。发送钮这种主题色按钮要传主色，否则白边很扎眼。 */
+    rimColor: Color? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalTavernPalette.current
@@ -162,7 +167,8 @@ fun GlassSurface(
     }
     val pressScale by animateFloatAsState(
         targetValue = if (pressed) PressScale else 1f,
-        animationSpec = tween(90),
+        // 非线性：先快后慢（Decelerate），配 170ms 才有弹性感
+        animationSpec = tween(PressDurationMs, easing = Motion.Decelerate),
         label = "glass-press-scale",
     )
 
@@ -246,9 +252,10 @@ fun GlassSurface(
                 .drawBehind {
                     val radius = CornerRadius(size.height / 2f)
                     if (glass) {
+                        val rimTint = rimColor ?: Color.White
                         RimLayers.forEach { (width, alpha) ->
                             drawRoundRect(
-                                color = Color.White.copy(alpha = alpha),
+                                color = rimTint.copy(alpha = alpha),
                                 cornerRadius = radius,
                                 style = Stroke(width.toPx()),
                             )
@@ -284,51 +291,59 @@ fun GlassBand(
     background: Color,
     modifier: Modifier = Modifier,
 ) {
-    val pad = with(LocalDensity.current) { GlassBlur.roundToPx() }
     var origin by remember { mutableStateOf(Offset.Zero) }
-    var logged by remember { mutableStateOf(false) }
+    var bandSize by remember { mutableStateOf(IntSize.Zero) }
 
     Box(
-        modifier = modifier
-            .onGloballyPositioned {
-                origin = it.positionInWindow()
-                if (!logged) {
-                    logged = true
-                    // 排障用：页头磨砂没出来时，先看这行的坐标对不对（origin 应≈ contentOrigin）
-                    app.tavern.data.log.AppLog.i(
-                        "glass",
-                        "band origin=$origin content=${contentOrigin()} size=${it.size}",
-                    )
-                }
-            }
-            // 遮罩要把"已经画出来的东西"按 alpha 拾掉，必须离屏合成
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0.00f to Color.Black,
-                        1.00f to Color.Transparent,
-                    ),
-                    blendMode = BlendMode.DstIn,
-                )
-            },
+        modifier = modifier.onGloballyPositioned {
+            origin = it.positionInWindow()
+            bandSize = it.size
+        },
     ) {
-        Box(Modifier.matchParentSize().expandForBlur(pad)) {
-            Canvas(Modifier.fillMaxSize().blur(GlassBlur)) {
-                val offset = origin - contentOrigin()
-                translate(left = pad.toFloat(), top = pad.toFloat()) {
-                    scale(FrostScale, FrostScale, pivot = Offset.Zero) {
-                        translate(left = -offset.x / FrostScale, top = -offset.y / FrostScale) {
-                            drawLayer(frost)
+        // 磨砂层：按条切开，每条一个透明度（上实下透），整块再统一模糊一次。
+        // 为什么不用 DstIn 遮罩：在真机上它把整层都擦掉了（页头变透明、文字全透出来），
+        // 换成"分条透明度 + 父节点模糊"，只用最普通的绘制路径。
+        Box(Modifier.matchParentSize().blur(GlassBlur)) {
+            Column(Modifier.fillMaxSize()) {
+                val stripHeight = if (bandSize.height > 0) bandSize.height / BandStrips.toFloat() else 0f
+                repeat(BandStrips) { index ->
+                    val stripAlpha = 1f - index / (BandStrips - 1f)
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .clipToBounds()
+                            .graphicsLayer { alpha = stripAlpha },
+                    ) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val offset = origin + Offset(0f, index * stripHeight) - contentOrigin()
+                            scale(FrostScale, FrostScale, pivot = Offset.Zero) {
+                                translate(left = -offset.x / FrostScale, top = -offset.y / FrostScale) {
+                                    drawLayer(frost)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        Box(Modifier.matchParentSize().background(background.copy(alpha = BandTintAlpha)))
+
+        // 底色：一条线性渐变（顶实底透），不加平台段
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.00f to background.copy(alpha = BandTintAlpha),
+                        1.00f to Color.Transparent,
+                    ),
+                ),
+        )
     }
 }
+
+/** 磨砂带切几条；8 条配 12dp 模糊，肉眼看不出台阶。 */
+private const val BandStrips = 8
 
 /** 页头磨砂带的底色浓度：太低标题会和糊底糊在一起，太高又变回一条色块。 */
 private const val BandTintAlpha = 0.62f
@@ -342,6 +357,7 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource? = null,
     fillColor: Color? = null,
+    rimColor: Color? = null,
     content: @Composable BoxScope.() -> Unit,
 ) = GlassSurface(
     frost = backdrop.frost,
@@ -351,5 +367,6 @@ fun GlassSurface(
     modifier = modifier,
     interactionSource = interactionSource,
     fillColor = fillColor,
+    rimColor = rimColor,
     content = content,
 )
