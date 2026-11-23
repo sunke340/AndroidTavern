@@ -65,7 +65,7 @@ class RubberOverscrollState internal constructor() {
      * 这段时间只能"吃掉"，不能再累积 [raw]、也不能打断已经开始回弹的动画，
      * 否则内容会被反复按在远端（用户看到的就是"悬停"）。
      */
-    private fun isFling(source: NestedScrollSource): Boolean =
+    internal fun isFling(source: NestedScrollSource): Boolean =
         source == NestedScrollSource.Fling
 
     /** 正在跑的回弹动画。手指一落就掐掉它，否则新手势会被旧动画拽回去。 */
