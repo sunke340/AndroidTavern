@@ -55,6 +55,8 @@ internal fun <S> PageStack(
     // 参与绘制的页面（按加入顺序）。当前页永远在最后一个。
     val pages: SnapshotStateList<Destination> = remember { mutableStateListOf(target) }
     var forward by remember { mutableStateOf(true) }
+    /** 转场动画是否正在跑；false 时只画原来那页（见下面"还没开始转场"那段）。 */
+    var running by remember { mutableStateOf(false) }
     val progress = remember { Animatable(1f) }
     val latestOnRemoved by rememberUpdatedState(onRemoved)
 
@@ -69,16 +71,23 @@ internal fun <S> PageStack(
     SideEffect { snapshots[target] = state }
 
     LaunchedEffect(target) {
-        if (pages.last() == target) return@LaunchedEffect
         val from = pages.last()
+        if (from == target) return@LaunchedEffect
         forward = depthOf(target) >= depthOf(from)
+        // ⚠️ 顺序不能反：先把进度归零、再打开 running，最后才把新页塞进 pages。
+        // 三次写在同一帧里提交，所以下一帧看到的就是"running + 两页 + 进度 0"这个正确的起点。
+        //
+        // 反过来的代价（2026-11-24 用户报的"页面突然跳到 -1/4 再复位"）：
+        // 如果 pages 先加新页、而 running/进度还是上一轮的值（progress = 1），
+        // 那离场页会先用 p=1 的终态渲染一帧 —— 进方向是 `-w/4`、返回是 `+w` 的一帧闪现，
+        // 肉眼看就是"整屏跳一下"，也就是用户说的闪烁。
+        progress.snapTo(0f)
+        running = mode != NavAnimation.None
         pages.add(target)
-        if (mode == NavAnimation.None) {
-            progress.snapTo(1f)
-        } else {
-            progress.snapTo(0f)
+        if (running) {
             // 淡入（减动效）与位移共用同一条时长曲线，保证两档切换时节奏一致
             progress.animateTo(1f, tween(Motion.Slow, easing = Motion.Decelerate))
+            running = false
         }
         // 只留下目标页（从头删，目标页永远在最后，所以它的组合不会被丢掉）
         while (pages.size > 1) pages.removeAt(0)
@@ -87,8 +96,11 @@ internal fun <S> PageStack(
     }
 
     Box(modifier.fillMaxSize()) {
-        val p = if (mode == NavAnimation.None) 1f else progress.value
-        pages.forEach { dest ->
+        val p = progress.value
+        // 还没开始转场（目标刚变、效应还没跑，或者第一帧）：**只画原来那页、不做任何变换**。
+        // 这一帧的画面与点击前完全一致，所以不会闪；转场从下一帧开始。
+        val visible = if (running) pages else listOf(pages.last())
+        visible.forEach { dest ->
             key(dest) {
                 val isIncoming = dest == target
                 // 叠放：进 = 新页在上；返回 = 旧页（深）在上
@@ -99,7 +111,12 @@ internal fun <S> PageStack(
                         .zIndex(if (onTop) 1f else 0f)
                         .graphicsLayer {
                             val w = size.width
-                            if (mode == NavAnimation.Fade) {
+                            // 没在转场时一律"原样"：位置 0、不透明。
+                            // （不这么写的话，第一帧会拿上一轮残留的 p=1 去算 alpha/位移 → 闪一下空白。）
+                            if (!running) {
+                                alpha = 1f
+                                translationX = 0f
+                            } else if (mode == NavAnimation.Fade) {
                                 // 减动效：只淡化，不位移
                                 alpha = if (isIncoming) p else 1f - p
                             } else if (isIncoming) {
