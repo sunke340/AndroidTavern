@@ -100,11 +100,11 @@ Motion.Standard   = CubicBezierEasing(0.2f, 0f, 0f, 1f)            // 退场位�
 ```
 
 - **边界用橡皮筋，不用硬墙**：`visual = raw·R·K/(R+K·raw)`（R=400dp、K=0.6），
-  越拉越紧、导数为 0。[RubberOverscroll.kt](../app/src/main/kotlin/app/tavern/RubberOverscroll.kt)
+  越拉越紧、导数为 0。[RubberOverscroll.kt](../../app/src/main/kotlin/app/tavern/RubberOverscroll.kt)
   与苹果公开的 `o·D·K/(D+K·|o|)`（K=0.55）是同一个式子。
 - **速度交接**：松手时把手指速度交给弹簧，衔接处才没有缝。
 - **可打断**：新输入进来时从**当前值**接着算，从"目标值"重算会跳一下；
-  光 `cancel()` 不够，还要代数守卫（见 [app/AGENTS.md](../app/AGENTS.md) 的橡皮筋一节）。
+  光 `cancel()` 不够，还要代数守卫（见 [app/AGENTS.md](../../app/AGENTS.md) 的橡皮筋一节）。
 - **"怪异的弹簧"九成是阻尼太小**，先加阻尼再怀疑别的。
 
 ## 五、减动效（已接，2026-11-23）
@@ -121,7 +121,7 @@ Motion.Standard   = CubicBezierEasing(0.2f, 0f, 0f, 1f)            // 退场位�
 口径是"**更少更轻，不是全关**"：帮助理解的变化（淡化、手指直接拖出来的位移）保留，
 位移与缩放这类"装饰性运动"去掉。
 
-实现：`rememberReduceMotion()`（[ReducedMotion.kt](../app/src/main/kotlin/app/tavern/ReducedMotion.kt)），
+实现：`rememberReduceMotion()`（[ReducedMotion.kt](../../app/src/main/kotlin/app/tavern/ReducedMotion.kt)），
 取 `ValueAnimator.areAnimatorsEnabled()`，并在 `ON_RESUME` 重读（去设置里开关再回来即时生效）。
 **渲染点统一用它，不要各自去读系统设置。**
 
