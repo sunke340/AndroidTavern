@@ -217,6 +217,8 @@ private fun ChatInputBar(
             backdrop = backdrop,
             glass = glass,
             shape = RoundedCornerShape(Radius.pill),
+            // 输入区压在消息正文上，投影用半强度（用户 2026-11-24：阴影存在感有点强）
+            shadowScale = 0.5f,
             modifier = Modifier.weight(1f).height(44.dp),
         ) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
@@ -261,6 +263,8 @@ private fun ChatInputBar(
                 glass = glass,
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp),
+                // 与输入胶囊同一个强度，否则一行里两个影子深浅不一
+                shadowScale = 0.5f,
                 interactionSource = sendPress,
                 // 液态玻璃：整颗钮就是一块小透镜，背后的消息会在边缘被弯进来
                 liquid = LiquidGlassSpec.Default,

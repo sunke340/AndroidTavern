@@ -19,6 +19,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -479,42 +487,66 @@ private fun TavernBottomBar(
             shape = shape,
             modifier = Modifier.fillMaxWidth().height(BarHeight),
         ) {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(Space.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                barItems.forEach { item ->
-                    val selected = current == item.screen
-                    val tint = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    Column(
+            // 选中底块只有**一块**，跟着选中项滑过去。
+            // 之前是每个 tab 自己画一块 14% 主色：切换时一块消失、另一块出现，看着就是"闪一下"。
+            val reduceMotion = rememberReduceMotion()
+            var rowWidth by remember { mutableStateOf(0) }
+            val cell = rowWidth.toFloat() / barItems.size
+            val index = barItems.indexOfFirst { it.screen == current }.coerceAtLeast(0)
+            val pillX by animateFloatAsState(
+                targetValue = index * cell,
+                animationSpec = if (reduceMotion) {
+                    snap()
+                } else {
+                    // 屏幕上移动属于"空间连续"，用 ease-in-out 一类；200ms 跟得上手指又不算慢
+                    tween(200, easing = Motion.Standard)
+                },
+                label = "tab-pill",
+            )
+            Box(Modifier.fillMaxSize().padding(Space.xs)) {
+                if (rowWidth > 0) {
+                    Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .offset { IntOffset(pillX.roundToInt(), 0) }
+                            .width(with(LocalDensity.current) { cell.toDp() })
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(Radius.pill))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                else Color.Transparent,
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxSize().onSizeChanged { rowWidth = it.width },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    barItems.forEach { item ->
+                        val selected = current == item.screen
+                        val tint = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(Radius.pill))
+                                .clickable { onSelect(item.screen) },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                item.icon,
+                                contentDescription = item.label,
+                                tint = tint,
+                                modifier = Modifier.size(20.dp),
                             )
-                            .clickable { onSelect(item.screen) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(
-                            item.icon,
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = item.label,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = tint,
-                        )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = item.label,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = tint,
+                            )
+                        }
                     }
                 }
             }

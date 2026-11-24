@@ -201,6 +201,14 @@ fun GlassSurface(
      */
     shadowBottomOnly: Boolean = false,
     /**
+     * 投影强度的倍数（只乘 alpha，不改模糊半径）。
+     *
+     * 默认 1（所有玻璃面同一套投影）。**唯一的例外是聊天输入区**：它压在消息正文上，
+     * 全强度的影子会和文字抢注意力（2026-11-24 用户："聊天页下方的阴影存在感有点强"），
+     * 那里传 0.5。**不要拿它去"按视觉效果档位压投影"** —— 那条禁令还在（见 ADR 0007）。
+     */
+    shadowScale: Float = 1f,
+    /**
      * 液态玻璃（真折射）。传 null = 老样式（半透明面 + 描边）。
      *
      * 只有 [glass] + [frost] 都有、且系统 ≥ API 33 时生效；否则自动退回老样式。
@@ -292,7 +300,9 @@ fun GlassSurface(
                     .align(Alignment.BottomCenter)
                     .offset(y = BottomShadowHeight / 2)
                     .blur(ShadowBlur * 0.6f, BlurredEdgeTreatment.Unbounded)
-                    .drawBehind { drawRect(Color.Black.copy(alpha = BottomShadowAlpha)) },
+                    .drawBehind {
+                        drawRect(Color.Black.copy(alpha = BottomShadowAlpha * shadowScale))
+                    },
             )
         } else if (glass && shadow) {
             // 投影：一层模糊的黑色胶囊，四周均匀扩散（不下沉）。模糊自带渐变，内部不会出亮度台阶。
@@ -308,7 +318,7 @@ fun GlassSurface(
                     .blur(ShadowBlur, BlurredEdgeTreatment.Unbounded)
                     .drawBehind {
                         drawRoundRect(
-                            color = Color.Black.copy(alpha = ShadowAlpha),
+                            color = Color.Black.copy(alpha = ShadowAlpha * shadowScale),
                             cornerRadius = cornerRadiusOf(shape),
                         )
                     },
@@ -447,6 +457,7 @@ fun GlassSurface(
     rimColor: Color? = null,
     shadow: Boolean = true,
     shadowBottomOnly: Boolean = false,
+    shadowScale: Float = 1f,
     // 默认必须和另一个重载一致（`LiquidGlassSpec.Default`），写成 null 会把默认关掉 ——
     // 曾经的后果：聊天输入框走这条重载、没显式传，于是全 App 只有它还是旧玻璃（2026-11-23）。
     liquid: LiquidGlassSpec? = LiquidGlassSpec.Default,
@@ -462,6 +473,7 @@ fun GlassSurface(
     rimColor = rimColor,
     shadow = shadow,
     shadowBottomOnly = shadowBottomOnly,
+    shadowScale = shadowScale,
     liquid = liquid,
     content = content,
 )
