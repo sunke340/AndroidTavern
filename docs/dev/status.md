@@ -128,10 +128,10 @@
 ### A. 结构整理（修订顺序见 [structure-audit.md](structure-audit.md) 第九节）
 
 1. ~~第 1 轮：包分层 + 抽两个工具件~~ → **只做了后半**（`010c042`）。包分层**不做**。
-2. **P2（下一个）**：新建 `docs/dev/pitfalls.md` 收历史踩坑，把 `app/AGENTS.md` 从 **42.4 KB 瘦到
-   ≤12 KB**（每次会话都进上下文，整条链 52.3/64 KB）。分法：**规则留 AGENTS（一行规则 + 一行理由 +
-   链接），细节去 pitfalls** —— 反过来等于没写。
-3. **P3**：debug-only 的 `GalleryScreen`（材质/动效/行样式预览 + 三根材质滑杆），调参不再每次出包。
+2. ~~P2：`app/AGENTS.md` 瘦身~~ → **已完成**：42.4 KB → **8.9 KB**，旧文件逐字归档进
+   [pitfalls.md](pitfalls.md)。整条 AGENTS 链 52.3 KB → **17.8 KB（28% of 64 KB）**。
+   以后**新规则只往这份 8.9 KB 里加一行**，故事写进 pitfalls。
+3. **P3（下一个）**：debug-only 的 `GalleryScreen`（材质/动效/行样式预览 + 三根材质滑杆），调参不再每次出包。
 4. **P4**：`Style.kt` 638 行只留 token，行系统搬进**同包**的 `ListRow.kt`（同包拆文件零 import 代价）。
 5. ~~拆 `ChatViewModel`~~ → **不做**（1304 行、0 个 composable、40 字段单一状态机）；要动只抽纯逻辑
    （世界书两本缓存、流式拼接），见 structure-audit 第六节。

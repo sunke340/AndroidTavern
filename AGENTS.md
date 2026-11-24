@@ -86,9 +86,11 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
 | **当前状态与下一步（压缩上下文后先读这个）** | [docs/dev/status.md](docs/dev/status.md) |
 | 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
+| **历史踩坑与细节**（为什么是这个数字、试过哪几条路） | [docs/dev/pitfalls.md](docs/dev/pitfalls.md) |
 | 夜间那一轮的计划与结果（历史） | [docs/plan-overnight.md](docs/plan-overnight.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
 | 本机能力边界（实测） | [docs/environment.md](docs/environment.md) |
 
 模块级规则在各自目录的 `AGENTS.md`（`core/` `data/` `feature/` `app/`），**进入该目录工作时自动加载**，就近优先。
 本文件与嵌套文件合计只有 64 KB 预算（DSH 的指令链上限），所以这里只放"每次都要遵守的"，其余链接出去。
+当前用了约 18 KB（`app/AGENTS.md` 在 2026-11-24 从 42 KB 瘦到 8.9 KB，历史细节搬去了 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)）—— 再加节之前先看还剩多少。
