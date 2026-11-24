@@ -21,6 +21,19 @@ data class ChatSession(
     val lastFromUser: Boolean = false,
 )
 
+/**
+ * 导入时的一条消息：日期**原样保留**（导入的历史不该变成"今天"），
+ * `swipes` 只有最后一条助手消息可能有。
+ */
+data class ImportMessage(
+    val isUser: Boolean,
+    val content: String,
+    val sendDate: String,
+    val isSystem: Boolean = false,
+    val swipes: List<String> = emptyList(),
+    val swipeId: Int = 0,
+)
+
 /** 库里的一条消息。`sendDate` 是原版格式的 ISO 时间（`2026-11-21T17:14:24.829Z`）。 */
 data class StoredMessage(
     val id: Long,
@@ -71,4 +84,16 @@ interface ChatRepository {
 
     /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
     fun deleteSessionsForCard(cardId: String): Int
+
+    /**
+     * 导入一段聊天：建一个会话 + 批量写消息（单事务，一次失败不会留下半个会话）。
+     *
+     * `title` 由调用方给（通常是"导入 卡名 时间"）；返回新会话 id。
+     */
+    fun importSession(
+        cardId: String,
+        cardName: String,
+        title: String,
+        messages: List<ImportMessage>,
+    ): String
 }

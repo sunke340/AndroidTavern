@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import app.tavern.data.chat.ChatRepository
 import app.tavern.data.chat.ChatSession
+import app.tavern.data.chat.ImportMessage
 import app.tavern.data.chat.StoredMessage
 import java.time.Instant
 import java.time.ZoneOffset
@@ -119,6 +120,63 @@ class SqliteChatRepository(context: Context) : ChatRepository {
             "card_id = ?",
             arrayOf(cardId),
         )
+
+    override fun importSession(
+        cardId: String,
+        cardName: String,
+        title: String,
+        messages: List<ImportMessage>,
+    ): String {
+        val db = helper.writableDatabase
+        val now = System.currentTimeMillis()
+        val sessionId = UUID.randomUUID().toString()
+        db.beginTransaction()
+        try {
+            db.insertOrThrow(
+                TavernDatabase.TABLE_SESSIONS,
+                null,
+                ContentValues().apply {
+                    put("id", sessionId)
+                    put("card_id", cardId)
+                    put("card_name", cardName)
+                    put("title", title)
+                    put("created_at", now)
+                    put("updated_at", now)
+                },
+            )
+            messages.forEach { message ->
+                val messageId = db.insertOrThrow(
+                    TavernDatabase.TABLE_MESSAGES,
+                    null,
+                    ContentValues().apply {
+                        put("session_id", sessionId)
+                        put("is_user", if (message.isUser) 1 else 0)
+                        put("is_system", if (message.isSystem) 1 else 0)
+                        put("content", message.content)
+                        put("send_date", message.sendDate)
+                    },
+                )
+                // 备选与原版一致：当前那条也在列表里
+                if (message.swipes.isNotEmpty()) {
+                    message.swipes.forEachIndexed { seq, text ->
+                        db.insertOrThrow(
+                            TavernDatabase.TABLE_MESSAGE_SWIPES,
+                            null,
+                            ContentValues().apply {
+                                put("message_id", messageId)
+                                put("seq", seq)
+                                put("content", text)
+                            },
+                        )
+                    }
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return sessionId
+    }
 
     override fun deleteMessage(id: Long) {
         helper.writableDatabase.delete(TavernDatabase.TABLE_MESSAGES, "id = ?", arrayOf(id.toString()))

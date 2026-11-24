@@ -40,6 +40,7 @@ import app.tavern.core.tokenizer.Tokens
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
+import app.tavern.data.chat.ImportMessage
 import app.tavern.data.log.AppLog
 import app.tavern.data.presets.PresetRef
 import app.tavern.data.sessionstate.SessionScanStateRepository
@@ -968,6 +969,55 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }.onFailure { error ->
                 AppLog.w("chat", "导出失败：${error.message}")
                 notify("导出失败：${error.message}")
+            }
+        }
+    }
+
+    /**
+     * 导入原版 `.jsonl` 聊天到某张卡下（P0-7 的导入侧）。
+     *
+     * 解析交给 `:core:chat-format`（首行表头、坏行丢弃都是原版行为）；这里只负责
+     * "原版消息 → 库行"：`send_date` 原样保留（导入的历史不该变成今天），
+     * 最后一条的 swipe 备选也一起写进 `message_swipes`。
+     */
+    fun importChat(cardId: String, uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = getApplication<Application>().contentResolver
+                        .openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                        ?: error("读不到文件")
+                    val file = ChatFile.parse(text)
+                    if (file.messages.isEmpty()) error("文件里没有消息")
+                    val imported = file.messages.map { message ->
+                        ImportMessage(
+                            isUser = message.isUser,
+                            isSystem = message.isSystem,
+                            content = message.text,
+                            sendDate = message.sendDate ?: "1970-01-01T00:00:00.000Z",
+                            swipes = if (message.isUser) emptyList() else message.swipes,
+                            swipeId = message.swipeId,
+                        )
+                    }
+                    val cardName = _state.value.cards.firstOrNull { it.id == cardId }?.name
+                        ?: error("这张卡已经不在列表里")
+                    val sessionId = chatRepository.importSession(
+                        cardId = cardId,
+                        cardName = cardName,
+                        title = "导入 $cardName ${stamp()}",
+                        messages = imported,
+                    )
+                    sessionId to imported.size
+                }
+            }
+            result.onSuccess { (sessionId, count) ->
+                AppLog.i("chat", "导入聊天 $count 条 card=${cardId.take(8)}")
+                refreshSessions()
+                openSessionInternal(sessionId, navigate = false)
+                notify("已导入 $count 条消息")
+            }.onFailure { error ->
+                AppLog.w("chat", "导入失败：${error.message}")
+                notify("导入失败：${error.message}")
             }
         }
     }

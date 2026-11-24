@@ -68,6 +68,8 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":data"))
     implementation(project(":core:card-format"))
+    // 聊天记录导出/导入：原版 .jsonl 的读写（raw JSON 是真相，别在 app 里手拼）
+    implementation(project(":core:chat-format"))
     implementation(project(":core:prompt"))
     implementation(project(":core:lorebook"))
     implementation(project(":core:tokenizer"))

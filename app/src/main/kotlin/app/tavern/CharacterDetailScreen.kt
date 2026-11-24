@@ -1,5 +1,7 @@
 package app.tavern
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -86,7 +88,20 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
+            // 导入聊天：.jsonl 的 MIME 各家文件管理器报得不一样，多收几个类型
+            val importChatLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri -> if (uri != null) viewModel.importChat(cardId, uri) }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("导入聊天记录") },
+                    onClick = {
+                        menuOpen = false
+                        importChatLauncher.launch(
+                            arrayOf("application/jsonl", "text/plain", "application/octet-stream"),
+                        )
+                    },
+                )
                 DropdownMenuItem(
                     text = {
                         Text("删除这张卡", color = MaterialTheme.colorScheme.error)
