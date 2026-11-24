@@ -103,13 +103,13 @@ data class LiquidGlassSpec(
          *   （0.22 时它完全被头顶内容支配，就在浅灰/深灰之间漂）。
          */
         /**
-         * 动作单 / 选卡弹层：同一套光，但**面更实一档**（`faceWhite` 0.22 → 0.40）。
+         * 动作单 / 选卡弹层：同一套光，但**面更实一档**（`faceWhite` 0.22 → 0.50）。
          *
          * 弹层比胶囊大得多，整屏尺寸上 0.22 的白底太"飘"，背后的内容会把标题和文字顶掉
          * （用户 2026-11-24："透明度降低一点点"—— 是更不透、更实，不是更透）。
          * 单独一份实例 = 调弹层不会连带改胶囊。
          */
-        val Sheet = Default.copy(faceWhite = 0.40f)
+        val Sheet = Default.copy(faceWhite = 0.50f)
 
         val HeaderBand = LiquidGlassSpec(
             edgeDp = 8f,
