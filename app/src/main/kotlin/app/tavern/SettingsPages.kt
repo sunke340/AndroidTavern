@@ -111,8 +111,8 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  */
 @Composable
 private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    var actionTarget by remember { mutableStateOf<ModelProfile?>(null) }
     var pendingDelete by remember { mutableStateOf<ModelProfile?>(null) }
+    val sheet = LocalSheetController.current
 
     if (state.profiles.isEmpty()) {
         EmptyHint("还没有档案。点右上「新建」。")
@@ -137,19 +137,15 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             },
             leading = { ActiveMark(profile.isDefault) },
             onClick = { viewModel.setDefaultProfile(profile.id) },
-            onLongClick = { actionTarget = profile },
-        )
-    }
-
-    // 编辑 / 删除都收进长按抽屉：与会话、世界书同一个入口，行尾不再挂一个小按钮
-    actionTarget?.let { profile ->
-        ActionSheet(
-            title = profile.name,
-            onDismiss = { actionTarget = null },
-            actions = listOf(
-                SheetAction("编辑") { viewModel.openProfileEditor(profile.id) },
-                SheetAction("删除", destructive = true) { pendingDelete = profile },
-            ),
+            onLongClick = {
+                sheet.show(
+                    title = profile.name,
+                    actions = listOf(
+                        SheetAction("编辑") { viewModel.openProfileEditor(profile.id) },
+                        SheetAction("删除", destructive = true) { pendingDelete = profile },
+                    ),
+                )
+            },
         )
     }
 
@@ -333,8 +329,8 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
         if (uri != null) viewModel.importWorldBook(uri)
     }
     // 删除走长按：行尾只留开关，不再塞一个删除图标（那会让每行都很挤，也容易误触）
-    var actionTarget by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
+    val sheet = LocalSheetController.current
 
     SectionLabel("全局世界书（${state.worldBooks.size} 本）")
     if (state.worldBooks.isEmpty()) {
@@ -357,7 +353,16 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     )
                 },
                 onClick = { viewModel.openWorldBook(book.name) },
-                onLongClick = { actionTarget = book.name },
+                onLongClick = {
+                    sheet.show(
+                        title = book.name,
+                        actions = listOf(
+                            SheetAction("删除世界书", destructive = true) {
+                                pendingDelete = book.name
+                            },
+                        ),
+                    )
+                },
             )
         }
     }
@@ -369,18 +374,6 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     ) {
         Text("导入世界书（.json）")
     }
-    actionTarget?.let { name ->
-        DangerActionSheet(
-            title = name,
-            actionLabel = "删除世界书",
-            onDismiss = { actionTarget = null },
-            onAction = {
-                actionTarget = null
-                pendingDelete = name
-            },
-        )
-    }
-
     pendingDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },

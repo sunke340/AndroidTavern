@@ -47,8 +47,9 @@ fun SessionsScreen(
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 拉到头还能继续拖（带阻尼），松手弹回
     val overscroll = rememberRubberOverscroll()
-    var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
+    // 动作单由页面骨架渲染（要画在录图层之外才能真磨砂），这里只"请求"
+    val sheet = LocalSheetController.current
 
     // 分组与时间标签都以"进入这一屏的那一刻"为准：不在滚动途中重算，行标签才不会半路跳变
     val now = remember(state.sessions) { System.currentTimeMillis() }
@@ -93,7 +94,16 @@ fun SessionsScreen(
                             meta = item.meta,
                             leading = { RowAvatar(item.session.cardId, item.session.cardName) },
                             onClick = { viewModel.openSession(item.session.id) },
-                            onLongClick = { actionTarget = item.session },
+                            onLongClick = {
+                                sheet.show(
+                                    title = item.session.title,
+                                    actions = listOf(
+                                        SheetAction("删除会话", destructive = true) {
+                                            pendingDelete = item.session
+                                        },
+                                    ),
+                                )
+                            },
                         )
                     }
                 }
@@ -103,19 +113,6 @@ fun SessionsScreen(
 
     // 选卡弹层（新建会话前必须先选卡）
     CardPickerSheet(state = state, viewModel = viewModel)
-
-    // 长按动作单：现在只有删除，以后可以加"重命名 / 导出"（与会话、世界书共用一套）
-    actionTarget?.let { session ->
-        DangerActionSheet(
-            title = session.title,
-            actionLabel = "删除会话",
-            onDismiss = { actionTarget = null },
-            onAction = {
-                actionTarget = null
-                pendingDelete = session
-            },
-        )
-    }
 
     pendingDelete?.let { session ->
         AlertDialog(

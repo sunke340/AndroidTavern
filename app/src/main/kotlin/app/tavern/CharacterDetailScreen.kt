@@ -36,8 +36,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -85,7 +83,8 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     var confirmDeleteCard by remember { mutableStateOf(false) }
-    var actionTargetSession by remember { mutableStateOf<ChatSession?>(null) }
+    // 动作单交给页面骨架渲染（GlassDetailScaffold 的浮层），这里只请求
+    val sheet = LocalSheetController.current
     var pendingDeleteSession by remember { mutableStateOf<ChatSession?>(null) }
 
     GlassDetailScaffold(
@@ -216,7 +215,16 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     meta = sessionTimeLabel(session.updatedAt),
                                     leading = { RowAvatar(session.cardId, session.cardName) },
                                     onClick = { viewModel.openSession(session.id) },
-                                    onLongClick = { actionTargetSession = session },
+                                    onLongClick = {
+                                        sheet.show(
+                                            title = session.title,
+                                            actions = listOf(
+                                                SheetAction("删除会话", destructive = true) {
+                                                    pendingDeleteSession = session
+                                                },
+                                            ),
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -277,41 +285,6 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 TextButton(onClick = { confirmDeleteCard = false }) { Text("取消") }
             },
         )
-    }
-
-    actionTargetSession?.let { session ->
-        ModalBottomSheet(
-            onDismissRequest = { actionTargetSession = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.background,
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    session.title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
-                )
-                androidx.compose.material3.ListItem(
-                    headlineContent = {
-                        Text("删除会话", color = MaterialTheme.colorScheme.error)
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                    modifier = Modifier
-                        .padding(bottom = Space.xl)
-                        .clickable {
-                            pendingDeleteSession = session
-                            actionTargetSession = null
-                        },
-                )
-            }
-        }
     }
 
     pendingDeleteSession?.let { session ->

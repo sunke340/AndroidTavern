@@ -102,6 +102,8 @@ fun GlassDetailScaffold(
 ) {
     val background = MaterialTheme.colorScheme.background
     val layer = rememberGraphicsLayer()
+    // 动作单宿主：二级页自己的录图层（frost）喂给弹层，弹的才是这一页的内容
+    val sheet = remember { SheetController() }
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -137,12 +139,14 @@ fun GlassDetailScaffold(
                         }
                     },
             ) {
-                content(
-                    PaddingValues(
-                        top = contentTopInset + statusBar,
-                        bottom = inner.calculateBottomPadding() + maxOf(navBottom, imeBottom),
-                    ),
-                )
+                CompositionLocalProvider(LocalSheetController provides sheet) {
+                    content(
+                        PaddingValues(
+                            top = contentTopInset + statusBar,
+                            bottom = inner.calculateBottomPadding() + maxOf(navBottom, imeBottom),
+                        ),
+                    )
+                }
             }
 
             if (bottomOverlay != null) {
@@ -169,6 +173,14 @@ fun GlassDetailScaffold(
                 contentOrigin = { origin.value },
                 actions = actions,
                 modifier = Modifier.align(Alignment.TopCenter),
+            )
+
+            // 压在页头与输入区之上
+            GlassActionSheetHost(
+                controller = sheet,
+                frost = frost,
+                contentOrigin = { origin.value },
+                glass = glass,
             )
         }
     }

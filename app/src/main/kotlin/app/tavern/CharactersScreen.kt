@@ -67,8 +67,8 @@ fun CharactersScreen(
     val overscroll = rememberRubberOverscroll()
 
     // 长按出的抽屉与删除确认：与会话、世界书、模型档案同一个手势
-    var actionTarget by remember { mutableStateOf<CardRef?>(null) }
     var pendingDelete by remember { mutableStateOf<CardRef?>(null) }
+    val sheet = LocalSheetController.current
     // 每张卡有几个会话：直接数已经加载的会话列表，不再多查一次库
     val sessionCounts = remember(state.sessions) {
         state.sessions.groupingBy { it.cardId }.eachCount()
@@ -121,7 +121,20 @@ fun CharactersScreen(
                         interactionSource = press,
                         indication = null,
                         onClick = { viewModel.openDetail(card.id) },
-                        onLongClick = { actionTarget = card },
+                        onLongClick = {
+                            sheet.show(
+                                title = card.name,
+                                actions = listOf(
+                                    SheetAction("开始新会话") {
+                                        viewModel.startSessionForCard(card.id)
+                                    },
+                                    SheetAction("查看详情") { viewModel.openDetail(card.id) },
+                                    SheetAction("删除角色卡", destructive = true) {
+                                        pendingDelete = card
+                                    },
+                                ),
+                            )
+                        },
                     ),
             ) {
                 CardAvatar(
@@ -148,18 +161,6 @@ fun CharactersScreen(
                 }
             }
         }
-    }
-
-    actionTarget?.let { card ->
-        ActionSheet(
-            title = card.name,
-            onDismiss = { actionTarget = null },
-            actions = listOf(
-                SheetAction("开始新会话") { viewModel.startSessionForCard(card.id) },
-                SheetAction("查看详情") { viewModel.openDetail(card.id) },
-                SheetAction("删除角色卡", destructive = true) { pendingDelete = card },
-            ),
-        )
     }
 
     pendingDelete?.let { card ->

@@ -60,6 +60,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -287,6 +288,8 @@ private fun TabsRoot(
     // API 31 以下没有 RenderEffect：那时玻璃档按「轻量」画，连图层都不录（省一遍全屏绘制）。
     // 玻璃档要 API 33+（AGSL 液态玻璃）；低于它只开放轻量
     val glassOn = state.visualEffects.effective() == VisualEffects.Glass
+    // 动作单的宿主状态：页面通过 CompositionLocal 请求，这里渲染（在录图层之外，能采真磨砂）
+    val sheet = remember { SheetController() }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -352,6 +355,7 @@ private fun TabsRoot(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalSheetController provides sheet) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -440,6 +444,15 @@ private fun TabsRoot(
                 contentOrigin = { contentOrigin.value },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+
+            // 动作单画在最后 = 压在页头与底栏之上
+            GlassActionSheetHost(
+                controller = sheet,
+                frost = frostLayer,
+                contentOrigin = { contentOrigin.value },
+                glass = glassOn,
+            )
+            }
         }
     }
 }
