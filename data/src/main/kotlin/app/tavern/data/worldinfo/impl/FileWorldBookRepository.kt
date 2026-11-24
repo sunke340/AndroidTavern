@@ -36,13 +36,19 @@ public class FileWorldBookRepository(context: Context) : WorldBookRepository {
         val book = parseWorldBook(name, json)
         require(book.entries.isNotEmpty()) { "这个文件里没有世界书条目（看 entries 字段）" }
 
-        File(dir, "$name.json").writeText(json, Charsets.UTF_8)
+        val target = File(dir, "$name.json")
+        target.writeText(json, Charsets.UTF_8)
+        // 刚解析过，顺手把条目数缓存写好，省掉列表页再解析一遍
+        prefs.edit()
+            .putString(countKey(name), "${book.entries.size}:${target.length()}:${target.lastModified()}")
+            .apply()
         return WorldBookRef(name = name, entryCount = book.entries.size, enabled = name in enabledSet())
     }
 
     override fun delete(name: String) {
         File(dir, "$name.json").delete()
         setEnabled(name, false)
+        prefs.edit().remove(countKey(name)).apply()
     }
 
     override fun load(name: String): WorldBookFile? {
@@ -91,8 +97,31 @@ public class FileWorldBookRepository(context: Context) : WorldBookRepository {
 
     private fun nameOf(file: File): String = file.name.removeSuffix(".json")
 
-    private fun countEntries(name: String, file: File): Int =
-        runCatching { parseWorldBook(name, file.readText(Charsets.UTF_8)).entries.size }.getOrDefault(0)
+    /**
+     * 条目数**带缓存**：设置页只要一个"N 条"，没必要每次把整本书的 JSON 重新解析一遍
+     * （真机日志里一本书数条目就要 163ms，还是启动路径）。缓存键带字节数与 mtime，文件一改就失效。
+     */
+    private fun countEntries(name: String, file: File): Int {
+        val size = file.length()
+        val mtime = file.lastModified()
+        val cached = prefs.getString(countKey(name), null)
+        if (cached != null) {
+            val parts = cached.split(':')
+            if (parts.size == 3 &&
+                parts[1].toLongOrNull() == size &&
+                parts[2].toLongOrNull() == mtime
+            ) {
+                parts[0].toIntOrNull()?.let { return it }
+            }
+        }
+        val count = runCatching {
+            parseWorldBook(name, file.readText(Charsets.UTF_8)).entries.size
+        }.getOrDefault(0)
+        prefs.edit().putString(countKey(name), "$count:$size:$mtime").apply()
+        return count
+    }
+
+    private fun countKey(name: String): String = "count\u0000$name"
 
     private fun enabledSet(): Set<String> = prefs.getStringSet(KEY_ENABLED, emptySet()).orEmpty()
 

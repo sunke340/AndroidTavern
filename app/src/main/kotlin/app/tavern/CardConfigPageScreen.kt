@@ -2,11 +2,14 @@ package app.tavern
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -49,74 +52,104 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
             null
         },
     ) { padding ->
-        val overscroll = rememberRubberOverscroll()
-        // 从页头底下滑过的那页，让位必须做在 `verticalScroll` **里面**（内容才能滚到页头下）；
-        // 其余页做在外面 —— 内容被裁在页头下方，不会有东西从半透明页头那里透出来。
-        val outerInsets = if (scrollUnderHeader) Modifier else Modifier.padding(padding)
-        val innerInsets = if (scrollUnderHeader) {
-            Modifier.padding(
-                top = padding.calculateTopPadding() + DetailHeaderHeight,
-                bottom = padding.calculateBottomPadding(),
+        if (scrollUnderHeader) {
+            // 条目多的时候**必须懒加载**：非懒加载的 `ListGroup` 会在进页的第一帧里把全部条目
+            // 组合出来 —— 真机日志里出现过 448ms 一帧，转场动画直接被吃掉（用户 2026-11-24）。
+            CardWorldBookPage(
+                detail = detail,
+                cardId = cardId,
+                viewModel = viewModel,
+                padding = padding,
             )
         } else {
-            Modifier
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(outerInsets)
-                .rubberOverscroll(overscroll)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.l)
-                .then(innerInsets),
-            verticalArrangement = Arrangement.spacedBy(Space.m),
-        ) {
-            when (page) {
-                CardConfigPage.WorldBook -> CardWorldBookPage(detail, cardId, viewModel)
-                CardConfigPage.MessageStyle -> CardMessageStylePage(detail, cardId, viewModel)
-                CardConfigPage.Info -> CardInfoPage(detail)
+            val overscroll = rememberRubberOverscroll()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .rubberOverscroll(overscroll)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = Space.l),
+                verticalArrangement = Arrangement.spacedBy(Space.m),
+            ) {
+                when (page) {
+                    CardConfigPage.MessageStyle -> CardMessageStylePage(detail, cardId, viewModel)
+                    CardConfigPage.Info -> CardInfoPage(detail)
+                    else -> Unit
+                }
             }
         }
     }
 }
 
+/**
+ * 卡内嵌书的条目页。
+ *
+ * 用 `LazyColumn` 而不是 `ListGroup`：一本卡的内嵌书可能几百条，`ListGroup` 是第一帧
+ * 就把所有行都组合出来的（实测一帧 257–448ms → 进页动画没了）。
+ * 让位走 `contentPadding`，内容从半透明页头底下滑过 —— 和全局世界书条目页同一套。
+ */
 @Composable
-private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: ChatViewModel) {
+private fun CardWorldBookPage(
+    detail: CardDetail?,
+    cardId: String,
+    viewModel: ChatViewModel,
+    padding: PaddingValues,
+) {
     val entries = detail?.bookEntries.orEmpty()
     val off = detail?.offUids.orEmpty()
     val forced = detail?.forcedUids.orEmpty()
+    val contentPadding = PaddingValues(
+        start = Space.l,
+        end = Space.l,
+        top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
+        bottom = padding.calculateBottomPadding() + Space.l,
+    )
 
     if (entries.isEmpty()) {
-        EmptyHint("这张卡没有内嵌世界书。")
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
+            contentPadding = contentPadding,
+        ) {
+            item { EmptyHint("这张卡没有内嵌世界书。") }
+        }
         return
     }
 
-    // 这一页和全局世界书详情页**完全同一套行**（正文两行预览 + 行尾开关），
-    // 只是行的标题取卡里给的 comment（全局书那边取关键字）：卡里人写的标题更有用。
-    if (forced.isNotEmpty()) {
-        WorldBookForcedHint(
-            modifier = Modifier.padding(start = RowToken.padH, top = Space.s),
-        )
-    }
-    ListGroup(
-        count = entries.size,
-        modifier = Modifier.padding(top = if (forced.isEmpty()) Space.l else Space.xs),
-    ) { index, _ ->
-        val entry = entries[index]
-        WorldBookEntryRow(
-            title = entry.comment,
-            content = entry.content,
-            // 生效状态 = 卡里写的 enabled **叠加** 应用内的两个覆盖（强关 / 强制开启）
-            checked = when {
-                entry.uid in forced -> true
-                entry.uid in off -> false
-                else -> entry.enabled
-            },
-            forcedOn = entry.uid in forced,
-            onToggle = { enabled ->
-                viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
-            },
-        )
+    val count = entries.size
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
+        contentPadding = contentPadding,
+    ) {
+        if (forced.isNotEmpty()) {
+            item {
+                WorldBookForcedHint(
+                    modifier = Modifier.padding(
+                        start = RowToken.padH,
+                        top = Space.xs,
+                        bottom = Space.xs,
+                    ),
+                )
+            }
+        }
+        itemsIndexed(entries) { index, entry ->
+            GroupPiece(piece = rowPieceAt(index, count)) {
+                WorldBookEntryRow(
+                    title = entry.comment,
+                    content = entry.content,
+                    // 生效状态 = 卡里写的 enabled **叠加** 应用内的两个覆盖（强关 / 强制开启）
+                    checked = when {
+                        entry.uid in forced -> true
+                        entry.uid in off -> false
+                        else -> entry.enabled
+                    },
+                    forcedOn = entry.uid in forced,
+                    onToggle = { enabled ->
+                        viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
+                    },
+                )
+            }
+        }
     }
 }
 

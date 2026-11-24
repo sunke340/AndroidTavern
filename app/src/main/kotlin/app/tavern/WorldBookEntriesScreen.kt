@@ -74,7 +74,8 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
                 start = Space.l,
                 end = Space.l,
                 top = padding.calculateTopPadding() + Space.l,
-                bottom = Space.xl,
+                // 底部把导航栏/键盘也吃进去，最后一行不会钻到导航栏下面
+                bottom = padding.calculateBottomPadding() + Space.l,
             ),
         ) {
             // 强制开启只靠红色表示，含义写在这里；没有强制条目时不占位
