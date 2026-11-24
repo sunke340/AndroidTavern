@@ -110,15 +110,21 @@ fun ListGroup(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         for (index in 0 until count) {
-            val piece = when {
-                count == 1 -> RowPiece.Single
-                index == 0 -> RowPiece.Top
-                index == count - 1 -> RowPiece.Bottom
-                else -> RowPiece.Middle
-            }
+            val piece = rowPieceAt(index, count)
             GroupPiece(piece = piece, dividerInset = dividerInset) { row(index, piece) }
         }
     }
+}
+
+/**
+ * 由位置推片型：[ListGroup] 与手写的 `LazyColumn`（拖动排序那种必须懒加载）共用，
+ * 免得两处各写一遍 `when`，改一处忘另一处。
+ */
+fun rowPieceAt(index: Int, count: Int): RowPiece = when {
+    count <= 1 -> RowPiece.Single
+    index == 0 -> RowPiece.Top
+    index == count - 1 -> RowPiece.Bottom
+    else -> RowPiece.Middle
 }
 
 /**

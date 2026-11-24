@@ -5,6 +5,8 @@ import app.tavern.data.cards.CardRepository
 import app.tavern.data.cards.impl.CardStore
 import app.tavern.data.chat.ChatRepository
 import app.tavern.data.chat.impl.SqliteChatRepository
+import app.tavern.data.presets.PresetRepository
+import app.tavern.data.presets.impl.FilePresetRepository
 import app.tavern.data.profiles.ProfileRepository
 import app.tavern.data.profiles.impl.SqliteProfileRepository
 import app.tavern.data.regex.RegexRepository
@@ -40,6 +42,9 @@ object AppGraph {
     @Volatile
     private var regexStore: RegexRepository? = null
 
+    @Volatile
+    private var presetStore: PresetRepository? = null
+
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
             cardStore ?: CardStore(context.applicationContext).also { cardStore = it }
@@ -67,6 +72,12 @@ object AppGraph {
     fun regex(context: Context): RegexRepository =
         regexStore ?: synchronized(this) {
             regexStore ?: PreferencesRegexRepository(context.applicationContext).also { regexStore = it }
+        }
+
+    /** 预设（设置→预设）：导入的 .json + 当前选中的那份。 */
+    fun presets(context: Context): PresetRepository =
+        presetStore ?: synchronized(this) {
+            presetStore ?: FilePresetRepository(context.applicationContext).also { presetStore = it }
         }
 
     /** 模型档案（多套连接配置）。Key 仍由它自己的 SecretStore 管，别在这里碰明文。 */

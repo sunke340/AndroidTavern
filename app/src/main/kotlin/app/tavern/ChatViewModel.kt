@@ -24,6 +24,9 @@ import app.tavern.core.lorebook.LorebookScanner
 import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.lorebook.LorebookScanState
 import app.tavern.core.lorebook.LorebookTokenCounter
+import app.tavern.core.preset.PresetDefaults
+import app.tavern.core.preset.PromptOrderEntry
+import app.tavern.core.preset.SamplingPreset
 import app.tavern.core.prompt.PromptBuilder
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
@@ -33,6 +36,8 @@ import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
+import app.tavern.data.presets.PresetRef
+import app.tavern.data.presets.PresetRepository
 import app.tavern.data.profiles.ProfileRepository
 import app.tavern.data.worldinfo.WorldBookRef
 import kotlinx.coroutines.CancellationException
@@ -158,6 +163,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val bookDisabled: Set<Int> = emptySet(),
         /** 已导入的全局世界书。 */
         val worldBooks: List<WorldBookRef> = emptyList(),
+        // ---- 预设（设置→预设） ----
+        /** 导入的预设文件。 */
+        val presets: List<PresetRef> = emptyList(),
+        /** 当前选中的预设名；null = 内置默认预设。 */
+        val activePreset: String? = null,
+        /** 当前生效的 prompt_order（拖动与开关改的就是这一份）。 */
+        val promptOrder: List<PromptOrderEntry> = emptyList(),
+        /** 选中的预设里那些"纯文本提示词"，拼提示词时按 identifier 取。 */
+        val presetPrompts: Map<String, String> = PresetDefaults.PROMPTS,
+        /** 选中的预设带来的 top_p / 两个 penalty（温度与 max_tokens 仍走采样页那两个输入框）。 */
+        val presetSampling: SamplingPreset? = null,
         /** 正则脚本（导入自 ST 的脚本数组）。 */
         val regexScripts: List<RegexScript> = emptyList(),
         /** 非 null 时显示某本全局书的条目列表。 */
@@ -191,6 +207,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepository = AppGraph.settings(application)
     private val worldBookRepository = AppGraph.worldBooks(application)
     private val regexRepository = AppGraph.regex(application)
+    private val presetRepository: PresetRepository = AppGraph.presets(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -203,6 +220,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         refreshWorldBooks()
         refreshRegexScripts()
+        refreshPresets()
         viewModelScope.launch {
             // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
@@ -993,6 +1011,140 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---- 预设（P1-5） ------------------------------------------------------
+
+    /**
+     * 读回预设列表 + 当前选中的那份，顺带把**生效的 prompt_order** 算出来：
+     * 用户在 App 里改过就用改过的，否则用文件里的，再否则用内置默认表。
+     */
+    fun refreshPresets() {
+        viewModelScope.launch {
+            val presets = withContext(Dispatchers.IO) { presetRepository.list() }
+            val activeName = withContext(Dispatchers.IO) { presetRepository.activeName() }
+            val loaded = withContext(Dispatchers.IO) {
+                activeName?.let { presetRepository.load(it) }
+            }
+            val order = withContext(Dispatchers.IO) {
+                activeName?.let { presetRepository.orderOverride(it) }
+            } ?: loaded?.order
+
+            _state.update {
+                it.copy(
+                    presets = presets,
+                    activePreset = activeName,
+                    promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                    presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
+                    presetSampling = loaded?.sampling,
+                )
+            }
+        }
+    }
+
+    /** 导入一份 ST 预设（`.json`）。导入后自动选中它。 */
+    fun importPreset(uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val name = displayNameOf(uri)
+                    val json = getApplication<Application>().contentResolver
+                        .openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        ?: error("读不到文件")
+                    presetRepository.import(name, json)
+                }
+            }
+            result.onSuccess { ref ->
+                AppLog.i("preset", "导入预设 ${ref.name}（${ref.promptCount} 段，关 ${ref.disabledCount}）")
+                withContext(Dispatchers.IO) { presetRepository.setActive(ref.name) }
+                _state.update {
+                    it.copy(notice = Notice(System.nanoTime(), "已导入「${ref.name}」并选中"))
+                }
+                refreshPresets()
+                applySamplingOf(ref.name)
+            }.onFailure { error ->
+                AppLog.w("preset", "导入预设失败：${error.message}")
+                _state.update { it.copy(notice = Notice(System.nanoTime(), "导入失败：${error.message}")) }
+            }
+        }
+    }
+
+    /** 选中某个预设；传 null = 回到内置默认。 */
+    fun selectPreset(name: String?) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { presetRepository.setActive(name) }
+            AppLog.i("preset", "选中预设 ${name ?: "默认"}")
+            refreshPresets()
+            if (name != null) applySamplingOf(name)
+        }
+    }
+
+    /** 预设里的温度 / max_tokens 灌进采样页那两个输入框（我们只有这两个控件）。 */
+    private fun applySamplingOf(name: String) {
+        viewModelScope.launch {
+            val preset = withContext(Dispatchers.IO) { presetRepository.load(name) } ?: return@launch
+            preset.sampling.temperature?.let { onTemperatureChange(it.toString()) }
+            preset.sampling.maxTokens?.let { onMaxTokensChange(it.toString()) }
+        }
+    }
+
+    fun deletePreset(name: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { presetRepository.delete(name) }
+            AppLog.i("preset", "删除预设 $name")
+            refreshPresets()
+        }
+    }
+
+    /** 开关某一段提示词（改的是本机的顺序覆盖，不动预设文件）。 */
+    fun setPromptEnabled(identifier: String, enabled: Boolean) {
+        val current = _state.value.promptOrder
+        if (current.none { it.identifier == identifier }) return
+        _state.update { it.copy(promptOrder = current.map { entry -> if (entry.identifier == identifier) entry.copy(enabled = enabled) else entry }) }
+        persistPromptOrder()
+    }
+
+    /**
+     * 拖动换位：**只改内存**。
+     *
+     * 拖的过程里每秒会调好几次，每次都落盘太浪费；松手时调 [commitPromptOrder]。
+     */
+    fun movePrompt(from: Int, to: Int) {
+        val current = _state.value.promptOrder
+        if (from !in current.indices || to !in current.indices || from == to) return
+        val next = current.toMutableList()
+        next.add(to, next.removeAt(from))
+        _state.update { it.copy(promptOrder = next) }
+    }
+
+    /** 松手落盘。 */
+    fun commitPromptOrder() {
+        persistPromptOrder()
+    }
+
+    /** 回到预设文件里的原始顺序。 */
+    fun resetPromptOrder() {
+        val name = _state.value.activePreset
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { presetRepository.setOrderOverride(name, null) }
+            refreshPresets()
+        }
+    }
+
+    private fun persistPromptOrder() {
+        val snapshot = _state.value
+        val name = snapshot.activePreset
+        if (name == null) {
+            // 内置默认预设：也不许改顺序（没有文件可对；要改就先导入一份）
+            _state.update { it.copy(notice = Notice(System.nanoTime(), "内置默认预设不能改顺序，先导入一份预设")) }
+            refreshPresets()
+            return
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { presetRepository.setOrderOverride(name, snapshot.promptOrder) }
+        }
+    }
+
     // ---- 正则脚本 ------------------------------------------------------------
 
     fun refreshRegexScripts() {
@@ -1141,6 +1293,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             userName = "User",
             history = history,
             worldInfo = worldInfo,
+            // 顺序与提示词内容都跟着当前预设走；没选预设时是原版默认预设那张表
+            order = snapshot.promptOrder.ifEmpty { PresetDefaults.ORDER },
+            prompts = snapshot.presetPrompts,
         )
 
         _state.update {
@@ -1174,6 +1329,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             temperature = snapshot.temperatureText.toDoubleOrNull() ?: 1.0,
             // 0 = 不限：不往请求里放 max_tokens（以前硬编码 300，长回复会被截）
             maxTokens = snapshot.maxTokensText.toIntOrNull()?.takeIf { it > 0 },
+            // 预设带来的 top_p / 两个 penalty：我们没有对应控件，但请求里该发就发
+            topP = snapshot.presetSampling?.topP,
+            frequencyPenalty = snapshot.presetSampling?.frequencyPenalty,
+            presencePenalty = snapshot.presetSampling?.presencePenalty,
             stream = true,
             extraBody = activeProfile?.reasoningEffort
                 ?.takeIf { it.isNotBlank() }

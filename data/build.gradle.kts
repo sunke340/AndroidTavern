@@ -27,6 +27,8 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:card-format"))
     api(project(":core:regex"))
+    // 预设文件解析在 core:preset；PresetRef/Preset 会出现在 data 的公开签名里
+    api(project(":core:preset"))
 
     // 暂时没有额外依赖：SAF 读流、SharedPreferences、File 都是平台的。
     // 加 Room/DataStore 时再在这里加，别提前引入。

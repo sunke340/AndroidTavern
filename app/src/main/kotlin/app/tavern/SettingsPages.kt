@@ -3,6 +3,18 @@ package app.tavern
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import app.tavern.core.preset.PromptOrderEntry
+import kotlin.math.roundToInt
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -86,6 +98,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             when (page) {
                 SettingsPage.Model -> ModelPage(state, viewModel)
                 SettingsPage.Sampling -> SamplingPage(state, viewModel)
+                SettingsPage.Preset -> PresetPage(state, viewModel)
                 SettingsPage.Appearance -> AppearancePage(state, viewModel)
                 SettingsPage.WorldBook -> WorldBookPage(state, viewModel)
                 SettingsPage.Regex -> RegexPage(state, viewModel)
@@ -515,4 +528,265 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             OutlinedButton(onClick = viewModel::openGallery) { Text("组件预览") }
         }
     }
+}
+
+// ---- 预设（P1-5） ---------------------------------------------------------
+
+/** 顺序列表里一行的高度：拖动换位要按它算像素，必须是**固定值**。 */
+private val OrderRowHeight = 56.dp
+
+/** 顺序列表最多占多高：再高就把整个设置页顶出屏幕，嵌套滚动也不好玩。 */
+private val OrderEditorMaxHeight = 420.dp
+
+/**
+ * 预设页：选哪一份 + 导入/删除 + **提示词顺序**（开关 + 长按拖动换位）。
+ *
+ * 顺序这一块只对导入的预设开放：内置默认预设没有文件可回写，直接改内存里的顺序会让人
+ * 以为"改了永久生效"，其实下次启动就回去了 —— 与其骗人，不如提示先导入一份。
+ */
+@Composable
+private fun PresetPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importPreset(uri)
+    }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
+    val sheet = LocalSheetController.current
+
+    SectionLabel("预设")
+    ListGroup(count = state.presets.size + 1) { index, _ ->
+        if (index == 0) {
+            PresetRow(
+                name = "内置默认预设",
+                subtitle = "原版 Default.json 那张表",
+                active = state.activePreset == null,
+                onClick = { viewModel.selectPreset(null) },
+            )
+        } else {
+            val preset = state.presets[index - 1]
+            PresetRow(
+                name = preset.name,
+                subtitle = if (preset.disabledCount == 0) {
+                    "${preset.promptCount} 段提示词"
+                } else {
+                    "${preset.promptCount} 段 · 关 ${preset.disabledCount}"
+                },
+                active = state.activePreset == preset.name,
+                onClick = { viewModel.selectPreset(preset.name) },
+                onLongClick = {
+                    sheet.show(
+                        title = preset.name,
+                        actions = listOf(
+                            SheetAction("删除预设", destructive = true) {
+                                pendingDelete = preset.name
+                            },
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    Spacer(Modifier.height(Space.m))
+    OutlinedButton(
+        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("导入预设（.json）")
+    }
+
+    SectionLabel("提示词顺序")
+    if (state.activePreset == null) {
+        EmptyHint("内置默认预设不能改顺序。导入一份预设之后，可以在这里开关、长按拖动换位。")
+    } else {
+        PromptOrderEditor(
+            order = state.promptOrder,
+            onToggle = viewModel::setPromptEnabled,
+            onMove = viewModel::movePrompt,
+            onCommit = viewModel::commitPromptOrder,
+        )
+        Spacer(Modifier.height(Space.s))
+        SecondaryAction(text = "恢复预设原顺序", onClick = viewModel::resetPromptOrder)
+    }
+
+    pendingDelete?.let { name ->
+        ConfirmDeleteDialog(
+            title = "删除预设？",
+            message = "「$name」会从这台设备删掉，之后可以重新导入。",
+            onConfirm = {
+                viewModel.deletePreset(name)
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+}
+
+@Composable
+private fun PresetRow(
+    name: String,
+    subtitle: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val trailingSlot: (@Composable () -> Unit)? = if (active) {
+        { Text("✓", style = RowTitleStyle, color = MaterialTheme.colorScheme.primary) }
+    } else {
+        null
+    }
+    ListRow(
+        title = name,
+        subtitle = subtitle,
+        trailing = trailingSlot,
+        onClick = onClick,
+        onLongClick = onLongClick,
+    )
+}
+
+/**
+ * 提示词顺序：**长按整行拖动换位**，行尾开关控制发不发。
+ *
+ * 为什么是"长按起拖"而不是拖拽手柄：手柄在 56dp 的行里只有十几像素宽，手指很难一次抓住；
+ * 长按是这一套里最不容易误触的入口（也和列表的长按抽屉一致 —— 长按 = 对这个条目做点什么）。
+ *
+ * 拖动时只改**内存顺序**，松手才落盘（[onCommit]）：拖的过程每秒会调好几次，
+ * 每次都写 SharedPreferences 既浪费又可能卡顿。
+ */
+@Composable
+private fun PromptOrderEditor(
+    order: List<PromptOrderEntry>,
+    onToggle: (String, Boolean) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    onCommit: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val rowPx = with(density) { OrderRowHeight.toPx() }
+    val listState = rememberLazyListState()
+
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragFrom by remember { mutableIntStateOf(0) }
+    var dragIndex by remember { mutableIntStateOf(0) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+
+    val editorHeight = (OrderRowHeight * order.size).coerceAtMost(OrderEditorMaxHeight)
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxWidth().height(editorHeight),
+    ) {
+        itemsIndexed(order, key = { _, entry -> entry.identifier }) { index, entry ->
+            val dragging = entry.identifier == dragId
+            GroupPiece(
+                piece = rowPieceAt(index, order.size),
+                modifier = Modifier.zIndex(if (dragging) 1f else 0f),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(OrderRowHeight)
+                        .graphicsLayer {
+                            // 手指走了多少就画到哪；列表顺序已经在下面换好了，所以要把"换过去的行数"扣掉
+                            translationY = if (dragging) {
+                                dragOffset - (dragIndex - dragFrom) * rowPx
+                            } else {
+                                0f
+                            }
+                        }
+                        .background(
+                            if (dragging) {
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .pointerInput(entry.identifier) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    dragId = entry.identifier
+                                    dragFrom = index
+                                    dragIndex = index
+                                    dragOffset = 0f
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount.y
+                                    // 以"起点 + 累计位移"算目标位次，避免逐帧累加漂移
+                                    val target = (dragFrom + (dragOffset / rowPx).roundToInt())
+                                        .coerceIn(0, order.lastIndex)
+                                    if (target != dragIndex) {
+                                        onMove(dragIndex, target)
+                                        dragIndex = target
+                                    }
+                                    autoScroll(listState, rowPx, dragIndex, dragOffset, dragFrom)
+                                },
+                                onDragEnd = {
+                                    dragId = null
+                                    dragOffset = 0f
+                                    onCommit()
+                                },
+                                onDragCancel = {
+                                    dragId = null
+                                    dragOffset = 0f
+                                    onCommit()
+                                },
+                            )
+                        }
+                        .padding(horizontal = RowToken.padH),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = promptLabel(entry.identifier),
+                        style = RowTitleStyle,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = entry.enabled,
+                        onCheckedChange = { onToggle(entry.identifier, it) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 拖到列表上下边缘时自动滚动。
+ *
+ * 用 `dispatchRawDelta` 而不是 `animateScrollBy`：拖动事件每秒来几十次，
+ * 每次都起一个协程会把滚动堆起来；直接塞原始位移最跟手。
+ */
+private fun autoScroll(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    rowPx: Float,
+    index: Int,
+    offset: Float,
+    from: Int,
+) {
+    val info = state.layoutInfo
+    val viewport = info.viewportSize.height
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val translation = offset - (index - from) * rowPx
+    val top = item.offset + translation
+    val edge = (viewport * 0.18f).coerceAtLeast(rowPx)
+    when {
+        top < edge -> state.dispatchRawDelta(-rowPx / 4f)
+        top + item.size > viewport - edge -> state.dispatchRawDelta(rowPx / 4f)
+    }
+}
+
+/** identifier → 人话。原版界面里的名字（Main Prompt / Post-History Instructions …）。 */
+private fun promptLabel(identifier: String): String = when (identifier) {
+    "main" -> "主提示词"
+    "nsfw" -> "辅助提示词"
+    "enhanceDefinitions" -> "补强设定"
+    "worldInfoBefore" -> "世界书（前）"
+    "worldInfoAfter" -> "世界书（后）"
+    "charDescription" -> "角色描述"
+    "charPersonality" -> "角色性格"
+    "scenario" -> "场景"
+    "dialogueExamples" -> "示例对话"
+    "chatHistory" -> "聊天历史"
+    "jailbreak" -> "历史后指令"
+    "personaDescription" -> "用户人设"
+    else -> identifier
 }

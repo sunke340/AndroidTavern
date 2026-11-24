@@ -23,6 +23,7 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         " · 最大输出 ${state.maxTokensText.takeIf { it != "0" } ?: "不限"}"
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +
         if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
+    val presetSummary = state.activePreset ?: "内置默认"
     // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
     val statusBar = statusBarTop()
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
@@ -43,6 +44,7 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         val links = listOf(
             SettingsLink("模型", modelSummary, SettingsPage.Model),
             SettingsLink("采样", samplingSummary, SettingsPage.Sampling),
+            SettingsLink("预设", presetSummary, SettingsPage.Preset),
             SettingsLink("外观", appearanceSummary, SettingsPage.Appearance),
             SettingsLink("世界书", worldBookSummary, SettingsPage.WorldBook),
             SettingsLink(

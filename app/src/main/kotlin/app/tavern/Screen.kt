@@ -12,6 +12,7 @@ enum class Screen { Sessions, Characters, Settings }
 enum class SettingsPage(val title: String) {
     Model("模型"),
     Sampling("采样"),
+    Preset("预设"),
     Appearance("外观"),
     WorldBook("世界书"),
     Regex("正则"),
