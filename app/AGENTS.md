@@ -94,6 +94,16 @@
 - 设置分层：一级只放“去哪儿”（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。
 - 主题持久化存**名字**，重排 `ThemePreset` 枚举不影响已保存的选择。
 
+## 预设与拖动排序（P1-5）
+
+- 提示词顺序是**数据**（`prompt_order`），拼提示词时按它遍历，别在 `PromptBuilder` 里再写死顺序。
+- 拖动换位（`PromptOrderEditor`）：**长按整行起拖**（56dp 行里放拖拽手柄太窄，手指抓不住）；
+  位移走 `graphicsLayer.translationY`，目标位次按「起点 + 累计位移 / 行高」算（不逐帧累加，
+  否则会漂），换位后把「换过去的行数」从位移里扣掉；贴边自动滚用 `dispatchRawDelta`（不起协程）；
+  **拖动只改内存，松手才落盘**。
+- 内置默认预设**不许改顺序**：没有文件可回写，改了会让人以为永久生效。
+- 顺序覆盖存 SharedPreferences，**不改预设文件本身**（预设要能原样导回 PC 版）。
+
 ## 二级/三级页与 insets
 
 - 二三级页统一 `GlassDetailScaffold`（圆形玻璃返回钮 + 大标题 + 右侧圆钮），不要 `Scaffold` + `TopAppBar`；
