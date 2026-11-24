@@ -91,12 +91,16 @@ fun CharactersScreen(
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                         )
-                        Text(
-                            card.description.ifBlank { "（这张卡没有描述）" },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                        )
+                        // 没有描述就不画这一行：之前用"（这张卡没有描述）"占位，
+                        // 满屏都是同一句假话，还读起来像卡坏了（2026-11-24 列表改版）
+                        if (card.description.isNotBlank()) {
+                            Text(
+                                card.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                            )
+                        }
                     }
                 }
             }

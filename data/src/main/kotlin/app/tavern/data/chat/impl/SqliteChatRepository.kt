@@ -25,9 +25,15 @@ class SqliteChatRepository(context: Context) : ChatRepository {
     override fun sessions(): List<ChatSession> {
         val sql = """
             SELECT s.id, s.card_id, s.card_name, s.title, s.created_at, s.updated_at,
-                   COUNT(m.id) AS message_count
+                   COUNT(m.id) AS message_count,
+                   lm.content AS last_content,
+                   lm.is_user AS last_is_user
             FROM ${TavernDatabase.TABLE_SESSIONS} s
             LEFT JOIN ${TavernDatabase.TABLE_MESSAGES} m ON m.session_id = s.id
+            LEFT JOIN ${TavernDatabase.TABLE_MESSAGES} lm
+                   ON lm.id = (
+                       SELECT MAX(id) FROM ${TavernDatabase.TABLE_MESSAGES} WHERE session_id = s.id
+                   )
             GROUP BY s.id
             ORDER BY s.updated_at DESC, s.created_at DESC
         """.trimIndent()
@@ -44,6 +50,9 @@ class SqliteChatRepository(context: Context) : ChatRepository {
                             createdAt = cursor.getLong(4),
                             updatedAt = cursor.getLong(5),
                             messageCount = cursor.getInt(6),
+                            // 一条消息都没有时两列都是 NULL（LEFT JOIN）
+                            lastMessage = if (cursor.isNull(7)) null else cursor.getString(7),
+                            lastFromUser = !cursor.isNull(8) && cursor.getInt(8) != 0,
                         ),
                     )
                 }

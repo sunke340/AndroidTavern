@@ -377,11 +377,6 @@ private fun TabsRoot(
                     // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
-                        // 诊断用（2026-11-23）：返回一级页时若刷这行，说明是 tab 层的 AnimatedContent 在动，
-                        // 否则就是页面里的列表/头像自己淡入（另一种修法）。
-                        if (initialState != targetState) {
-                            AppLog.i("nav", "tab 动画 ${initialState.name}->${targetState.name}")
-                        }
                         val forward = screenOrder.indexOf(targetState) > screenOrder.indexOf(initialState)
                         val enter: EnterTransition =
                             if (reduceMotion) {

@@ -9,6 +9,16 @@ data class ChatSession(
     val createdAt: Long,
     val updatedAt: Long,
     val messageCount: Int,
+    /**
+     * 最后一条消息的正文，**只给列表预览用**。
+     *
+     * 列表要知道"这场聊到哪了"，否则每行只能显示日期和条数。取法是 SQL 里的
+     * `MAX(id)` 子查询（不整表载入，见 data/AGENTS.md 的分页规矩）。
+     * 没有消息（理论上不该有）时为 `null`。
+     */
+    val lastMessage: String? = null,
+    /** 最后一条是不是用户发的：预览前要加「你：」。 */
+    val lastFromUser: Boolean = false,
 )
 
 /** 库里的一条消息。`sendDate` 是原版格式的 ISO 时间（`2026-11-21T17:14:24.829Z`）。 */

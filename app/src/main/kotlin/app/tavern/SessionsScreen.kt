@@ -1,7 +1,6 @@
 package app.tavern
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -37,7 +35,10 @@ import androidx.compose.ui.unit.dp
 import app.tavern.data.chat.ChatSession
 
 /**
- * 会话列表：最近活动在最上面。
+ * 会话列表：最近活动在最上面，按「今天 / 更早」分成两组圆角面板。
+ *
+ * 每行的副行是**最后一条消息**（不再只是"日期 · 条数"）—— 会话列表唯一要回答的问题
+ * 是"这场聊到哪了"。行尾给分级时间（今天只给时刻，一周内给周几，更早给月-日）。
  *
  * 删除走**长按**：行尾不再放删除按钮（那会让每行都很挤）。
  * 长按 → 动作单 → 删除 → 二次确认：动作单以后还能放"重命名 / 导出"。
@@ -59,50 +60,53 @@ fun SessionsScreen(
     var actionTarget by remember { mutableStateOf<ChatSession?>(null) }
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
 
+    // 分组与时间标签都以"进入这一屏的那一刻"为准：不在滚动途中重算，行标签才不会半路跳变
+    val now = remember(state.sessions) { System.currentTimeMillis() }
+    val listItems = remember(state.sessions, now) { buildSessionItems(state.sessions, now) }
+
     if (state.sessions.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = Space.l)
-                    .padding(top = PageHeaderHeight + Space.l + statusBar),
-            ) {
-                EmptyHint("还没有会话。点右上「＋」选一张卡开始。")
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
-                state = listState,
-                contentPadding = PaddingValues(
-                    top = PageHeaderHeight + Space.s + statusBar,
-                    bottom = Space.l + bottomPadding,
-                ),
-                verticalArrangement = Arrangement.Top,
-            ) {
-                items(state.sessions, key = { it.id }) { session ->
-                    ListRow(
-                        // 同上（见角色卡页那条注释）：只做位置动画，不做出现/消失的淡入淡出。
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = null,
-                            placementSpec = androidx.compose.animation.core.tween(
-                                Motion.Slow,
-                                easing = Motion.Standard,
-                            ),
-                            fadeOutSpec = null,
-                        ),
-                        title = session.cardName,
-                        subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
-                        leading = {
-                            CardAvatar(
-                                cardId = session.cardId,
-                                fallbackText = session.cardName,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        },
-                        onClick = { viewModel.openSession(session.id) },
-                        onLongClick = { actionTarget = session },
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = Space.l)
+                .padding(top = PageHeaderHeight + Space.l + statusBar),
+        ) {
+            EmptyHint("还没有会话。点右上「＋」选一张卡开始。")
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
+            state = listState,
+            contentPadding = PaddingValues(
+                top = PageHeaderHeight + Space.s + statusBar,
+                bottom = Space.l + bottomPadding,
+            ),
+        ) {
+            items(listItems, key = { it.key }) { item ->
+                when (item) {
+                    is SessionListItem.Day -> SectionLabel(
+                        text = item.label,
+                        // 与行内文字左缘对齐（面板 16dp + 行内 12dp），标题不会比内容更靠边
+                        modifier = Modifier.padding(start = Space.l + RowToken.padH, top = Space.xs),
                     )
+
+                    is SessionListItem.Session -> GroupPiece(
+                        piece = item.piece,
+                        modifier = Modifier.padding(horizontal = Space.l),
+                        dividerInset = RowToken.dividerInsetWithAvatar,
+                    ) {
+                        ListRow(
+                            title = item.session.cardName,
+                            subtitle = item.subtitle,
+                            meta = item.meta,
+                            leading = { RowAvatar(item.session.cardId, item.session.cardName) },
+                            onClick = { viewModel.openSession(item.session.id) },
+                            onLongClick = { actionTarget = item.session },
+                        )
+                    }
                 }
             }
+        }
     }
 
     // 选卡弹层（新建会话前必须先选卡）
@@ -160,4 +164,60 @@ fun SessionsScreen(
             },
         )
     }
+}
+
+/** 懒列表里的一行/一条分组标题。 */
+private sealed interface SessionListItem {
+    val key: String
+
+    data class Day(val label: String) : SessionListItem {
+        override val key: String get() = "day-$label"
+    }
+
+    data class Session(
+        val session: ChatSession,
+        /** 最后一条消息压成一行；一条消息都没有时为 null（只显示标题）。 */
+        val subtitle: String?,
+        val meta: String,
+        /** 行在分组里的位置：决定圆角与边线。 */
+        val piece: RowPiece,
+    ) : SessionListItem {
+        override val key: String get() = session.id
+    }
+}
+
+/**
+ * 把倒序的会话切成「今天 / 更早」两段，并算出每行在组里的位置。
+ *
+ * `sessions` 已由仓库按 `updated_at` 倒序给出，所以同一组一定是连续的，
+ * 顺序扫一遍即可（不做二次排序，避免和 SQL 的排序口径打架）。
+ */
+private fun buildSessionItems(sessions: List<ChatSession>, now: Long): List<SessionListItem> {
+    val result = mutableListOf<SessionListItem>()
+    var index = 0
+    while (index < sessions.size) {
+        val day = sessionDay(sessions[index].updatedAt, now)
+        var end = index
+        while (end < sessions.size && sessionDay(sessions[end].updatedAt, now) == day) {
+            end += 1
+        }
+        result += SessionListItem.Day(day.label)
+        val count = end - index
+        for (i in index until end) {
+            val session = sessions[i]
+            result += SessionListItem.Session(
+                session = session,
+                subtitle = previewLine(session.lastMessage, session.lastFromUser),
+                meta = sessionTimeLabel(session.updatedAt, now),
+                piece = when {
+                    count == 1 -> RowPiece.Single
+                    i == index -> RowPiece.Top
+                    i == end - 1 -> RowPiece.Bottom
+                    else -> RowPiece.Middle
+                },
+            )
+        }
+        index = end
+    }
+    return result
 }

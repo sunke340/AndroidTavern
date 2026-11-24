@@ -41,19 +41,27 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             .fillMaxSize()
             .rubberOverscroll(overscroll)
             .verticalScroll(scroll)
-            .padding(top = PageHeaderHeight + Space.s + statusBar),
+            .padding(top = PageHeaderHeight + Space.s + statusBar, bottom = Space.xl),
     ) {
-        SettingLinkRow("模型", modelSummary) { viewModel.openSettingsPage(SettingsPage.Model) }
-        SettingLinkRow("采样", samplingSummary) { viewModel.openSettingsPage(SettingsPage.Sampling) }
-        SettingLinkRow("外观", appearanceSummary) { viewModel.openSettingsPage(SettingsPage.Appearance) }
-        SettingLinkRow("世界书", worldBookSummary) {
-            viewModel.openSettingsPage(SettingsPage.WorldBook)
-        }
-        SettingLinkRow("正则", "${state.regexScripts.count { !it.disabled }} / ${state.regexScripts.size} 条启用") {
-            viewModel.openSettingsPage(SettingsPage.Regex)
-        }
-        SettingLinkRow("关于", "构建与版本信息") {
-            viewModel.openSettingsPage(SettingsPage.About)
+        val links = listOf(
+            SettingsLink("模型", modelSummary, SettingsPage.Model),
+            SettingsLink("采样", samplingSummary, SettingsPage.Sampling),
+            SettingsLink("外观", appearanceSummary, SettingsPage.Appearance),
+            SettingsLink("世界书", worldBookSummary, SettingsPage.WorldBook),
+            SettingsLink(
+                title = "正则",
+                value = "${state.regexScripts.count { !it.disabled }} / " +
+                    "${state.regexScripts.size} 条启用",
+                page = SettingsPage.Regex,
+            ),
+            SettingsLink("关于", "构建与版本信息", SettingsPage.About),
+        )
+        ListGroup(count = links.size, modifier = Modifier.padding(horizontal = Space.l)) { index, _ ->
+            val link = links[index]
+            SettingLinkRow(link.title, link.value) { viewModel.openSettingsPage(link.page) }
         }
     }
 }
+
+/** 设置一级页的一行：标题 + 当前生效值 + 去哪。 */
+private data class SettingsLink(val title: String, val value: String, val page: SettingsPage)

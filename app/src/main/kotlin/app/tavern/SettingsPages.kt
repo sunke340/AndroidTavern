@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
+import app.tavern.core.model.ModelProfile
 import app.tavern.data.log.AppLog
 
 /**
@@ -102,58 +105,126 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 /**
  * 模型档案列表。
  *
- * 一级的「模型」行只显示"当前用哪个"；这里才是可以被增删的清单，
- * 点一行进编辑页（三级，`Destination.ProfileEdit`）。
+ * **整行点按＝切换到这个档案**（主操作），行尾 `⋯` 或长按＝编辑 / 删除（次操作）。
+ * 之前是反的：点整行进编辑，「设为默认」是行尾一个 11sp 小字按钮（触控区约 30dp）
+ * 紧挨着整行的点击区 —— 用户每天做的是换模型，却要去点最不容易点中的那个。
+ *
+ * 副行只留模型 ID（+ 思考档）；baseUrl 是编辑页的事，手机上一行放不下。
  */
 @Composable
 private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    state.profiles.forEach { profile ->
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<ModelProfile?>(null) }
+
+    if (state.profiles.isEmpty()) {
+        EmptyHint("还没有档案。点右上「新建」。")
+        return
+    }
+
+    ListGroup(
+        count = state.profiles.size,
+        // 分隔线让出"行内边距 + 圆圈 + 间距"，从标题左缘起
+        dividerInset = RowToken.padH + 20.dp + Space.m,
+    ) { index, _ ->
+        val profile = state.profiles[index]
         ListRow(
             title = profile.name,
             subtitle = buildString {
                 append(profile.model)
-                profile.reasoningEffort?.let { append(" · ").append(it) }
-                append("\n").append(profile.baseUrl)
+                profile.reasoningEffort?.takeIf { it.isNotBlank() }?.let {
+                    append(" · 思考 ").append(it)
+                }
             },
+            leading = { ActiveMark(profile.isDefault) },
             trailing = {
-                DefaultSlot(
-                    isDefault = profile.isDefault,
-                    onSetDefault = { viewModel.setDefaultProfile(profile.id) },
+                ProfileMenuButton(
+                    expanded = menuFor == profile.id,
+                    onOpen = { menuFor = profile.id },
+                    onDismiss = { menuFor = null },
+                    onEdit = { viewModel.openProfileEditor(profile.id) },
+                    onDelete = { pendingDelete = profile },
                 )
             },
-            onClick = { viewModel.openProfileEditor(profile.id) },
+            onClick = { viewModel.setDefaultProfile(profile.id) },
+            onLongClick = { menuFor = profile.id },
         )
     }
-    if (state.profiles.isEmpty()) EmptyHint("还没有档案。点右上「新建」。")
+
+    pendingDelete?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除档案？") },
+            text = { Text("「${profile.name}」和它保存的 API Key 会一起删掉，不能撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        viewModel.deleteProfile(profile.id)
+                    },
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+/** 当前使用的档案：实心勾；其余是空心圈。点整行就切换，这里只负责"看得见"。 */
+@Composable
+private fun ActiveMark(isActive: Boolean) {
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .clip(CircleShape)
+            .then(
+                if (isActive) {
+                    Modifier.background(primary)
+                } else {
+                    Modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isActive) {
+            Text(
+                "✓",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
+    }
 }
 
 /**
- * 「默认」只有一个呈现位置：行尾。
+ * 行尾的 `⋯`：编辑 / 删除。
  *
- * 默认 → 淡紫徽标；非默认 → 同一位置的文字按钮。之前把「· 默认」拼在标题后面、
- * 动作又是一个按钮，会被读成两件不相干的事（用户 2026-11-22 提）。
+ * 用 `IconButton` 而不是自己拼 Box：它自带 48dp 最小触控区（视觉上仍是图标的尺寸）。
  */
 @Composable
-private fun DefaultSlot(isDefault: Boolean, onSetDefault: () -> Unit) {
-    if (isDefault) {
-        Text(
-            "默认",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .clip(RoundedCornerShape(Radius.button))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                .padding(horizontal = Space.s, vertical = 2.dp),
-        )
-    } else {
-        Text(
-            "设为默认",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .clickable(onClick = onSetDefault)
-                .padding(vertical = Space.xs),
-        )
+private fun ProfileMenuButton(
+    expanded: Boolean,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Box {
+        IconButton(onClick = onOpen) {
+            Text(
+                "⋯",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+            DropdownMenuItem(text = { Text("编辑") }, onClick = { onDismiss(); onEdit() })
+            DropdownMenuItem(
+                text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                onClick = { onDismiss(); onDelete() },
+            )
+        }
     }
 }
 
@@ -294,14 +365,32 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     if (state.worldBooks.isEmpty()) {
         EmptyHint("还没有全局世界书。导入 PC 版的世界书 .json，打开开关后它对所有会话生效。")
     } else {
-        state.worldBooks.forEach { book ->
-            WorldBookRow(
-                name = book.name,
-                summary = "${book.entryCount} 条 · ${if (book.enabled) "已启用" else "未启用"} · 点名字看条目",
-                enabled = book.enabled,
-                onToggle = { viewModel.setWorldBookEnabled(book.name, it) },
-                onDelete = { pendingDelete = book.name },
-                onOpen = { viewModel.openWorldBook(book.name) },
+        ListGroup(count = state.worldBooks.size) { index, _ ->
+            val book = state.worldBooks[index]
+            ListRow(
+                title = book.name,
+                // 开关已经表达启用态，副行只在停用时补一句，扫列表时不用再读开关
+                subtitle = if (book.enabled) {
+                    "${book.entryCount} 条"
+                } else {
+                    "${book.entryCount} 条 · 已停用"
+                },
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = book.enabled,
+                            onCheckedChange = { viewModel.setWorldBookEnabled(book.name, it) },
+                        )
+                        IconButton(onClick = { pendingDelete = book.name }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "删除世界书 ${book.name}",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                onClick = { viewModel.openWorldBook(book.name) },
             )
         }
     }
@@ -333,45 +422,6 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     }
 }
 
-/** 一本全局书：名字 + 条目数 + 启用开关 + 删除。 */
-@Composable
-private fun WorldBookRow(
-    name: String,
-    summary: String,
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-    onDelete: () -> Unit,
-    onOpen: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = Space.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = onOpen),
-        ) {
-            Text(name, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                summary,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = enabled, onCheckedChange = onToggle)
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = "删除世界书 $name",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 // ---- 正则 ---------------------------------------------------------------
 
 /**
@@ -389,29 +439,21 @@ private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     if (state.regexScripts.isEmpty()) {
         EmptyHint("还没有正则脚本。可以导入 ST 导出的脚本 JSON，或 settings.json 里的 regex 数组。")
     } else {
-        state.regexScripts.forEach { script ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = Space.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        script.name.ifBlank { script.findRegex },
-                        style = MaterialTheme.typography.bodyLarge,
+        ListGroup(count = state.regexScripts.size) { index, _ ->
+            val script = state.regexScripts[index]
+            ListRow(
+                title = script.name.ifBlank { script.findRegex },
+                subtitle = placementLabel(script) + " · " +
+                    (if (script.disabled) "已停用" else "已启用"),
+                trailing = {
+                    Switch(
+                        checked = !script.disabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setRegexScriptDisabled(script.name, !enabled)
+                        },
                     )
-                    Text(
-                        placementLabel(script) + " · " + if (script.disabled) "已停用" else "已启用",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = !script.disabled,
-                    onCheckedChange = { enabled -> viewModel.setRegexScriptDisabled(script.name, !enabled) },
-                )
-            }
+                },
+            )
         }
     }
 

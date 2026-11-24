@@ -201,14 +201,24 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     DetailTab.Sessions -> ScrollArea {
                         if (sessions.isEmpty()) {
                             Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall)
-                        }
-                        sessions.forEach { session ->
-                            ListRow(
-                                title = session.cardName,
-                                subtitle = "${formatSessionTime(session.updatedAt)} · ${session.messageCount} 条",
-                                onClick = { viewModel.openSession(session.id) },
-                                onLongClick = { actionTargetSession = session },
-                            )
+                        } else {
+                            ListGroup(
+                                count = sessions.size,
+                                dividerInset = RowToken.dividerInsetWithAvatar,
+                            ) { index, _ ->
+                                val session = sessions[index]
+                                ListRow(
+                                    title = session.cardName,
+                                    subtitle = previewLine(
+                                        session.lastMessage,
+                                        session.lastFromUser,
+                                    ),
+                                    meta = sessionTimeLabel(session.updatedAt),
+                                    leading = { RowAvatar(session.cardId, session.cardName) },
+                                    onClick = { viewModel.openSession(session.id) },
+                                    onLongClick = { actionTargetSession = session },
+                                )
+                            }
                         }
                     }
 
@@ -222,20 +232,25 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                             MessageStyle.Card -> "整行卡片"
                         }
 
-                        SettingLinkRow(
-                            title = "内嵌世界书",
-                            value = if (bookCount == 0) {
-                                "这张卡没有内嵌书"
-                            } else {
-                                "$bookCount 条 · 已关闭 $disabledCount 条"
-                            },
-                        ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
+                        ListGroup(count = 3) { index, _ ->
+                            when (index) {
+                                0 -> SettingLinkRow(
+                                    title = "内嵌世界书",
+                                    value = if (bookCount == 0) {
+                                        "这张卡没有内嵌书"
+                                    } else {
+                                        "$bookCount 条 · 已关闭 $disabledCount 条"
+                                    },
+                                ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
 
-                        SettingLinkRow("对话样式", styleLabel) {
-                            viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
-                        }
-                        SettingLinkRow("关于这张卡", "作者 / 版本 / 规格 / 标签") {
-                            viewModel.openCardConfigPage(CardConfigPage.Info)
+                                1 -> SettingLinkRow("对话样式", styleLabel) {
+                                    viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
+                                }
+
+                                else -> SettingLinkRow("关于这张卡", "作者 / 版本 / 规格 / 标签") {
+                                    viewModel.openCardConfigPage(CardConfigPage.Info)
+                                }
+                            }
                         }
                     }
                 }

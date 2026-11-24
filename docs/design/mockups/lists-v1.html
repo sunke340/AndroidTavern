@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>列表改版样张</title>
+<style>
+  :root{
+    --bg:#F8F6FC; --surface:#FFFFFF; --divider:#E7E2F2; --border:#E0DAEE;
+    --primary:#5C3BAE; --on:#1A1722; --osv:#6A6280; --variant:#EFEAF9;
+    --outline:#D6CFE8; --pink:#B4487A;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased;}
+  body{
+    margin:0; padding:36px 32px 44px; background:#ECE8F3;
+    font-family:"Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
+    color:var(--on);
+  }
+  .page-title{font-size:22px;font-weight:700;margin:0 0 4px;}
+  .page-sub{font-size:13px;color:#6A6280;margin:0 0 28px;}
+  .row-of-frames{display:flex;gap:40px;align-items:flex-start;}
+  .col{width:360px;}
+  .cap{font-size:12.5px;line-height:1.7;color:#5B5470;margin-top:12px;}
+  .cap b{color:#1A1722;font-weight:600;}
+  .cap .tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;margin-right:6px;}
+  .tag.old{background:#E6E1EF;color:#5B5470;}
+  .tag.new{background:#5C3BAE;color:#fff;}
+
+  /* ---------- phone ---------- */
+  .phone{
+    width:360px;height:788px;border-radius:34px;background:var(--bg);
+    border:1px solid #CFC7DE; overflow:hidden; position:relative;
+    box-shadow:0 10px 30px rgba(60,40,100,.10);
+  }
+  .statusbar{height:28px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;font-size:10.5px;color:#4A4360;font-weight:600;}
+  .scrim{position:absolute;left:0;right:0;top:0;height:128px;pointer-events:none;
+    background:linear-gradient(180deg, rgba(248,246,252,.96) 0%, rgba(248,246,252,.92) 62%, rgba(248,246,252,0) 100%);}
+  .header{position:absolute;left:0;right:0;top:0;height:100px;display:flex;align-items:flex-end;
+    padding:0 16px 10px;z-index:3;}
+  .header h1{font-size:22px;font-weight:700;letter-spacing:-.2px;margin:0;flex:1;}
+  .capsule{height:44px;padding:0 16px;border-radius:22px;display:flex;align-items:center;gap:14px;
+    background:rgba(255,255,255,.55);border:1px solid #E9E3F5;
+    box-shadow:0 0 0 .5px rgba(255,255,255,.9) inset, 0 3px 10px rgba(90,60,150,.10);
+    backdrop-filter:blur(14px);}
+  .capsule .ico{font-size:19px;line-height:1;color:#2B2438;}
+  .content{position:absolute;left:0;right:0;top:100px;bottom:0;overflow:hidden;}
+
+  /* ---------- 现在：行 ---------- */
+  .old-row{display:flex;align-items:center;min-height:64px;padding:10px 16px;}
+  .old-ava{width:40px;height:40px;border-radius:20px;flex:0 0 40px;display:flex;align-items:center;
+    justify-content:center;font-size:15px;font-weight:600;margin-right:12px;}
+  .old-txt{flex:1;min-width:0;}
+  .old-title{font-size:14px;font-weight:500;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .old-sub{font-size:11px;line-height:16px;color:var(--osv);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .old-div{height:1px;background:var(--divider);}
+  .badge{font-size:11px;font-weight:600;color:var(--primary);background:rgba(92,59,174,.14);
+    border-radius:10px;padding:2px 8px;white-space:nowrap;}
+  .setdefault{font-size:11px;font-weight:600;color:var(--primary);padding:4px 0;white-space:nowrap;}
+
+  /* ---------- 提议：组 ---------- */
+  .section{font-size:12px;font-weight:600;letter-spacing:.3px;color:var(--osv);
+    padding:18px 20px 8px;}
+  .group{background:var(--surface);border:1px solid var(--border);border-radius:18px;
+    margin:0 16px;overflow:hidden;}
+  .new-row{display:flex;align-items:flex-start;padding:11px 14px 11px 14px;min-height:70px;position:relative;}
+  .new-row.pressed{background:rgba(92,59,174,.07);}
+  .new-ava{width:44px;height:44px;border-radius:12px;flex:0 0 44px;margin-right:12px;
+    display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;}
+  .new-main{flex:1;min-width:0;}
+  .new-top{display:flex;align-items:baseline;gap:8px;}
+  .new-title{font-size:15px;font-weight:600;line-height:21px;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .new-time{font-size:11px;font-weight:500;line-height:16px;color:var(--osv);
+    font-variant-numeric:tabular-nums;flex:0 0 auto;padding-top:3px;}
+  .new-prev{font-size:12.5px;line-height:18px;color:var(--osv);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;}
+  .dot{width:7px;height:7px;border-radius:4px;background:var(--primary);flex:0 0 7px;}
+  .inset{height:1px;background:var(--divider);margin-left:70px;}
+  .ring{width:20px;height:20px;border-radius:10px;border:1.5px solid var(--outline);flex:0 0 20px;
+    margin-right:14px;margin-top:10px;display:flex;align-items:center;justify-content:center;}
+  .ring.on{background:var(--primary);border-color:var(--primary);color:#fff;font-size:12px;font-weight:700;}
+  .more{width:40px;height:40px;border-radius:20px;flex:0 0 40px;display:flex;align-items:center;
+    justify-content:center;color:var(--osv);font-size:18px;letter-spacing:1px;margin-top:2px;}
+  .bottom-bar{position:absolute;left:16px;right:16px;bottom:18px;height:56px;border-radius:28px;
+    background:rgba(255,255,255,.5);border:1px solid #E9E3F5;display:flex;align-items:center;
+    justify-content:space-around;backdrop-filter:blur(14px);box-shadow:0 6px 18px rgba(80,55,140,.10);}
+  .tab{font-size:11px;color:#8B84A0;display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .tab .g{font-size:17px;}
+  .tab.on{color:var(--primary);font-weight:600;}
+</style>
+</head>
+<body>
+<h1 class="page-title">列表改版样张 · 会话 / 模型</h1>
+<p class="page-sub">360dp 宽（真机 1260px ÷ 3.5），墨紫浅色。左＝现在，右＝提议。同一套行结构，三处列表共用。</p>
+
+<div class="row-of-frames">
+
+  <!-- ============ 会话 · 现在 ============ -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="statusbar"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h1>会话</h1><div class="capsule"><span class="ico">＋</span></div></div>
+      <div class="content" style="top:100px;">
+        <div style="height:8px"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#EDE6F9;color:#5C3BAE">S</div>
+          <div class="old-txt"><div class="old-title">Seraphina</div>
+            <div class="old-sub">11-24 08:12 · 12 条</div></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#F3E6EC;color:#A3467A">夜</div>
+          <div class="old-txt"><div class="old-title">白塔的守夜人</div>
+            <div class="old-sub">11-23 22:04 · 86 条</div></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#E4EDF6;color:#3A6088">澪</div>
+          <div class="old-txt"><div class="old-title">雨宫 澪</div>
+            <div class="old-sub">11-21 19:30 · 4 条</div></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#E8F1E9;color:#3B6B4A">周</div>
+          <div class="old-txt"><div class="old-title">周末的地下城</div>
+            <div class="old-sub">11-18 09:15 · 130 条</div></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#F1EDE4;color:#7A6432">M</div>
+          <div class="old-txt"><div class="old-title">Mia</div>
+            <div class="old-sub">10-02 14:00 · 21 条</div></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row">
+          <div class="old-ava" style="background:#EDE6F9;color:#5C3BAE">青</div>
+          <div class="old-txt"><div class="old-title">青叶与织</div>
+            <div class="old-sub">09-28 23:41 · 3 条</div></div>
+        </div><div class="old-div"></div>
+      </div>
+      <div class="bottom-bar">
+        <div class="tab on"><span class="g">▤</span>会话</div>
+        <div class="tab"><span class="g">▢</span>角色</div>
+        <div class="tab"><span class="g">⚙</span>设置</div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag old">现在</span><b>看不出在聊什么</b><br>
+      · 第二行是「日期 · 条数」，<b>没有任何内容</b>；<br>
+      · 每条都报完整日期（今天是几号并不重要），信息密度被浪费；<br>
+      · 行与行之间一条通栏 1px 直线，是整页唯一的形状。</div>
+  </div>
+
+  <!-- ============ 会话 · 提议 ============ -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="statusbar"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h1>会话</h1><div class="capsule"><span class="ico">＋</span></div></div>
+      <div class="content">
+        <div class="section">今天</div>
+        <div class="group">
+          <div class="new-row">
+            <div class="new-ava" style="background:#EDE6F9;color:#5C3BAE">S</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">Seraphina</div><div class="new-time">08:12</div></div>
+              <div class="new-prev"><span class="dot"></span>她抬眼看你：今晚的月亮是红色的。</div>
+            </div>
+          </div>
+          <div class="inset"></div>
+          <div class="new-row">
+            <div class="new-ava" style="background:#F3E6EC;color:#A3467A">夜</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">白塔的守夜人</div><div class="new-time">昨天</div></div>
+              <div class="new-prev">你：塔上的灯今晚不灭了吗？</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">更早</div>
+        <div class="group">
+          <div class="new-row">
+            <div class="new-ava" style="background:#E4EDF6;color:#3A6088">澪</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">雨宫 澪</div><div class="new-time">周二</div></div>
+              <div class="new-prev">「伞借你，我跑回去就行。」</div>
+            </div>
+          </div>
+          <div class="inset"></div>
+          <div class="new-row">
+            <div class="new-ava" style="background:#E8F1E9;color:#3B6B4A">周</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">周末的地下城</div><div class="new-time">11-18</div></div>
+              <div class="new-prev">你：先把火把点着，别在门口就开打</div>
+            </div>
+          </div>
+          <div class="inset"></div>
+          <div class="new-row pressed">
+            <div class="new-ava" style="background:#F1EDE4;color:#7A6432">M</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">Mia</div><div class="new-time">10-02</div></div>
+              <div class="new-prev">（按住态：整行 7% 主色底，120ms）</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-bar">
+        <div class="tab on"><span class="g">▤</span>会话</div>
+        <div class="tab"><span class="g">▢</span>角色</div>
+        <div class="tab"><span class="g">⚙</span>设置</div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag new">提议</span><b>一行回答「这是哪场、聊到哪」</b><br>
+      · 第二行＝最后一条消息（1 行截断，起点有信息），时间靠右、等宽数字不跳；<br>
+      · 时间分级：今天 <code>08:12</code> → <code>昨天</code> → <code>周二</code> → <code>11-18</code>；<br>
+      · 分组圆角面板（18dp），分隔线从文字左缘起、最后一行不画 → 直线变短、形状变圆；<br>
+      · 未读用 7dp 主色点（不占地方，也不用数字角标）。</div>
+  </div>
+
+  <!-- ============ 模型 · 现在 ============ -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="statusbar"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h1>模型</h1><div class="capsule"><span class="ico">＋</span></div></div>
+      <div class="content">
+        <div style="height:8px"></div>
+
+        <div class="old-row" style="min-height:72px">
+          <div class="old-txt">
+            <div class="old-title">DeepSeek 官方</div>
+            <div class="old-sub" style="color:#6A6280">deepseek-chat<br>https://api.deepseek.com</div>
+          </div>
+          <div style="margin-left:8px"><span class="badge">默认</span></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row" style="min-height:72px">
+          <div class="old-txt">
+            <div class="old-title">DeepSeek 推理</div>
+            <div class="old-sub" style="color:#6A6280">deepseek-reasoner · high<br>https://api.deepseek.com</div>
+          </div>
+          <div style="margin-left:8px"><span class="setdefault">设为默认</span></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row" style="min-height:72px">
+          <div class="old-txt">
+            <div class="old-title">OpenCode</div>
+            <div class="old-sub" style="color:#6A6280">claude-sonnet-4.5<br>https://opencode.ai/inference/go…</div>
+          </div>
+          <div style="margin-left:8px"><span class="setdefault">设为默认</span></div>
+        </div><div class="old-div"></div>
+
+        <div class="old-row" style="min-height:72px">
+          <div class="old-txt">
+            <div class="old-title">本地 Qwen</div>
+            <div class="old-sub" style="color:#6A6280">qwen3-32b-instruct<br>http://192.168.1.20:8000/v1</div>
+          </div>
+          <div style="margin-left:8px"><span class="setdefault">设为默认</span></div>
+        </div><div class="old-div"></div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag old">现在</span><b>每行有三件事在抢注意力</b><br>
+      · 第二行是 <b>baseUrl</b>（开发信息，手机上一行放不下、被截断）；<br>
+      · 行尾「设为默认」是 11sp 纯文字按钮，<b>触控区只有约 30dp</b>，紧挨着整行的点击区 —— 两个动作差 8dp；<br>
+      · 点整行＝编辑，点小字＝切换，<b>主次是反的</b>：用户常做的是换模型。</div>
+  </div>
+
+  <!-- ============ 模型 · 提议 ============ -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="statusbar"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h1>模型</h1><div class="capsule"><span class="ico">＋</span></div></div>
+      <div class="content">
+        <div class="section" style="padding-top:14px">当前使用</div>
+        <div class="group">
+          <div class="new-row" style="align-items:flex-start">
+            <div class="ring on">✓</div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">DeepSeek 官方</div></div>
+              <div class="new-prev">deepseek-chat</div>
+            </div>
+            <div class="more">⋯</div>
+          </div>
+        </div>
+
+        <div class="section">其他档案</div>
+        <div class="group">
+          <div class="new-row pressed">
+            <div class="ring"></div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">DeepSeek 推理</div></div>
+              <div class="new-prev">deepseek-reasoner · 思考 high</div>
+            </div>
+            <div class="more">⋯</div>
+          </div>
+          <div class="inset" style="margin-left:50px"></div>
+          <div class="new-row">
+            <div class="ring"></div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">OpenCode</div></div>
+              <div class="new-prev">claude-sonnet-4.5</div>
+            </div>
+            <div class="more">⋯</div>
+          </div>
+          <div class="inset" style="margin-left:50px"></div>
+          <div class="new-row">
+            <div class="ring"></div>
+            <div class="new-main">
+              <div class="new-top"><div class="new-title">本地 Qwen</div></div>
+              <div class="new-prev">qwen3-32b-instruct</div>
+            </div>
+            <div class="more">⋯</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag new">提议</span><b>一行一件事，主次摆正</b><br>
+      · 左边 20dp 圆圈＝当前使用（点整行即可切换，触控区＝整行 70dp）；<br>
+      · 副行只留模型名（+ 可选的思考档），<b>baseUrl 回编辑页</b>；<br>
+      · 行尾 ⋯ 40dp 打开「编辑 / 删除」，与会话页长按菜单同一套动作单；<br>
+      · 「默认」不再靠 11sp 小字表现，选中态＝勾 + 主色。</div>
+  </div>
+
+</div>
+</body>
+</html>
