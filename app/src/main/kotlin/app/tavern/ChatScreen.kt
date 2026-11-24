@@ -2,6 +2,7 @@ package app.tavern
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +55,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +77,8 @@ import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -81,7 +89,11 @@ import app.tavern.core.model.ChatRole
  * 聊天页（全屏二级页）。
  *
  * 动效只做三件有信息量的事：新消息入场、流式光标、发送↔停止的按钮形变。
- * 另外会自动跟到底部（正在流式时瞬时贴底，避免动画追不上 token；平时用动画）。
+ *
+ * 串流跟随的规矩（2026-11-24 定）：
+ * - 列表贴底时，文本每长高一行，整屏**柔和地**抬一行（先把内容按增量下移，再 180ms 收回）；
+ * - 列表不在底部时**冻结**串流文本（气泡停止长高），视口一像素都不动 ——
+ *   用户这时在读上文，任何自动位移都是抢视线。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +104,48 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
     val overscroll = rememberRubberOverscroll()
+
+    // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
+    val listState = rememberLazyListState()
+    val atBottom by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+
+    // 贴底时"柔和抬升"：文本每长高 delta，先把内容按 delta 往下平移，再用 180ms 收回。
+    // 不加这层的观感是：每换一行，整屏"啪"地往上跳一行（用户 2026-11-24 报）。
+    var lift by remember { mutableFloatStateOf(0f) }
+    var streamHeight by remember { mutableIntStateOf(0) }
+    var lastStreamHeight by remember { mutableIntStateOf(0) }
+
+    // 不在底部时**冻结**串流文本：气泡不再长高 → 视口一像素都不动。
+    // 用户这时大概率在读上文，任何自动位移都是在抢视线（用户 2026-11-24 要求）。
+    var frozenStream by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(atBottom) {
+        frozenStream = if (atBottom) null else state.streamingText
+        // 离开底部时把未收完的抬升补偿清掉，免得回来时"跳一下"
+        if (!atBottom) lift = 0f
+    }
+    val shownStream = frozenStream ?: state.streamingText
+    LaunchedEffect(streamHeight) {
+        val previous = lastStreamHeight
+        val delta = streamHeight - previous
+        lastStreamHeight = streamHeight
+        // 第一帧（气泡刚出现）不抬：那是"从无到有"，不是"长高一行"
+        if (previous != 0 && delta > 0 && atBottom) {
+            lift += delta.toFloat()
+            animate(lift, 0f, animationSpec = tween(Motion.Base, easing = Motion.Decelerate)) { value, _ ->
+                lift = value
+            }
+        }
+    }
+    // 新一轮串流 / 换会话：补偿归零，别把上一轮的残值带过来。
+    // `streamHeight` 故意不重置：新气泡第一次布局会自己报高度，把它当"起点"（previous=0）跳过。
+    LaunchedEffect(state.isStreaming, state.sessionId) {
+        lift = 0f
+        lastStreamHeight = 0
+    }
     val regexScripts = state.regexScripts
     val displayText: (String) -> String = remember(regexScripts) {
         { text ->
@@ -138,7 +192,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
         LazyColumn(
             reverseLayout = true,
-            modifier = Modifier.fillMaxSize().padding(horizontal = Space.m).rubberOverscroll(overscroll),
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = Space.m)
+                // 柔和抬升就落在这：内容先按增量下移，再收回（只改绘制，不触发重新布局）
+                .graphicsLayer { translationY = if (atBottom) lift else 0f }
+                .rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
                 // 8 → 16：磨砂页头下面再多留一点，首条消息不贴着头（用户 2026-11-24）
@@ -151,13 +211,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-                if (state.streamingText.isNotEmpty()) {
+                if (shownStream.isNotEmpty()) {
                     item {
                         MessageRow(
-                            message = ChatMessage(ChatRole.Assistant, state.streamingText),
+                            message = ChatMessage(ChatRole.Assistant, shownStream),
                             style = state.effectiveMessageStyle,
                             showCursor = true,
                             displayText = displayText,
+                            // 量气泡高度：长高多少就补偿多少，用来做柔和抬升
+                            modifier = Modifier.onSizeChanged { streamHeight = it.height },
                         )
                     }
                 }
