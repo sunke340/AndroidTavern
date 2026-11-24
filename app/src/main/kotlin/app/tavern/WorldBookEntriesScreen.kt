@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -75,20 +74,13 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         ) {
             itemsIndexed(book.entries, key = { _, entry -> entry.uid }) { index, entry ->
                 GroupPiece(piece = rowPieceAt(index, count)) {
-                    ListRow(
+                    WorldBookEntryRow(
                         title = entry.title,
-                        subtitle = entrySubtitle(entry),
-                        // 预览可能是一整段，两行足够看出是什么条目
-                        subtitleMaxLines = 2,
-                        trailing = {
-                            Switch(
-                                checked = entry.enabled,
-                                // 文件里本来就是关的：应用内开关改了也不生效，索性不让人点
-                                enabled = !entry.disabledInFile,
-                                onCheckedChange = { enabled ->
-                                    viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
-                                },
-                            )
+                        content = entry.preview,
+                        enabled = entry.enabled,
+                        disabledInFile = entry.disabledInFile,
+                        onToggle = { enabled ->
+                            viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
                         },
                     )
                 }
@@ -96,12 +88,3 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         }
     }
 }
-
-/** 副行：内容预览；文件里本来关着的补一句，否则用户会以为开关坏了。 */
-private fun entrySubtitle(entry: ChatViewModel.WorldBookEntryView): String? = buildString {
-    if (entry.preview.isNotBlank()) append(entry.preview)
-    if (entry.disabledInFile) {
-        if (isNotEmpty()) append(" · ")
-        append("文件里已关闭")
-    }
-}.ifEmpty { null }

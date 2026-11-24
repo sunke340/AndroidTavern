@@ -6,17 +6,20 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 
 /**
- * 卡内嵌世界书的一条条目。**只是给界面列出来用**——激活算法在 `:core:lorebook`（P1，尚未实现）。
+ * 卡内嵌世界书的一条条目。**只是给界面列出来用**——激活算法在 `:core:lorebook`。
  *
  * 字段含义对齐 ST 的 `character_book.entries[i]`：
  * - `comment` 是给人看的标题，没有就退回 `name`；
  * - `keys` 是触发关键字（老格式写成单数 `key`，两种都认）；
- * - `enabled` 缺省为 **true**（ST 新建条目默认启用）。
+ * - `content` 是条目正文（界面拿它做两行预览，和全局世界书详情页一个样子）；
+ * - `enabled` 缺省为 **true**（这里只是"卡里怎么写"；真正生效与否见 [lorebookEntries]：
+ *   原版 `convertCharacterBook()` 把 `!entry.enabled` 记成 `disable`，**没写就等于关**）。
  */
 public class CardBookEntry(
     public val index: Int,
     public val comment: String,
     public val keys: List<String>,
+    public val content: String,
     public val enabled: Boolean,
 )
 
@@ -32,6 +35,7 @@ public fun CharacterCard.bookEntries(): List<CardBookEntry> {
                 .ifBlank { entry.stringField("name") }
                 .ifBlank { "条目 ${index + 1}" },
             keys = entry.keysField(),
+            content = entry.stringField("content"),
             enabled = entry.booleanField("enabled") ?: true,
         )
     }

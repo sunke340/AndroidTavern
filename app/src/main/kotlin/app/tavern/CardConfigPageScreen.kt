@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,6 +30,12 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
 
     GlassDetailScaffold(
         title = page.title,
+        // 世界书这页跟全局世界书详情页同一套：页头一行是"标题 + N 条"
+        subtitle = if (page == CardConfigPage.WorldBook) {
+            detail?.bookEntries?.size?.let { "$it 条" }
+        } else {
+            null
+        },
         onBack = viewModel::closeCardConfigPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
     ) { padding ->
@@ -61,23 +66,21 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
         return
     }
 
-    // 页面标题本来就是「内嵌世界书」，开头不再放一遍小标题；
-    // 行用通用行系统，和设置里的世界书列表同一套形状与按下反馈。
+    // 这一页和全局世界书详情页**完全同一套行**（正文两行预览 + 行尾开关），
+    // 只是行的标题取卡里给的 comment（全局书那边取关键字）：卡里人写的标题更有用。
     ListGroup(
         count = entries.size,
         modifier = Modifier.padding(top = Space.l),
     ) { index, _ ->
         val entry = entries[index]
-        ListRow(
+        WorldBookEntryRow(
             title = entry.comment,
-            subtitle = entry.keys.joinToString("、").ifBlank { "（没有关键字）" },
-            trailing = {
-                Switch(
-                    checked = entry.index !in disabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.setBookEntryEnabled(cardId, entry.index, enabled)
-                    },
-                )
+            content = entry.content,
+            // 生效状态 = 卡里写的 enabled **叠加** 应用内关掉的那几条
+            enabled = entry.enabled && entry.index !in disabled,
+            disabledInFile = !entry.enabled,
+            onToggle = { enabled ->
+                viewModel.setBookEntryEnabled(cardId, entry.index, enabled)
             },
         )
     }

@@ -29,13 +29,13 @@ class CardBookEntriesTest {
     }
 
     @Test
-    fun `解析 comment、keys 与 enabled`() {
+    fun `解析 comment、keys、正文与 enabled`() {
         val book = """
             {
               "name": "测试书",
               "entries": [
-                {"comment": "第一条", "keys": ["龙", "drago"], "enabled": true},
-                {"name": "第二条（只有 name）", "key": ["剑"], "enabled": false}
+                {"comment": "第一条", "keys": ["龙", "drago"], "content": "龙会喷火。", "enabled": true},
+                {"name": "第二条（只有 name）", "key": ["剑"], "content": "剑\n有两道刃。", "enabled": false}
               ]
             }
         """.trimIndent()
@@ -45,11 +45,14 @@ class CardBookEntriesTest {
 
         assertEquals("第一条", entries[0].comment)
         assertEquals(listOf("龙", "drago"), entries[0].keys)
+        // 正文给界面做两行预览（全局世界书详情页同一套）
+        assertEquals("龙会喷火。", entries[0].content)
         assertTrue(entries[0].enabled)
 
         // 老格式用单数 key；comment 缺失时退回 name
         assertEquals("第二条（只有 name）", entries[1].comment)
         assertEquals(listOf("剑"), entries[1].keys)
+        assertEquals("剑\n有两道刃。", entries[1].content)
         assertFalse(entries[1].enabled)
 
         Unit
@@ -60,8 +63,9 @@ class CardBookEntriesTest {
         val book = """{"entries": [{"comment": "没有 enabled 和 keys"}]}"""
         val entry = card(book).bookEntries().single()
 
-        assertTrue(entry.enabled, "ST 新建条目默认启用")
+        assertTrue(entry.enabled, "卡里没写 enabled 时按启用读；真正生效另由 lorebookEntries 判")
         assertEquals(0, entry.keys.size)
+        assertEquals("", entry.content)
         Unit
     }
 }
