@@ -157,6 +157,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessions: List<ChatSession> = emptyList(),
         /** 会话列表是否**读完过一次**。false 时界面不能显示"还没有会话"（那只是还没读到）。 */
         val sessionsLoaded: Boolean = false,
+        /**
+         * 启动是否已经"可以看"了：首屏列表与头像都准备好之后才 true。
+         *
+         * 界面在 false 时整屏盖着背景色（什么都不画），true 时整块淡出 ——
+         * 观感是"导航壳和列表一起浮现"，而不是壳先出现、列表再补上。
+         */
+        val booted: Boolean = false,
         val sessionId: String? = null,
         val requestPreview: String = "",
         val showRequest: Boolean = false,
@@ -262,7 +269,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 preloadAvatars(getApplication<Application>(), sessions.map { it.cardId })
             }.onFailure { AppLog.w("startup", "头像预热失败：${it.message}") }
-            _state.update { it.copy(sessions = sessions, sessionsLoaded = true) }
+            // 列表与头像都就绪了，才允许界面露出来（见 [UiState.booted]）
+            _state.update { it.copy(sessions = sessions, sessionsLoaded = true, booted = true) }
+            AppLog.i("startup", "首屏就绪 +${SystemClock.elapsedRealtime() - startupAt}ms（界面开始淡入）")
             AppLog.i(
                 "startup",
                 "会话就绪 +${SystemClock.elapsedRealtime() - startupAt}ms" +

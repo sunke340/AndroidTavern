@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -206,71 +207,98 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 lastDepth[0] = depth
             }
 
-            // 页面栈转场：自己管叠放次序（不用 AnimatedContent，理由见 PageStack.kt 顶部注释）
-            PageStack(
-                target = destination,
-                state = state,
-                depthOf = { depthOf(it) },
-                // 系统「移除动画」：位移换成交叉淡化（保留"页面变了"的提示，去掉"页面在动"）
-                mode = if (reduceMotion) NavAnimation.Fade else state.navAnimation,
-                modifier = Modifier.fillMaxSize(),
-                onRemoved = { dest ->
-                    // 转场自检：离场页被真正移除时打个时间差。
-                    // ~280ms 后才移除 = 转场真的跑了；几十毫秒内就移除 = 转场根本没跑（问题在状态层）。
-                    AppLog.i(
-                        "nav",
-                        "${labelOf(dest)} 页面移除，距上次换页 ${System.currentTimeMillis() - navAt[0]}ms",
-                    )
-                },
-            ) { target, snap ->
-                // `snap`：当前页是实时状态，离场页是"它还是当前页时"的快照
-                // （离场页如果读实时状态，会读到已经被清掉的 cardId/session → 渲染空 → 凭空消失）。
-                // BackHandler 只给当前页注册，否则离场那页在 280ms 里也能响应返回键。
-                val live = target == destination
-                when (target) {
-                    Destination.Tabs -> TabsRoot(snap, viewModel, sessionsList, charactersGrid)
-                    Destination.Chat -> {
-                        if (live) BackHandler { viewModel.closeChat() }
-                        ChatScreen(state = snap, viewModel = viewModel)
-                    }
+            // 启动遮罩盖在最上层：首屏列表与头像准备好之前什么都不画（见 StartupCurtain）
+            Box(Modifier.fillMaxSize()) {
+                // 页面栈转场：自己管叠放次序（不用 AnimatedContent，理由见 PageStack.kt 顶部注释）
+                PageStack(
+                    target = destination,
+                    state = state,
+                    depthOf = { depthOf(it) },
+                    // 系统「移除动画」：位移换成交叉淡化（保留"页面变了"的提示，去掉"页面在动"）
+                    mode = if (reduceMotion) NavAnimation.Fade else state.navAnimation,
+                    modifier = Modifier.fillMaxSize(),
+                    onRemoved = { dest ->
+                        // 转场自检：离场页被真正移除时打个时间差。
+                        // ~280ms 后才移除 = 转场真的跑了；几十毫秒内就移除 = 转场根本没跑（问题在状态层）。
+                        AppLog.i(
+                            "nav",
+                            "${labelOf(dest)} 页面移除，距上次换页 ${System.currentTimeMillis() - navAt[0]}ms",
+                        )
+                    },
+                ) { target, snap ->
+                    // `snap`：当前页是实时状态，离场页是"它还是当前页时"的快照
+                    // （离场页如果读实时状态，会读到已经被清掉的 cardId/session → 渲染空 → 凭空消失）。
+                    // BackHandler 只给当前页注册，否则离场那页在 280ms 里也能响应返回键。
+                    val live = target == destination
+                    when (target) {
+                        Destination.Tabs -> TabsRoot(snap, viewModel, sessionsList, charactersGrid)
+                        Destination.Chat -> {
+                            if (live) BackHandler { viewModel.closeChat() }
+                            ChatScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    is Destination.Settings -> {
-                        if (live) BackHandler { viewModel.closeSettingsPage() }
-                        SettingsSubPage(state = snap, viewModel = viewModel)
-                    }
+                        is Destination.Settings -> {
+                            if (live) BackHandler { viewModel.closeSettingsPage() }
+                            SettingsSubPage(state = snap, viewModel = viewModel)
+                        }
 
-                    is Destination.WorldBookEntries -> {
-                        if (live) BackHandler { viewModel.closeWorldBook() }
-                        WorldBookEntriesScreen(state = snap, viewModel = viewModel)
-                    }
+                        is Destination.WorldBookEntries -> {
+                            if (live) BackHandler { viewModel.closeWorldBook() }
+                            WorldBookEntriesScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    is Destination.Detail -> {
-                        if (live) BackHandler { viewModel.closeDetail() }
-                        CharacterDetailScreen(state = snap, viewModel = viewModel)
-                    }
+                        is Destination.Detail -> {
+                            if (live) BackHandler { viewModel.closeDetail() }
+                            CharacterDetailScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    is Destination.CardConfig -> {
-                        if (live) BackHandler { viewModel.closeCardConfigPage() }
-                        CardConfigPageScreen(state = snap, viewModel = viewModel)
-                    }
+                        is Destination.CardConfig -> {
+                            if (live) BackHandler { viewModel.closeCardConfigPage() }
+                            CardConfigPageScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    Destination.ProfileEdit -> {
-                        if (live) BackHandler { viewModel.closeProfileEditor() }
-                        ProfileEditScreen(state = snap, viewModel = viewModel)
-                    }
+                        Destination.ProfileEdit -> {
+                            if (live) BackHandler { viewModel.closeProfileEditor() }
+                            ProfileEditScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    Destination.Gallery -> {
-                        if (live) BackHandler { viewModel.closeGallery() }
-                        GalleryScreen(state = snap, viewModel = viewModel)
-                    }
+                        Destination.Gallery -> {
+                            if (live) BackHandler { viewModel.closeGallery() }
+                            GalleryScreen(state = snap, viewModel = viewModel)
+                        }
 
-                    is Destination.PresetEdit -> {
-                        if (live) BackHandler { viewModel.closePresetEditor() }
-                        PresetEditScreen(state = snap, viewModel = viewModel)
+                        is Destination.PresetEdit -> {
+                            if (live) BackHandler { viewModel.closePresetEditor() }
+                            PresetEditScreen(state = snap, viewModel = viewModel)
+                        }
                     }
                 }
+                StartupCurtain(booted = state.booted)
             }
         }
+    }
+}
+
+/**
+ * 启动遮罩：**首屏列表（含头像）就绪之前，屏幕上什么都不画**。
+ *
+ * 之前是导航壳先画出来、列表晚一步落 state，观感是"UI 突然出现，然后列表又补一下"。
+ * 现在盖一块主题底色，`booted` 一置真就整块淡出 —— 壳、底栏、列表是同时浮现的。
+ */
+@Composable
+private fun StartupCurtain(booted: Boolean) {
+    val alpha by animateFloatAsState(
+        targetValue = if (booted) 0f else 1f,
+        animationSpec = tween(Motion.Base, easing = Motion.Decelerate),
+        label = "boot-curtain",
+    )
+    if (alpha > 0f) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { this.alpha = alpha }
+                .background(MaterialTheme.colorScheme.background),
+        )
     }
 }
 
