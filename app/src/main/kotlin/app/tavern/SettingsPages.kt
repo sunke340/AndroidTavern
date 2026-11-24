@@ -26,8 +26,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,7 +103,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 /**
  * 模型档案列表。
  *
- * **整行点按＝切换到这个档案**（主操作），行尾 `⋯` 或长按＝编辑 / 删除（次操作）。
+ * **整行点按＝切换到这个档案**（主操作），**长按＝抽屉**（编辑 / 删除，次操作）。
  * 之前是反的：点整行进编辑，「设为默认」是行尾一个 11sp 小字按钮（触控区约 30dp）
  * 紧挨着整行的点击区 —— 用户每天做的是换模型，却要去点最不容易点中的那个。
  *
@@ -113,7 +111,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  */
 @Composable
 private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    var menuFor by remember { mutableStateOf<String?>(null) }
+    var actionTarget by remember { mutableStateOf<ModelProfile?>(null) }
     var pendingDelete by remember { mutableStateOf<ModelProfile?>(null) }
 
     if (state.profiles.isEmpty()) {
@@ -136,17 +134,20 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
             },
             leading = { ActiveMark(profile.isDefault) },
-            trailing = {
-                ProfileMenuButton(
-                    expanded = menuFor == profile.id,
-                    onOpen = { menuFor = profile.id },
-                    onDismiss = { menuFor = null },
-                    onEdit = { viewModel.openProfileEditor(profile.id) },
-                    onDelete = { pendingDelete = profile },
-                )
-            },
             onClick = { viewModel.setDefaultProfile(profile.id) },
-            onLongClick = { menuFor = profile.id },
+            onLongClick = { actionTarget = profile },
+        )
+    }
+
+    // 编辑 / 删除都收进长按抽屉：与会话、世界书同一个入口，行尾不再挂一个小按钮
+    actionTarget?.let { profile ->
+        ActionSheet(
+            title = profile.name,
+            onDismiss = { actionTarget = null },
+            actions = listOf(
+                SheetAction("编辑") { viewModel.openProfileEditor(profile.id) },
+                SheetAction("删除", destructive = true) { pendingDelete = profile },
+            ),
         )
     }
 
@@ -197,36 +198,6 @@ private fun ActiveMark(isActive: Boolean) {
     }
 }
 
-/**
- * 行尾的 `⋯`：编辑 / 删除。
- *
- * 用 `IconButton` 而不是自己拼 Box：它自带 48dp 最小触控区（视觉上仍是图标的尺寸）。
- */
-@Composable
-private fun ProfileMenuButton(
-    expanded: Boolean,
-    onOpen: () -> Unit,
-    onDismiss: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Box {
-        IconButton(onClick = onOpen) {
-            Text(
-                "⋯",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-            DropdownMenuItem(text = { Text("编辑") }, onClick = { onDismiss(); onEdit() })
-            DropdownMenuItem(
-                text = { Text("删除", color = MaterialTheme.colorScheme.error) },
-                onClick = { onDismiss(); onDelete() },
-            )
-        }
-    }
-}
 
 // ---- 采样 -----------------------------------------------------------------
 
@@ -359,6 +330,8 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importWorldBook(uri)
     }
+    // 删除走长按：行尾只留开关，不再塞一个删除图标（那会让每行都很挤，也容易误触）
+    var actionTarget by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
 
     SectionLabel("全局世界书（${state.worldBooks.size} 本）")
@@ -376,21 +349,13 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     "${book.entryCount} 条 · 已停用"
                 },
                 trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = book.enabled,
-                            onCheckedChange = { viewModel.setWorldBookEnabled(book.name, it) },
-                        )
-                        IconButton(onClick = { pendingDelete = book.name }) {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = "删除世界书 ${book.name}",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    Switch(
+                        checked = book.enabled,
+                        onCheckedChange = { viewModel.setWorldBookEnabled(book.name, it) },
+                    )
                 },
                 onClick = { viewModel.openWorldBook(book.name) },
+                onLongClick = { actionTarget = book.name },
             )
         }
     }
@@ -402,6 +367,18 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
     ) {
         Text("导入世界书（.json）")
     }
+    actionTarget?.let { name ->
+        DangerActionSheet(
+            title = name,
+            actionLabel = "删除世界书",
+            onDismiss = { actionTarget = null },
+            onAction = {
+                actionTarget = null
+                pendingDelete = name
+            },
+        )
+    }
+
     pendingDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },

@@ -1,10 +1,8 @@
 package app.tavern
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
@@ -13,17 +11,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +34,6 @@ import app.tavern.data.chat.ChatSession
  * 删除走**长按**：行尾不再放删除按钮（那会让每行都很挤）。
  * 长按 → 动作单 → 删除 → 二次确认：动作单以后还能放"重命名 / 导出"。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
     state: ChatViewModel.UiState,
@@ -112,38 +102,17 @@ fun SessionsScreen(
     // 选卡弹层（新建会话前必须先选卡）
     CardPickerSheet(state = state, viewModel = viewModel)
 
-    // 长按动作单：现在只有删除，以后可以加"重命名 / 导出"
+    // 长按动作单：现在只有删除，以后可以加"重命名 / 导出"（与会话、世界书共用一套）
     actionTarget?.let { session ->
-        ModalBottomSheet(
-            onDismissRequest = { actionTarget = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.background,
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    session.title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
-                )
-                ListItem(
-                    headlineContent = {
-                        Text("删除会话", color = MaterialTheme.colorScheme.error)
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                    modifier = Modifier.padding(bottom = Space.xl).clickable {
-                        pendingDelete = session
-                        actionTarget = null
-                    },
-                )
-            }
-        }
+        DangerActionSheet(
+            title = session.title,
+            actionLabel = "删除会话",
+            onDismiss = { actionTarget = null },
+            onAction = {
+                actionTarget = null
+                pendingDelete = session
+            },
+        )
     }
 
     pendingDelete?.let { session ->
