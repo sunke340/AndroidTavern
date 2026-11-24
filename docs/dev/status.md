@@ -1,15 +1,18 @@
-# 项目状态快照（写于 2026-11-24 11:50）
+# 项目状态快照（写于 2026-11-24 12:00）
 
 **用途**：换会话/压缩上下文后，先读这一页就能接上。更细的规则在 [AGENTS.md](../../AGENTS.md)、
 [app/AGENTS.md](../../app/AGENTS.md)，进度唯一真相在 [compat-matrix.md](../compat-matrix.md)。
 
 ## 当前基线
 
-- 代码：`e70f4df`（tag `apk-m114`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
+- 代码：`010c042`（tag `apk-m115`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
   列表改版之前的最后一版是 `apk-m100` / `99ec1f5`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` / `tools/check-*.sh` 全绿
-- 已交付 APK：`app-v91-e70f4df.apk`（签名固定，可覆盖安装；上一版 `app-v82-99ec1f5.apk`）
-- **结构整理还没开始**：计划与审计在 [structure-audit.md](structure-audit.md)
+- 已交付 APK：`app-v92-010c042.apk`（签名固定，可覆盖安装；上一版 `app-v91-e70f4df.apk`）
+  - ⚠️ `apk-latest` 这个 release 永远跟**最后一次 `main` 提交**重建（含纯文档提交），
+    所以它的 BUILD_ID 不一定等于交付包的 sha；**以 `artifacts/` 里的文件为准**
+- **结构整理已开工**：第 1 轮（P1）做完 = 抽两个工具件；包分层**按评估决定不做**，
+  理由与修订后的计划在 [structure-audit.md](structure-audit.md) 顶部「修订」+ 第九节
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 接手先看这五件（2026-11-24 中午）
@@ -18,8 +21,11 @@
    清单在下面「待真机逐项确认」。**动这些之前先读 [app/AGENTS.md](../../app/AGENTS.md)
    的「列表」「角色卡」「动作单」三节**，那里记着为什么不能手写行、为什么弹层不能用
    `ModalBottomSheet`、为什么卡片磨砂不能用 `GlassSurface`。
-2. **结构整理一轮都没做**：审计 + 三轮计划在 [structure-audit.md](structure-audit.md)。
-   第 1 轮是低风险（包分层 + 抽 `ConfirmDeleteDialog` / `statusBarTop` + 修 2~3 处漂移注释）。
+2. **结构整理按修订后的顺序走**：第 1 轮（抽 `ConfirmDeleteDialog` / `statusBarTop()`）已在
+   `010c042` 做完；**包分层决定不做**（同模块 `internal` 全局可见，包名拦不住依赖，而本机编不了
+   `:app`，漏一条 import 要等 4 分钟 CI）。下一步是 **P2：把 `app/AGENTS.md` 从 42.4 KB 瘦到
+   ≤12 KB** —— 它每次会话都进上下文，整条 AGENTS 链已经 52.3/64 KB。计划见
+   [structure-audit.md](structure-audit.md) 第九节。
 3. **玻璃帧率始终没量过**：液态玻璃现在覆盖底栏、页头、弹层、输入区、发送钮、返回钮。
    发黏就先给最贵的那块单独传 `liquid = null`（底栏最贵）。
 4. **橡皮筋的 `flingEaten` 修复（`1675887`）仍未真机验证**：拉到底 → 猛甩向上 → 撞顶后应立即回弹。
@@ -78,6 +84,7 @@
 | `app-v89-cd86793.apk` | `cd86793` | 底栏先滑走再弹层；选卡弹层迁到新材质；底栏去涟漪（**已被 v90 取代**） |
 | `app-v90-449f69f.apk` | `449f69f` | 弹层 faceWhite 0.40 + 底栏点按轻 tint（**被 v91 取代**） |
 | `app-v91-e70f4df.apk` | `e70f4df` | 弹层 faceWhite 0.50；聊天页**页头下沿**投影 ×0.5；新增 `tag=glass 液态档 …` 诊断日志 |
+| `app-v92-010c042.apk` | `010c042` | 结构第 1 轮：`ConfirmDeleteDialog` + `statusBarTop()` 抽出来（7 处重复消失），删除确认钮统一成红色；**行为不变** |
 
 ### 待真机逐项确认（都在这批里，没人点过）
 
@@ -93,6 +100,7 @@
 | 页头下沿影子 | 聊天页页头下面那条影子，现在 0.16→0.08 | `DetailPage` 里 `shadowScale = 0.5f` |
 | 底栏让位再弹层 | 开弹层时底栏先向下滑走，弹层随后上来 | `SheetEnterDelayMillis`（180）/ 底栏 180·200 |
 | 选卡弹层新材质 | 右上「＋」：三列卡网格压在玻璃面上 | `CardPickerBody` |
+| 删除确认框（v92 新增） | 长按会话/角色卡 → 删除 → 确认框里「删除」两字应为**红色**（原来只有档案编辑那处是红的） | `ConfirmDeleteDialog.kt` |
 
 ## 已经做完的（能装、能日常聊）
 
@@ -117,15 +125,17 @@
 
 **两条线并行，但一次只推一条：**
 
-### A. 结构整理（用户 2026-11-24 提出，计划见 [structure-audit.md](structure-audit.md)）
+### A. 结构整理（修订顺序见 [structure-audit.md](structure-audit.md) 第九节）
 
-1. **第 1 轮（低风险）**：`app.tavern` 拆包（`ui.theme` / `ui.glass` / `ui.component` /
-   `ui.nav` / `screen` / `vm`）+ 抽 `ConfirmDeleteDialog`（现在 **7 处重复**）与
-   `statusBarTop()`（7 处重复）+ 修 2~3 处表述漂移的注释。
-2. **第 2 轮**：debug-only 的 `GalleryScreen`（材质/动效/行样式预览，可当调参台）+
-   把历史踩坑迁到 `docs/dev/pitfalls.md`，把 `app/AGENTS.md` 从 21KB 瘦到 ≤12KB。
-3. **第 3 轮（中高风险）**：拆 `ChatViewModel`（1305 行 → Session/Profiles/Settings/Cards 四个 controller）。
-4. `:ui` 独立 Gradle 模块**暂时不做**（要开第二个 app 或要给别人复用时才值得）。
+1. ~~第 1 轮：包分层 + 抽两个工具件~~ → **只做了后半**（`010c042`）。包分层**不做**。
+2. **P2（下一个）**：新建 `docs/dev/pitfalls.md` 收历史踩坑，把 `app/AGENTS.md` 从 **42.4 KB 瘦到
+   ≤12 KB**（每次会话都进上下文，整条链 52.3/64 KB）。分法：**规则留 AGENTS（一行规则 + 一行理由 +
+   链接），细节去 pitfalls** —— 反过来等于没写。
+3. **P3**：debug-only 的 `GalleryScreen`（材质/动效/行样式预览 + 三根材质滑杆），调参不再每次出包。
+4. **P4**：`Style.kt` 638 行只留 token，行系统搬进**同包**的 `ListRow.kt`（同包拆文件零 import 代价）。
+5. ~~拆 `ChatViewModel`~~ → **不做**（1304 行、0 个 composable、40 字段单一状态机）；要动只抽纯逻辑
+   （世界书两本缓存、流式拼接），见 structure-audit 第六节。
+6. `:ui` 独立 Gradle 模块**暂时不做**。
 
 ### B. 功能线（结构整理之后回到这里）
 
