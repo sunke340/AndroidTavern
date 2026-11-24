@@ -1124,7 +1124,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 回到预设文件里的原始顺序。 */
     fun resetPromptOrder() {
-        val name = _state.value.activePreset
+        // 内置默认预设没有覆盖可清（activePreset 为 null 时什么也不做）
+        val name = _state.value.activePreset ?: return
         viewModelScope.launch {
             withContext(Dispatchers.IO) { presetRepository.setOrderOverride(name, null) }
             refreshPresets()
