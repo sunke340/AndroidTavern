@@ -3,6 +3,8 @@ package app.tavern
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -13,13 +15,20 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,6 +79,16 @@ fun CharactersScreen(
         state.sessions.groupingBy { it.cardId }.eachCount()
     }
 
+    // 搜索（P0-8）：只按名字与简介过滤，不碰卡文件（标签要解 PNG，几十张时太贵）
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(state.cards, query) {
+        val text = query.trim()
+        if (text.isEmpty()) state.cards
+        else state.cards.filter {
+            it.name.contains(text, ignoreCase = true) || it.description.contains(text, ignoreCase = true)
+        }
+    }
+
     if (!state.cardsLoaded) {
         // 还没读完库：别把"未加载"说成"还没有卡"
         return
@@ -98,7 +118,18 @@ fun CharactersScreen(
         horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
         verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
     ) {
-        items(state.cards, key = { it.id }) { card ->
+        // 搜索框占满一整行（两列网格里要 span 整行）
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            CardSearchField(query = query, onQueryChange = { query = it })
+        }
+
+        if (filtered.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyHint("没有匹配「${query.trim()}」的卡。")
+            }
+        }
+
+        items(filtered, key = { it.id }) { card ->
             val press = remember { MutableInteractionSource() }
             val tint = rememberPressTint(press)
             val count = sessionCounts[card.id] ?: 0
@@ -221,6 +252,62 @@ private fun CardBand(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * 角色卡搜索框：一颗圆角输入条，空的时候显示占位文案，非空时右边一个「×」清空。
+ *
+ * 为什么只搜名字与简介：标签在卡 PNG 里，得解文件才知道；几十张卡每次输入都解一遍，
+ * 卡列表首帧就废了（卡面缓存只缓存图片，不缓存字段）。
+ */
+@Composable
+private fun CardSearchField(query: String, onQueryChange: (String) -> Unit) {
+    val palette = LocalTavernPalette.current
+    val shape = RoundedCornerShape(Radius.pill)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Space.s)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, palette.cardBorder, shape)
+            .padding(horizontal = Space.l, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                if (query.isEmpty()) {
+                    Text(
+                        "搜索名字 / 简介",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                inner()
+            },
+        )
+        if (query.isNotEmpty()) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "清空搜索",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onQueryChange("") },
             )
         }
     }
