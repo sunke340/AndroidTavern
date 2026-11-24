@@ -216,6 +216,18 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 lastDepth[0] = depth
             }
 
+            // 全局提示：放在**页面栈之上**。以前它在 TabsRoot 的 Scaffold 里，而离场页是留在
+            // 组合树里的 —— 二级页（聊天 / 详情）上触发的提示会被底下那层 SnackbarHost 吃掉，
+            // 用户什么都没看到（2026-11-25 删一条消息时才发现）。
+            val globalSnack = remember { SnackbarHostState() }
+            val globalNotice = state.notice
+            LaunchedEffect(globalNotice?.id) {
+                if (globalNotice != null) {
+                    globalSnack.showSnackbar(globalNotice.text)
+                    viewModel.consumeNotice(globalNotice.id)
+                }
+            }
+
             // 启动遮罩盖在最上层：首屏列表与头像准备好之前什么都不画（见 StartupCurtain）
             Box(Modifier.fillMaxSize()) {
                 // 页面栈转场：自己管叠放次序（不用 AnimatedContent，理由见 PageStack.kt 顶部注释）
@@ -287,6 +299,16 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         }
                     }
                 }
+
+                // 让开底栏与聊天输入区：两者都在 56–140dp 这一带
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 132.dp),
+                ) {
+                    SnackbarHost(globalSnack)
+                }
+
                 StartupCurtain(booted = state.booted)
             }
         }
@@ -341,16 +363,10 @@ private fun TabsRoot(
     sessionsList: LazyListState,
     charactersGrid: LazyGridState,
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
+    // 提示（notice）由外层 AppShell 统一显示：TabsRoot 会留在组合树里，在这里显示会被
+    // 二级页盖住。所以这一层不再持有 SnackbarHost。
     // 系统「移除动画」：tab 切换的位移也降级成淡化
     val reduceMotion = rememberReduceMotion()
-    val notice = state.notice
-    LaunchedEffect(notice?.id) {
-        if (notice != null) {
-            snackbarHostState.showSnackbar(notice.text)
-            viewModel.consumeNotice(notice.id)
-        }
-    }
 
     // 玻璃：内容录两份图层（全尺寸一份显示、1/FrostScale 一份给底栏当"糊"）。
     val glassLayer = rememberGraphicsLayer()
@@ -426,7 +442,7 @@ private fun TabsRoot(
     val contentBottom = BarHeight + Space.s + Space.s + navBar
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {},
         modifier = Modifier.fillMaxSize().imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
