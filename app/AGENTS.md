@@ -121,7 +121,8 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
   两处都在**录图层之外**，所以弹层能真的糊住背后内容。
 - **不要在页面里直接 composed 弹层**：它会画在录图层里面，玻璃采样会采到自己这一帧。
 - 弹层参数：上两角 24dp 圆角、`shadow = false`、**`liquid = LiquidGlassSpec.Sheet`**
-  （faceWhite 0.14，比胶囊的 0.22 更透一档；**单独一份实例，调弹层不连带改胶囊**）；
+  （faceWhite 0.40，比胶囊的 0.22 **更实**一档 —— 弹层面积大，太透会被背后的内容顶掉文字；
+  **单独一份实例，调弹层不连带改胶囊**）；
   遮罩黑 32%、180ms 淡入、点遮罩关闭、`BackHandler` 关闭；滑入 `Motion.Slow/Standard`，
   减动效时改淡入。
 - **一级页弹层起来之前，底栏先向下滑走**（`TavernBottomBar(hidden=…)`，180ms；
@@ -213,8 +214,8 @@ MainScreen（Destination + PageStack）
 - **没有副标题**：数量、空态这类信息交给内容区；
 - 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
 - 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色 + 一块滑动的
-  14% 主色底块）；**每个 tab 不要自己画底块**（那会变成"消失 + 出现"），也**不要开涟漪**
-  （方形深色会压在滑动中的紫块上）：
+  14% 主色底块 + 点按时 6% 主色的轻 tint）；**每个 tab 不要自己画底块**（那会变成"消失 + 出现"），
+  也**不要开涟漪**（方形深色块会压在滑动中的紫块上；要按压反馈就用 `rememberPressTint`）：
   Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。底栏与页头胶囊共用 `GlassSurface`。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。

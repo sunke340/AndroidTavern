@@ -569,15 +569,24 @@ private fun TavernBottomBar(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         }
+                        // 点按反馈：很轻的一层主色（按下当帧满色、松开淡回），不是涟漪 ——
+                        // 涟漪是方形深色块，会压在滑动中的紫块上（用户 2026-11-24）
+                        val press = remember { MutableInteractionSource() }
+                        val tint = rememberPressTint(press)
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(Radius.pill))
-                                // 涟漪关掉：它是一块方形深色，会压在滑动中的紫块上，
-                                // 看着像"先出现一个阴影再滑动"（用户 2026-11-24）
+                                .background(
+                                    if (tint > 0f) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.06f * tint)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
                                 .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
+                                    interactionSource = press,
                                     indication = null,
                                 ) { onSelect(item.screen) },
                             horizontalAlignment = Alignment.CenterHorizontally,
