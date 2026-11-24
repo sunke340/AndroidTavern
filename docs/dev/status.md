@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `d64608f`（tag `apk-m140`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v110-d64608f.apk`（签名固定，覆盖安装已验证多次） |
+| 代码 | `518a518`（tag `apk-m142`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v111-518a518.apk`（签名固定，覆盖安装已验证多次） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -54,7 +54,11 @@
 | 启动时列表不再"空白半秒" | 会话/卡列表就绪前不显示"还没有会话/卡"；日志里「会话就绪」应早于「配置解密」 | `SessionsScreen` / `CharactersScreen` |
 | 条目多的内嵌书进页不再卡 | 日志 `tag=nav` 的帧数应从 2–5 回到 30±、最长帧 ≤60ms；开书不再是 448ms 一帧 | `CardConfigPageScreen.CardWorldBookPage` |
 | 启动时头像不再闪 | 会话行头像出现即成品（不闪空白帧）；日志 `tag=startup` 有「头像预热 N 张 Xms」 | `CardAvatar.kt` / `ChatViewModel` 会话分支 |
-| 启动只浮现一次 | 冷启动先是一整屏主题底色（什么都不放），列表与头像就绪后 180ms 整块淡出 —— 壳/底栏/列表一起出来；日志 `startup 首屏就绪 +Xms（界面开始淡入）` | `MainScreen.StartupCurtain` |
+| 启动只浮现一次 | 冷启动先是一整屏主题底色（什么都不放，且吃掉触摸），列表与头像就绪后 180ms 整块淡出；日志 `startup 首屏就绪 +Xms（界面开始淡入）` | `MainScreen.StartupCurtain` |
+| 启动第一眼不再是白色 | 系统窗口/splash 底色改成主题底色（`@color/boot_background`，深色另有一份）；非墨紫主题由 `MainActivity` 运行时再对一次 | `themes.xml` / `MainActivity` |
+| 详情页标签"从哪进回哪" | 会话标签进聊天、配置标签进二级页，返回都停原来那个标签；换卡才回到「简介」 | `UiState.detailTab` |
+| 详情页新建会话后返回落主页会话 | 在卡详情点「新建会话」→ 返回直接到「会话」栏（不再回到卡详情） | `startSessionForCard(leaveDetail=true)` |
+| 详情页四个标签都有橡皮筋 | 拉到头能继续拖、松手回弹 | `CharacterDetailScreen.ScrollArea` |
 
 ## 下一步
 
@@ -73,8 +77,8 @@
 - **批量「全部开启」可能撑爆提示词**：一本几百条的书全开，预算裁剪（P1-4）会兜底，但注入内容会明显变长。
 - 卡内嵌书覆盖从**下标**换成了 **uid**，老版本那份覆盖在首次打开卡详情时一次性迁移，对不上的下标直接丢弃。
 - **玻璃帧率从未量过**。发黏就给最贵的那块（底栏）单独传 `liquid = null`。
-- **卡列表启动 394ms**：`CardStore.list()` 逐张 PNG 全量解析（`卡就绪 +740ms`）。
-  下一轮按"字节数 + mtime 缓存名字/简介/条目数"处理。
+- **卡面信息缓存**：`CardStore.list()` 现在按"字节数 + mtime"缓存名字/简介/条目数
+  （`cards/.meta`）；升级后第一次启动仍会全量解析一次，之后才快。
 - **世界书开关会重解析**：`setWorldBookEntryEnabled` 会 `loadWorldBook` + `refreshWorldBooks`，
   大书点一下要重读写两遍（改动前是常态；现在 `list()` 只数条目不算解析了）。
 - **橡皮筋 `flingEaten` 修复未真机验**：拉到底 → 猛甩向上，撞顶后应立即回弹；

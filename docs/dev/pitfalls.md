@@ -592,3 +592,26 @@ MainScreen（Destination + PageStack）
 
 规律：**"占位 → 内容"的两支写法 + 内容从 0 淡入 = 必然闪一帧空白**。
 要么占位垫在下面，要么内容不淡入；异步资源列表（头像/封面/缩略图）都要检查这一条。
+
+## 启动第一眼的白/紫不是 Compose 画的（2026-11-24）
+
+用户：点开 App 先白色铺满 → 瞬间变淡紫 → 主页渐入。
+
+- **白 = 系统窗口底色**：`themes.xml` 里写的是 `#FFFBFE`（Material 浅色默认），
+  而 Compose 主题的 `background` 是 `#F8F6FC`。这一段在 Compose 第一帧之前，只能由主题决定。
+- **淡紫 = 我们自己的启动遮罩**（`StartupCurtain`）。Android 12+ 上面还有一层 splash，
+  底色同样取自主题（`windowSplashScreenBackground`，默认跟 `windowBackground`）。
+- 修法三层：颜色资源（values + values-night）、v31 主题明写 splash 底色、
+  `MainActivity.onCreate` 按用户真实主题 `setBackgroundDrawable` 再对齐一次。
+- 判据：**"启动第一帧颜色不对"先去查 windowBackground / splash，不是 Compose**。
+
+## 被压栈的页面会被移出组合树，局部 `remember` 会丢（2026-11-24）
+
+用户：详情页停在「会话」标签，点进聊天再返回，却回到「简介」；从「配置」进二级页也一样。
+
+真因：`PageStack` 转场结束后只保留当前页（离场页 `pages.removeAt(0)` 移出组合），
+页面里的 `rememberSaveable` 不在 SaveableStateHolder 里，**重建时归零**。
+
+修法：跨页需要记住的 UI 状态放 `UiState`（这次是 `detailTab`），页面只读/写它。
+判据：**凡是"离开这一页再回来应该保持不变"的状态，都不能用页面内的 `remember`**；
+只有"离开就该重置"的（临时弹层、输入草稿、确认框）才留在页面里。
