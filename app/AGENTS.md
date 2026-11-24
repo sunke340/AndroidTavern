@@ -134,7 +134,8 @@
 - 进入曲线 `Motion.Decelerate`；**可被打断的用弹簧不用 tween**；归位类阻尼必须 1.0。
 - 减动效统一 `rememberReduceMotion()`，别各自读系统设置。
 - 内容底部让位 `max(导航栏, 键盘)`，不相加；键盘用 `imePadding()`。
-- 橡皮筋 `Modifier.rubberOverscroll(...)` 必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
+- 橡皮筋 `Modifier.rubberOverscroll(...)` **每个可滚动面都要挂**（会话/角色卡/聊天/世界书/设置一二级/
+  预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
   `onPostScroll` 把 available 全报成已消费；回弹必须能被手指打断（代数守卫）。
 

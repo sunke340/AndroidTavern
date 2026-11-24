@@ -62,6 +62,8 @@ private val PromptRowHeight = 60.dp
  *   画在同层最上面（`zIndex`），于是它在视觉上离开纸面、盖住邻居；
  * - 松手落回：投影与缩放同时收回去，卡片在原位。
  *
+ * 滚动照旧挂橡皮筋（`rubberOverscroll`）：这一页和其它列表页一样，要能"拉过头再弹回来"。
+ *
  * 形状、圆角、间距在拖动前后**完全一样**，所以不会有"跳变"。
  *
  * ## 其它约束
@@ -78,6 +80,8 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         viewModel.movePrompt(from.index, to.index)
     }
     var menuOpen by remember { mutableStateOf(false) }
+    // 这一页也是可滚动面：跟其它列表一样要能"拉过头再弹回来"
+    val overscroll = rememberRubberOverscroll()
 
     GlassDetailScaffold(
         title = name,
@@ -104,7 +108,7 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     ) { padding ->
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
