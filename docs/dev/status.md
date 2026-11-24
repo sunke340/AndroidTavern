@@ -1,18 +1,18 @@
-# 项目状态快照（写于 2026-11-24 12:30）
+# 项目状态快照（写于 2026-11-24 12:35）
 
 **用途**：换会话/压缩上下文后，先读这一页就能接上。更细的规则在 [AGENTS.md](../../AGENTS.md)、
 [app/AGENTS.md](../../app/AGENTS.md)，进度唯一真相在 [compat-matrix.md](../compat-matrix.md)。
 
 ## 当前基线
 
-- 代码：`59139f4`（tag `apk-m117`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
+- 代码：`0261d41`（tag `apk-m118`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
   列表改版之前的最后一版是 `apk-m100` / `99ec1f5`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` / `tools/check-*.sh` 全绿
-- 已交付 APK：`app-v93-59139f4.apk`（签名固定，可覆盖安装；上一版 `app-v92-010c042.apk`）
+- 已交付 APK：`app-v94-0261d41.apk`（签名固定，可覆盖安装；上一版 `app-v93-59139f4.apk`）
   - ⚠️ `apk-latest` 这个 release 永远跟**最后一次 `main` 提交**重建（含纯文档提交），
     所以它的 BUILD_ID 不一定等于交付包的 sha；**以 `artifacts/` 里的文件为准**
-- **结构整理**：P1（抽两个工具件）、P2（AGENTS 42KB→8.9KB）、P3（组件预览页）都做完了；
-  下一个是 P4（`Style.kt` 拆同包 `ListRow.kt`）。包分层**按评估决定不做**，
+- **结构整理做完了**：P1（抽两个工具件）、P2（AGENTS 42KB→9KB）、P3（组件预览页）、
+  P4（`Style.kt` 拆出 `ListRow.kt`）全部完成。包分层**按评估决定不做**，
   理由与修订后的计划在 [structure-audit.md](structure-audit.md) 顶部「修订」+ 第九节
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
@@ -87,6 +87,7 @@
 | `app-v91-e70f4df.apk` | `e70f4df` | 弹层 faceWhite 0.50；聊天页**页头下沿**投影 ×0.5；新增 `tag=glass 液态档 …` 诊断日志 |
 | `app-v92-010c042.apk` | `010c042` | 结构第 1 轮：`ConfirmDeleteDialog` + `statusBarTop()` 抽出来（7 处重复消失），删除确认钮统一成红色；**行为不变** |
 | `app-v93-59139f4.apk` | `59139f4` | P3：组件预览页（设置→关于→组件预览，debug only）：材质样张 + `faceWhite`/`refraction`/`rimAlpha` 三根滑杆 + 五种行样式 |
+| `app-v94-0261d41.apk` | `0261d41` | P4：`Style.kt` 638→307 行，行系统搬进同包 `ListRow.kt`（364 行）；**纯重构，无视觉变化** |
 
 ### 待真机逐项确认（都在这批里，没人点过）
 
@@ -104,6 +105,7 @@
 | 选卡弹层新材质 | 右上「＋」：三列卡网格压在玻璃面上 | `CardPickerBody` |
 | 删除确认框（v92 新增） | 长按会话/角色卡 → 删除 → 确认框里「删除」两字应为**红色**（原来只有档案编辑那处是红的） | `ConfirmDeleteDialog.kt` |
 | 组件预览（v93 新增） | 设置→关于→「组件预览」：胶囊/发送钮/动作单面/页头带/卡片条都压在彩色带上；拖滑杆松手才变 | `GalleryScreen.kt` |
+| v94 是纯重构 | 只需抽验三处列表（会话/模型/世界书）外观与手势没变；出问题回退 `apk-m117` | `ListRow.kt` |
 
 ## 已经做完的（能装、能日常聊）
 
@@ -136,12 +138,13 @@
    以后**新规则只往这份 8.9 KB 里加一行**，故事写进 pitfalls。
 3. ~~P3：debug-only 的 `GalleryScreen`~~ → **已完成**（`59139f4`）。调参数进这一页，松手就换 spec，
    下面直接给一行能粘回 `LiquidGlassSpec` 的代码。**不含动效样张**（那些复制一份会跟真实实现漂移）。
-4. **P4（下一个）**：`Style.kt` 638 行只留 token，行系统搬进**同包**的 `ListRow.kt`（同包拆文件零 import 代价）。
+4. ~~P4：`Style.kt` 拆 `ListRow.kt`~~ → **已完成**（`0261d41`）：638 → 307 行 + 364 行，
+   同包拆文件零 import 代价；原文每个非 import 行都在两份文件之一（脚本逐行比对过）。
 5. ~~拆 `ChatViewModel`~~ → **不做**（1304 行、0 个 composable、40 字段单一状态机）；要动只抽纯逻辑
    （世界书两本缓存、流式拼接），见 structure-audit 第六节。
 6. `:ui` 独立 Gradle 模块**暂时不做**。
 
-### B. 功能线（结构整理之后回到这里）
+### B. 功能线（**现在回到这里** —— 结构整理四轮已全部完成）
 
 1. **P1-5 预设导入**：ST 预设 JSON → 采样参数 + `main` + `prompt_order`（要先录 `fixture:P1-5-preset`）
 2. **D 批：三级继承**（会话 > 角色卡 > 全局，每项可"跟随"；解析器放 `:core` 带单测）
