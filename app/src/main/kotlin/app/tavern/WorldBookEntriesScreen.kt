@@ -68,18 +68,12 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         }
 
         val count = book.entries.size
-        // 内容**在页头下面开始**（`padding(padding)`），不往页头底下滚：
-        // 页头是 0.94 的色罩，滚过去会透出 6% 的行文字，看着像"页头是透明的"（用户 2026-11-24 报）。
-        // 只有聊天页是磨砂页头、需要内容从它底下穿过。
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .rubberOverscroll(rememberRubberOverscroll()),
+            modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = Space.l,
+                top = padding.calculateTopPadding() + Space.l,
                 bottom = Space.xl,
             ),
         ) {
@@ -91,6 +85,7 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
                         checked = entry.enabled,
                         fileEnabled = !entry.disabledInFile,
                         forcedOn = entry.forcedOn,
+                        defaultOffNote = "文件里默认关闭",
                         onToggle = { enabled ->
                             viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
                         },

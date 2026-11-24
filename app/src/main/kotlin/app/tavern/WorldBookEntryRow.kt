@@ -1,9 +1,7 @@
 package app.tavern
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -18,9 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 /**
  * 世界书条目行：**全局书与卡内嵌书共用这一份**。
@@ -37,6 +33,7 @@ import androidx.compose.ui.unit.dp
  * @param checked 生效状态
  * @param fileEnabled 文件/卡里写的是开还是关
  * @param forcedOn 应用内强制开启（只有 [fileEnabled] 为 false 时才可能为 true）
+ * @param defaultOffNote 文件里关着、又没强制开启时副行末尾那句（"卡里默认关闭" / "文件里默认关闭"）
  */
 @Composable
 fun WorldBookEntryRow(
@@ -45,16 +42,10 @@ fun WorldBookEntryRow(
     checked: Boolean,
     fileEnabled: Boolean,
     forcedOn: Boolean,
+    defaultOffNote: String,
     onToggle: (Boolean) -> Unit,
 ) {
     val error = MaterialTheme.colorScheme.error
-    // 状态说明放**开关下面**，不拼在正文后面：正文一长就把提示挤没了（用户 2026-11-24 报）。
-    // 四个字刚好不宽于开关本身，行不会因此变窄。
-    val note = when {
-        forcedOn -> "强制开启"
-        !fileEnabled -> "默认关闭"
-        else -> null
-    }
     Box(
         modifier = if (forcedOn) {
             Modifier.fillMaxWidth().background(error.copy(alpha = 0.06f))
@@ -64,39 +55,45 @@ fun WorldBookEntryRow(
     ) {
         ListRow(
             title = title,
-            subtitle = if (content.isBlank()) null else content.replace("\n", " ").take(90),
+            subtitle = entrySubtitle(content, forcedOn, !fileEnabled, defaultOffNote),
             // 正文可能是一整段，两行够看出这条讲什么
             subtitleMaxLines = 2,
             trailing = {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Switch(
-                        checked = checked,
-                        onCheckedChange = onToggle,
-                        colors = if (forcedOn) {
-                            SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onError,
-                                checkedTrackColor = error,
-                            )
-                        } else {
-                            SwitchDefaults.colors()
-                        },
-                    )
-                    if (note != null) {
-                        Text(
-                            text = note,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (forcedOn) error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onToggle,
+                    colors = if (forcedOn) {
+                        SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onError,
+                            checkedTrackColor = error,
                         )
-                    }
-                }
+                    } else {
+                        SwitchDefaults.colors()
+                    },
+                )
             },
         )
     }
 }
+
+/** 副行：正文折成一行并截到 90 字；末尾标出"默认关闭"或"强制开启"。 */
+private fun entrySubtitle(
+    content: String,
+    forcedOn: Boolean,
+    fileOff: Boolean,
+    defaultOffNote: String,
+): String? = buildString {
+    if (content.isNotBlank()) append(content.replace("\n", " ").take(90))
+    val note = when {
+        forcedOn -> "强制开启"
+        fileOff -> defaultOffNote
+        else -> null
+    }
+    if (note != null) {
+        if (isNotEmpty()) append(" · ")
+        append(note)
+    }
+}.ifEmpty { null }
 
 /** 条目页右上角的批量菜单：全部开启 / 全部关闭 / 恢复默认（两页共用）。 */
 @Composable
