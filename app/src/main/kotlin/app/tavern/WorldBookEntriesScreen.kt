@@ -77,15 +77,25 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
                 bottom = Space.xl,
             ),
         ) {
+            // 强制开启只靠红色表示，含义写在这里；没有强制条目时不占位
+            if (book.entries.any { it.forcedOn }) {
+                item(key = "forced-hint") {
+                    WorldBookForcedHint(
+                        modifier = Modifier.padding(
+                            start = RowToken.padH,
+                            top = Space.xs,
+                            bottom = Space.xs,
+                        ),
+                    )
+                }
+            }
             itemsIndexed(book.entries, key = { _, entry -> entry.uid }) { index, entry ->
                 GroupPiece(piece = rowPieceAt(index, count)) {
                     WorldBookEntryRow(
                         title = entry.title,
                         content = entry.preview,
                         checked = entry.enabled,
-                        fileEnabled = !entry.disabledInFile,
                         forcedOn = entry.forcedOn,
-                        defaultOffNote = "文件里默认关闭",
                         onToggle = { enabled ->
                             viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
                         },

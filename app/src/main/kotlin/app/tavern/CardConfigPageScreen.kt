@@ -28,9 +28,13 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
     val cardId = state.detailCardId ?: return
     val detail = state.detail
 
+    // 世界书这页和全局世界书条目页**同一套**：页头半透明、列表从它底下滑过。
+    // 另外两页（对话样式 / 关于这张卡）内容短，保持"内容在页头下面开始"。
+    val scrollUnderHeader = page == CardConfigPage.WorldBook
+
     GlassDetailScaffold(
         title = page.title,
-        // 世界书这页跟全局世界书详情页同一套：页头一行是"标题 + N 条"
+        // 页头一行是"标题 + N 条"，和全局世界书详情页一致
         subtitle = if (page == CardConfigPage.WorldBook) {
             detail?.bookEntries?.size?.let { "$it 条" }
         } else {
@@ -38,18 +42,33 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
         },
         onBack = viewModel::closeCardConfigPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        contentTopInset = if (scrollUnderHeader) 0.dp else DetailHeaderHeight,
         actions = if (page == CardConfigPage.WorldBook) {
             { WorldBookBulkMenu { mode -> viewModel.setAllCardBookEntries(mode) } }
         } else {
             null
         },
     ) { padding ->
+        val overscroll = rememberRubberOverscroll()
+        // 从页头底下滑过的那页，让位必须做在 `verticalScroll` **里面**（内容才能滚到页头下）；
+        // 其余页做在外面 —— 内容被裁在页头下方，不会有东西从半透明页头那里透出来。
+        val outerInsets = if (scrollUnderHeader) Modifier else Modifier.padding(padding)
+        val innerInsets = if (scrollUnderHeader) {
+            Modifier.padding(
+                top = padding.calculateTopPadding() + DetailHeaderHeight,
+                bottom = padding.calculateBottomPadding(),
+            )
+        } else {
+            Modifier
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .then(outerInsets)
+                .rubberOverscroll(overscroll)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.l),
+                .padding(horizontal = Space.l)
+                .then(innerInsets),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
             when (page) {
@@ -74,9 +93,14 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
 
     // 这一页和全局世界书详情页**完全同一套行**（正文两行预览 + 行尾开关），
     // 只是行的标题取卡里给的 comment（全局书那边取关键字）：卡里人写的标题更有用。
+    if (forced.isNotEmpty()) {
+        WorldBookForcedHint(
+            modifier = Modifier.padding(start = RowToken.padH, top = Space.s),
+        )
+    }
     ListGroup(
         count = entries.size,
-        modifier = Modifier.padding(top = Space.l),
+        modifier = Modifier.padding(top = if (forced.isEmpty()) Space.l else Space.xs),
     ) { index, _ ->
         val entry = entries[index]
         WorldBookEntryRow(
@@ -88,9 +112,7 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
                 entry.uid in off -> false
                 else -> entry.enabled
             },
-            fileEnabled = entry.enabled,
             forcedOn = entry.uid in forced,
-            defaultOffNote = "卡里默认关闭",
             onToggle = { enabled ->
                 viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
             },

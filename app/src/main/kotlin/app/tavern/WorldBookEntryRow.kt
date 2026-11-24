@@ -27,22 +27,21 @@ import androidx.compose.ui.Modifier
  * 开关是**三态**的，界面上仍是两态按钮：
  * - 文件/卡里写着开 → 关掉就是本地覆盖；
  * - 文件/卡里写着关 → 打开就是**强制开启**（原版在 Character Lore 里也能这么做，
- *   只是它改的是卡文件；我们不回写卡，所以存在本机）。强制开启的行用红标记：
- *   整行 6% 红底 + 红色开关 + 副行末尾「强制开启」—— 红色只做标记，正文文字不变色。
+ *   只是它改的是卡文件；我们不回写卡，所以存在本机）。
+ *
+ * 强制开启的行只靠**红**表示（6% 红底 + 红开关），**行里不写状态文案**：
+ * 文案要么被长正文挤掉、要么把行撑宽（用户 2026-11-24）。含义由列表顶部那行
+ * [WorldBookForcedHint] 说明，且只在真有强制条目时出现。
  *
  * @param checked 生效状态
- * @param fileEnabled 文件/卡里写的是开还是关
- * @param forcedOn 应用内强制开启（只有 [fileEnabled] 为 false 时才可能为 true）
- * @param defaultOffNote 文件里关着、又没强制开启时副行末尾那句（"卡里默认关闭" / "文件里默认关闭"）
+ * @param forcedOn 应用内强制开启（文件/卡里关着、被本机打开）
  */
 @Composable
 fun WorldBookEntryRow(
     title: String,
     content: String,
     checked: Boolean,
-    fileEnabled: Boolean,
     forcedOn: Boolean,
-    defaultOffNote: String,
     onToggle: (Boolean) -> Unit,
 ) {
     val error = MaterialTheme.colorScheme.error
@@ -55,8 +54,8 @@ fun WorldBookEntryRow(
     ) {
         ListRow(
             title = title,
-            subtitle = entrySubtitle(content, forcedOn, !fileEnabled, defaultOffNote),
             // 正文可能是一整段，两行够看出这条讲什么
+            subtitle = if (content.isBlank()) null else content.replace("\n", " ").take(90),
             subtitleMaxLines = 2,
             trailing = {
                 Switch(
@@ -76,24 +75,20 @@ fun WorldBookEntryRow(
     }
 }
 
-/** 副行：正文折成一行并截到 90 字；末尾标出"默认关闭"或"强制开启"。 */
-private fun entrySubtitle(
-    content: String,
-    forcedOn: Boolean,
-    fileOff: Boolean,
-    defaultOffNote: String,
-): String? = buildString {
-    if (content.isNotBlank()) append(content.replace("\n", " ").take(90))
-    val note = when {
-        forcedOn -> "强制开启"
-        fileOff -> defaultOffNote
-        else -> null
-    }
-    if (note != null) {
-        if (isNotEmpty()) append(" · ")
-        append(note)
-    }
-}.ifEmpty { null }
+/**
+ * 列表顶部的小字说明：**只在真有强制开启条目时**出现（没有就不占位）。
+ *
+ * 红是"本机覆盖了卡/书里的默认"的意思，不解释一句容易被当成出错了。
+ */
+@Composable
+fun WorldBookForcedHint(modifier: Modifier = Modifier) {
+    Text(
+        text = "红色条目为强制开启",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.error,
+        modifier = modifier,
+    )
+}
 
 /** 条目页右上角的批量菜单：全部开启 / 全部关闭 / 恢复默认（两页共用）。 */
 @Composable
