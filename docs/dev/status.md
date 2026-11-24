@@ -1,11 +1,11 @@
-# 项目状态快照（写于 2026-11-24 12:35）
+# 项目状态快照（写于 2026-11-24 13:05）
 
 **用途**：换会话/压缩上下文后，先读这一页就能接上。更细的规则在 [AGENTS.md](../../AGENTS.md)、
 [app/AGENTS.md](../../app/AGENTS.md)，进度唯一真相在 [compat-matrix.md](../compat-matrix.md)。
 
 ## 当前基线
 
-- 代码：`0261d41`（tag `apk-m118`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
+- 代码：见下方「功能线」最新一条（`apk-m118` 是结构整理收尾版）；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
   列表改版之前的最后一版是 `apk-m100` / `99ec1f5`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` / `tools/check-*.sh` 全绿
 - 已交付 APK：`app-v94-0261d41.apk`（签名固定，可覆盖安装；上一版 `app-v93-59139f4.apk`）
@@ -146,7 +146,14 @@
 
 ### B. 功能线（**现在回到这里** —— 结构整理四轮已全部完成）
 
-1. **P1-5 预设导入**：ST 预设 JSON → 采样参数 + `main` + `prompt_order`（要先录 `fixture:P1-5-preset`）
+1. **P1-5 预设导入 —— 内核已完成（2026-11-24 下午）**：
+   - 新模块 `:core:preset`：`PresetParser` 解析 ST 预设（采样子集 + `prompt_order` + 提示词内容），
+     不认识的字段一律忽略；`PresetDefaults` 抄了原版默认预设那张表，靠 vendor 反向核对。
+   - `PromptBuilder` **改成按 `prompt_order` 拼**（`enabled=false` 不发、顺序想怎么排就怎么排），
+     默认顺序与之前完全一致 → 老夹具仍然全绿。
+   - 新夹具 `fixture:P1-5-prompt-order`：让原版用改过的顺序表实发（scenario 提到 main 前、
+     charPersonality 关掉、示例对话排到历史之后），我们逐条相等。`capture.mjs` 新增 `--prompt-order`。
+   - **下一步（还没做）**：采样参数接进 `ChatRequest`、App 里的导入/选择/排序界面（data + UI）。
 2. **D 批：三级继承**（会话 > 角色卡 > 全局，每项可"跟随"；解析器放 `:core` 带单测）
 3. **P0-6 消息操作**：swipe / 重新生成 / 编辑 / 删除单条（要先用原版录 swipe 夹具）
 4. **世界书剩下的**：sticky 计时状态落库、`@@` 装饰器、outlet 位置

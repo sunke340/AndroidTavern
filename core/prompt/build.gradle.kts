@@ -13,6 +13,8 @@ dependencies {
     api(project(":core:card-format"))
     api(project(":core:lorebook"))
     api(project(":core:model"))
+    // prompt_order 的类型定义在 preset 里（PromptBuilder 的公开参数用到它）
+    api(project(":core:preset"))
 
     testImplementation(project(":core:tokenizer"))
     testImplementation(kotlin("test-junit5"))

@@ -36,6 +36,10 @@ const IMPORT_EMBEDDED = process.argv.indexOf('--import-embedded-world') !== -1;
 // --select-world：把某个世界书挂到"全局激活"上（原版 updateWorldInfoSettings 的第二个参数）。
 // 只导入不挂载的话，卡里没有 extensions.world，原版就当作"没挂书"，一条都不注入。
 const SELECT_WORLD = arg('select-world', null);
+// --prompt-order：直接改原版的 prompt_order（数组顺序＝发送顺序，enabled=false 就是不发）。
+// 用来证明"预设里的 prompt_order 真的会被按序执行"，而不只是"我们照着默认顺序拼"。
+// 传一个 JSON 数组：[{"identifier":"scenario","enabled":true}, ...]，没列到的按原相对顺序追在后面。
+const PROMPT_ORDER = arg('prompt-order', null) ? JSON.parse(arg('prompt-order')) : null;
 
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
@@ -87,7 +91,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -125,6 +129,30 @@ try {
             apiSel.value = 'openai';
             apiSel.dispatchEvent(new Event('change', { bubbles: true }));
             await new Promise(r => setTimeout(r, 500));
+        }
+
+        // prompt_order：promptManager 是 openai.js 的导出（live binding），
+        // 它读的就是 serviceSettings.prompt_order 里那个**活数组**，所以原地重排即可。
+        let appliedOrder = null;
+        if (promptOrder) {
+            const AI = await import('./scripts/openai.js');
+            const pm = AI.promptManager;
+            if (!pm) throw new Error('promptManager 还没初始化（openai 后端没切过去？）');
+            const entries = pm.getPromptOrderForCharacter(pm.activeCharacter);
+            const byId = new Map(entries.map(e => [e.identifier, e]));
+            const next = [];
+            for (const item of promptOrder) {
+                const entry = byId.get(item.identifier);
+                if (!entry) throw new Error('未知的 prompt identifier: ' + item.identifier);
+                entry.enabled = item.enabled !== false;
+                next.push(entry);
+            }
+            for (const entry of entries) {
+                if (!next.includes(entry)) next.push(entry);
+            }
+            entries.length = 0;
+            entries.push(...next);
+            appliedOrder = entries.map(e => ({ identifier: e.identifier, enabled: e.enabled }));
         }
 
         // Generate 在 online_status === 'no_connection' 时会直接早退（它以为后端没连上）。
@@ -181,6 +209,7 @@ try {
         try { maxPromptTokens = typeof S.getMaxPromptTokens === 'function' ? S.getMaxPromptTokens() : null; } catch { }
         return {
             maxPromptTokens,
+            appliedOrder,
             captured,
             allCalls,
             error,
@@ -194,7 +223,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
@@ -218,6 +247,7 @@ try {
             world: SELECT_WORLD,
             wiSettings: WI_SETTINGS,
             maxPromptTokens: result.maxPromptTokens,
+            promptOrder: result.appliedOrder,
             context: result.context,
             generateError: result.error,
         },

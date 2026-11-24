@@ -50,6 +50,24 @@ node tools/fixture/capture.mjs --out fixtures/expected/P0-5-prompt-basic.json
 ⚠️ 实测发现：`Generate('normal', { skipWIAN: true })` **并不会**跳过角色卡内嵌 book 的注入
 （两张卡录出来的 5 条消息一模一样）。所以"关掉世界书"这条路走不通，只能换卡。
 
+## 2.52 预设顺序：`--prompt-order`
+
+```bash
+node tools/fixture/capture.mjs --out fixtures/expected/P1-5-prompt-order.json \
+  --character Synthetic --no-wi \
+  --prompt-order '[{"identifier":"scenario","enabled":true},{"identifier":"main","enabled":true}, …]'
+```
+
+直接改原版的 `prompt_order`（`promptManager` 是 `openai.js` 的 live binding，它读的就是
+`serviceSettings.prompt_order` 里那个活数组）：**数组顺序＝发送顺序**，`enabled: false` 就是不发。
+没列到的 identifier 按原相对顺序追在后面，所以只写想改动的那几条也行。
+
+录出来的夹具在 `_meta.promptOrder` 里存了**实际生效**的那张表，测试拿它当输入 ——
+这样"顺序生效"是原版自己证实的，不是我们照着自己的实现描述的。
+
+`P1-5-prompt-order` 那张表钉住三件事：scenario 提到 main 前面（重排生效）、charPersonality 关掉
+（那条消息消失）、`dialogueExamples` 排到 `chatHistory` 之后（`[Example Chat]` 出现在开场白后面）。
+
 ## 2.55 开场白：`--dump-chat`
 
 ```bash

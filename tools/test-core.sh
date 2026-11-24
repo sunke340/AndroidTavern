@@ -12,6 +12,7 @@ tools/gradle-local.sh \
     :core:lorebook:test \
     :core:tokenizer:test \
     :core:regex:test \
+    :core:preset:test \
     :core:prompt:test \
     :core:ai:test \
     :core:chat-format:test \

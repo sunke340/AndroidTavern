@@ -9,9 +9,13 @@ package app.tavern.core.prompt
  * `DefaultTemplatesVendorTest` 会在本机存在 vendor 时反向核对，防止抄错。
  */
 public object SillyTavernDefaults {
-    /** 预设里 identifier = `main` 的那条。 */
-    public const val MAIN: String =
-        "Write {{char}}'s next reply in a fictional chat between {{char}} and {{user}}."
+    /**
+     * 预设里 identifier = `main` 的那条。
+     *
+     * 内容定义在 [app.tavern.core.preset.PresetDefaults.MAIN]（预设模块是最底层，
+     * 那张默认表属于它），这里只是一个别名，避免同一段模板抄两份。
+     */
+    public const val MAIN: String = app.tavern.core.preset.PresetDefaults.MAIN
 
     /** 预设顶层 `new_chat_prompt`，插在聊天历史最前面（`chatHistory` 块的首条）。 */
     public const val NEW_CHAT: String = "[Start a new Chat]"

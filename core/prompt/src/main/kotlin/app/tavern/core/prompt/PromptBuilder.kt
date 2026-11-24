@@ -5,94 +5,138 @@ import app.tavern.core.model.ChatRole
 
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.lorebook.LorebookScanResult
+import app.tavern.core.preset.PresetDefaults
+import app.tavern.core.preset.PromptOrderEntry
 
 /**
  * 提示词拼装。产出必须与夹具逐字相等——夹具是原版 1.19.1 实际发给 API 的请求体。
  *
- * 当前覆盖的链路（默认预设的 `prompt_order`，见 `default/content/presets/openai/Default.json`）：
+ * **顺序由 `prompt_order` 决定**（原版预设里的那张表），不再写死在代码里：
+ * 每个 `identifier` 对应一段内容，`enabled = false` 的整段不发。默认顺序见
+ * [PresetDefaults.ORDER]：
  *
  * ```
  * main → worldInfoBefore → charDescription → charPersonality → scenario
- *      → worldInfoAfter → dialogueExamples → newChat → 历史
+ *      → worldInfoAfter → dialogueExamples → chatHistory → jailbreak
  * ```
  *
- * 世界书内容由 `:core:lorebook` 扫出来（[LorebookScanResult]），这里只负责**按位置插进去**；
- * 扫描本身（关键字、递归、预算）不在这里做。
+ * 其中 `chatHistory` 这一段 = `[Start a new Chat]` 标记 + 全部历史消息（原版是
+ * `chatCompletion.insertAtStart(newChatMessage, 'chatHistory')`，即标记属于这一段的开头，
+ * 不是独立的一段）；`dialogueExamples` 同理，块首是 `[Example Chat]`。
  *
- * 刻意不做的事：不读文件、不碰设置、不算 token —— 分别属于 data / feature / tokenizer。
- * 也还没做：作者注、名称前缀（names_behavior）、token 预算裁剪。
+ * 世界书内容由 `:core:lorebook` 扫出来（[LorebookScanResult]），这里只负责**按位置插进去**。
+ * 刻意不做的事：不读文件、不碰设置、不算 token。
+ * 还没做的注入点：`personaDescription`（人设）、`enhanceDefinitions` 之外的扩展、群聊。
  */
 public class PromptBuilder {
+    /**
+     * @param order 发送顺序（来自预设的 `prompt_order`；默认是原版默认预设那张表）
+     * @param prompts 带内容的提示词（`main` / `nsfw` / `jailbreak` …；空串＝不发）
+     */
     public fun build(
         character: CharacterCard,
         userName: String,
         history: List<ChatMessage> = emptyList(),
         worldInfo: LorebookScanResult = LorebookScanResult(),
+        order: List<PromptOrderEntry> = PresetDefaults.ORDER,
+        prompts: Map<String, String> = PresetDefaults.PROMPTS,
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
+        val charName = character.name
 
-        messages += mainPrompt(character.name, userName)
+        for (entry in order) {
+            if (!entry.enabled) continue
+            when (entry.identifier) {
+                Id.MAIN, Id.NSFW, Id.JAILBREAK, Id.ENHANCE_DEFINITIONS -> {
+                    val content = prompts[entry.identifier].orEmpty()
+                    if (content.isBlank()) continue
+                    messages += system(substitute(content, charName, userName))
+                }
 
-        // worldInfoBefore：默认顺序里紧跟在 main 后面
-        if (worldInfo.beforeChar.isNotBlank()) {
-            messages += system(worldInfo.beforeChar)
+                Id.WORLD_INFO_BEFORE ->
+                    if (worldInfo.beforeChar.isNotBlank()) messages += system(worldInfo.beforeChar)
+
+                Id.CHAR_DESCRIPTION ->
+                    if (character.description.isNotBlank()) {
+                        messages += system(substitute(character.description, charName, userName))
+                    }
+
+                Id.CHAR_PERSONALITY ->
+                    if (character.personality.isNotBlank()) {
+                        val formatted = SillyTavernDefaults.PERSONALITY_FORMAT
+                            .replace("{{personality}}", character.personality)
+                        messages += system(substitute(formatted, charName, userName))
+                    }
+
+                Id.SCENARIO ->
+                    if (character.scenario.isNotBlank()) {
+                        val formatted = SillyTavernDefaults.SCENARIO_FORMAT
+                            .replace("{{scenario}}", character.scenario)
+                        messages += system(substitute(formatted, charName, userName))
+                    }
+
+                Id.WORLD_INFO_AFTER ->
+                    if (worldInfo.afterChar.isNotBlank()) messages += system(worldInfo.afterChar)
+
+                Id.DIALOGUE_EXAMPLES -> {
+                    val examples = ExampleDialogue.parse(character.messageExample, charName, userName)
+                    if (examples.isNotEmpty()) {
+                        messages += system(SillyTavernDefaults.EXAMPLE_CHAT)
+                        examples.forEach { messages += system(it) }
+                    }
+                }
+
+                Id.CHAT_HISTORY -> {
+                    messages += newChatMarker()
+                    // 历史消息原版也会逐条去掉 \r（"waste of tokens"，见 openai.js），这里照做
+                    messages += history.map { it.copy(content = it.content.replace("\r", "")) }
+                }
+
+                // 还没实现的注入点（personaDescription / 未知 identifier）：不静默插到别处，
+                // 直接不发。宁可少一条，也不要打乱原版的顺序语义。
+                else -> Unit
+            }
         }
-
-        if (character.description.isNotBlank()) {
-            messages += system(substitute(character.description, character.name, userName))
-        }
-
-        if (character.personality.isNotBlank()) {
-            val formatted = SillyTavernDefaults.PERSONALITY_FORMAT
-                .replace("{{personality}}", character.personality)
-            messages += system(substitute(formatted, character.name, userName))
-        }
-
-        if (character.scenario.isNotBlank()) {
-            val formatted = SillyTavernDefaults.SCENARIO_FORMAT
-                .replace("{{scenario}}", character.scenario)
-            messages += system(substitute(formatted, character.name, userName))
-        }
-
-        // worldInfoAfter：默认顺序里在 scenario 之后、示例对话之前
-        if (worldInfo.afterChar.isNotBlank()) {
-            messages += system(worldInfo.afterChar)
-        }
-
-        val examples = ExampleDialogue.parse(character.messageExample, character.name, userName)
-        if (examples.isNotEmpty()) {
-            messages += system(SillyTavernDefaults.EXAMPLE_CHAT)
-            examples.forEach { messages += system(it) }
-        }
-
-        messages += newChatMarker()
-
-        // 历史消息原版也会逐条去掉 \r（"waste of tokens"，见 openai.js 的 content.replace(/\r/gm, '')），
-        // 这里照做，否则带 CRLF 的老聊天会与原版差字符。
-        messages += history.map { it.copy(content = it.content.replace("\r", "")) }
 
         return messages
     }
 
-    /** 对应原版预设里 identifier = `main` 的提示词。 */
+    /** 对应原版预设里 identifier = `main` 的提示词（默认模板）。 */
     public fun mainPrompt(characterName: String, userName: String): ChatMessage =
-        system(substitute(SillyTavernDefaults.MAIN, characterName, userName))
+        system(substitute(PresetDefaults.MAIN, characterName, userName))
 
-    /** 新聊天时插在角色定义之后、消息历史之前的标记。 */
+    /** 新聊天时插在聊天历史块最前面的标记。 */
     public fun newChatMarker(): ChatMessage =
         ChatMessage(role = ChatRole.System, content = SillyTavernDefaults.NEW_CHAT)
 
     private fun system(content: String): ChatMessage = ChatMessage(role = ChatRole.System, content = content)
 
     /**
-     * 原版 `substituteParams()` 的最小实现：`{{char}}` / `{{user}}`，外加把 CRLF 去掉。
+     * 原版 `substituteParams()` 的最小实现：`{{char}}` / `{{charIfNotGroup}}` / `{{user}}`，
+     * 外加拿掉 CRLF。
      *
-     * CRLF 那条不是可选项：默认卡里描述是 CRLF，原版发出去的是 LF —— 已在
-     * `P0-5-prompt-basic` 的夹具 diff 里逐字确认过。
+     * `{{charIfNotGroup}}` 对单人卡就等于 `{{char}}`（群聊还没做）；预设里的 main 模板用的就是它。
+     * CRLF 那条不是可选项：默认卡里描述是 CRLF，原版发出去的是 LF —— 已在夹具 diff 里逐字确认。
      */
     private fun substitute(text: String, characterName: String, userName: String): String =
         text
+            .replace("{{charIfNotGroup}}", characterName)
             .replace("{{char}}", characterName)
             .replace("{{user}}", userName)
             .replace("\r", "")
+
+    /** `prompt_order` 里用到的 identifier。出处见原版 `PromptManager.js` 的默认提示词表。 */
+    private object Id {
+        const val MAIN = "main"
+        const val NSFW = "nsfw"
+        const val JAILBREAK = "jailbreak"
+        const val ENHANCE_DEFINITIONS = "enhanceDefinitions"
+        const val WORLD_INFO_BEFORE = "worldInfoBefore"
+        const val WORLD_INFO_AFTER = "worldInfoAfter"
+        const val CHAR_DESCRIPTION = "charDescription"
+        const val CHAR_PERSONALITY = "charPersonality"
+        const val SCENARIO = "scenario"
+        const val DIALOGUE_EXAMPLES = "dialogueExamples"
+        const val CHAT_HISTORY = "chatHistory"
+    }
 }
