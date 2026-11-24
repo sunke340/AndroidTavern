@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `aed44a7`（tag `apk-m130`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v100-aed44a7.apk`（签名固定，可覆盖安装） |
+| 代码 | `93703e7`（tag `apk-m131`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v101-93703e7.apk`（签名固定，可覆盖安装） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块） |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
@@ -46,7 +46,7 @@
 | 删除确认钮是红的 | 长按会话/卡 → 删除 | `ConfirmDeleteDialog.kt` |
 | 组件预览页 | 设置→关于→组件预览；拖滑杆松手才变 | `GalleryScreen.kt` |
 | **滑块不再从左侧滑来** | 任一二级页返回主页，滑块应在当前 tab **原位出现**；切 tab 才滑 | `TavernBottomBar.pillMeasured` |
-| **预设页与编辑页（v100）** | 选中标记在**左侧**（同模型页的 `ActiveMark`）；长按预设 → 「编辑」；编辑页用 `GroupPiece` 行（衔接处只有一条线、圆角 18dp、行高 68dp），长压拖动时只抬投影+放大、形状冻结不跳变；拉过头有橡皮筋；右上圆钮 → 菜单「恢复默认顺序」 | `SettingsPages.PresetPage` / `PresetEditScreen.kt` |
+| **预设页与编辑页（v101）** | 选中标记在**左侧**（同模型页的 `ActiveMark`）；长按预设 → 「编辑」；编辑页每行是**四角全圆的胶囊**（贴合、无描边，衔接处一条 1px 线，两端让出圆角），拖动只抬投影+放大、形状全程不变（落下也不跳）；拉过头有橡皮筋；右上圆钮 → 菜单「恢复默认顺序」 | `SettingsPages.PresetPage` / `PresetEditScreen.kt` |
 | v94 是纯重构 | 抽验会话/模型/世界书三处列表外观与手势没变 | `ListRow.kt` |
 
 ## 下一步（按顺序）
