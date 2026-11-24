@@ -88,6 +88,9 @@
 - 状态栏高度统一 `statusBarTop()`（`PageHeader.kt`）。
 - 胶囊里只 `fillMaxHeight`（`fillMaxSize` 会把标题挤成 0 宽）；不放实心按钮（用 `CapsuleIcon`）；
   没有副标题；一次性结果走 `Snackbar`（`UiState.notice`）。
+- **页头已经写着页面名，列表开头不再放同名小标题**（"预设"/"全局世界书 N 本"这类）；
+  页面级动作（导入 / 新建）放右上角 `CapsuleIcon`，底部不挂通栏按钮 ——
+  列表就是页面本身，底部按钮会把页面再切一刀。空状态文案要跟着改（"点右上「+」"）。
 - 底栏自绘（56dp）：选中只靠主色 + **一块滑动的 14% 底块**（每个 tab 别自己画底块）+ 点按 6% tint；
   **不开涟漪**。
 - 颜色/间距/圆角只从 `Theme.kt` / `Style.kt` 取；多选项用 `SegmentedRow`。

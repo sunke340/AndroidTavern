@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-24 15:35）
+# 项目状态快照（2026-11-24 15:56）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `93703e7`（tag `apk-m131`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v101-93703e7.apk`（签名固定，可覆盖安装） |
+| 代码 | `f9916ae`（tag `apk-m132`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v102-f9916ae.apk`（签名固定，可覆盖安装） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -44,6 +44,9 @@
 | 底栏点按 tint / 页头下沿影子 | 6% 主色；聊天页页头影子 0.08 | `TavernBottomBar` / `DetailPage` |
 | 删除确认钮是红的 | 长按会话/卡 → 删除 | `ConfirmDeleteDialog.kt` |
 | 组件预览页 | 设置→关于→组件预览；拖滑杆松手才变 | `GalleryScreen.kt` |
+| 设置里的导入在右上圆钮 | 预设 / 世界书 / 正则 三页：右上「+」，页面里不再有底部导入条 | `SettingsPages.kt` |
+| 世界书条目页改用通用行 | 设置→世界书→点一本书：分组面板 + 行尾开关 + 两行预览 | `WorldBookEntriesScreen.kt` |
+| 卡片内嵌世界书同形状 | 角色详情→配置→内嵌世界书：行尾开关（原来左侧复选框） | `CardConfigPageScreen.kt` |
 
 ## 下一步
 
