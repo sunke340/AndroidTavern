@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -1312,6 +1313,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         scenario: String,
         firstMessage: String,
         messageExample: String,
+        alternateGreetings: List<String> = emptyList(),
     ) {
         val cardId = _state.value.detailCardId ?: return
         val loaded = card ?: return
@@ -1328,6 +1330,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 .withField("scenario", JsonPrimitive(scenario))
                 .withField("first_mes", JsonPrimitive(firstMessage))
                 .withField("mes_example", JsonPrimitive(messageExample))
+                // 空行去掉：界面上"加一条"会先塞一个空串占位，保存时不该写进卡里
+                .withField(
+                    "alternate_greetings",
+                    JsonArray(alternateGreetings.map { it.trim() }.filter { it.isNotEmpty() }.map {
+                        JsonPrimitive(it)
+                    }),
+                )
             val ok = withContext(Dispatchers.IO) {
                 runCatching { cardRepository.saveCard(cardId, updated) }.getOrDefault(false)
             }

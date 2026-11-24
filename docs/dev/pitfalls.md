@@ -798,3 +798,9 @@ v116 加了"起动画前先预热新页"（`PageStack` 的 `warming`）。真机
 - **`poll-ci.sh` 会假 READY**：workflow 先更新 `apk-latest` 的 body（带新 sha）再上传资产，
   脚本只看 body。本次 v122 就出现过"READY 但资产还是上一次的 17:27 那份"。
   **判据只有一个**：下载后查 dex 里的 40-hex `BUILD_ID` 等于本次 sha，再验签名。
+
+## 2026-11-25 · 用了新的 core 模块，别忘了 app 的依赖表
+
+`app/build.gradle.kts` 的依赖是**手写列举**的（没用 convention plugin）。新写代码 `import app.tavern.core.chat.*`
+时本机发现不了（本机不编 `:app`），只有 CI 报 `Unresolved reference 'chat'`。
+本次导出聊天就是：core 里有现成模块，app 没依赖。**先看 app/build.gradle.kts 有没有这一行。**

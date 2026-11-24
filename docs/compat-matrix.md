@@ -14,11 +14,11 @@
 |---|---|---|---|---|
 | P0-1 | 角色卡导入：PNG（`tEXt` `chara`/`ccv3`） | 🟨 | 单测 + 真机（assets 里的卡）；SAF 导入与卡列表已实现，**待真机验收**（[步骤](dev/device-verification.md)） | `src/character-card-parser.js` |
 | P0-2 | 角色卡导入：V2/V3 JSON、charx(zip) | 🟨 | V2/V3/V1 JSON 已通（单测）；charx 未做 | `src/charx.js`、`src/types/spec-v2.d.ts` |
-| P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3 | 同上 |
+| P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3；App 侧**卡编辑**已接（详情 ⋮ →「编辑卡片」，改名字/简介/人格/场景/开场白/示例对话，写前留 `.bak.png`、临时文件原子替换），**待真机** | 同上 |
 | P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ✅ | 单测 + [真机验证](dev/device-verification.md)：真连 provider，回复为卡内角色设定 | `public/scripts/openai.js` |
 | P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（9 条）/ P0-5-prompt-history（12 条，多轮）逐字相等；names_behavior 仅覆盖默认值 DEFAULT；世界书注入与预算裁剪未做 | `public/script.js`、`PromptManager.js` |
 | P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | 🟨 | 长按气泡出动作单：复制 / 编辑 / 删除；最后一条助手消息多「重新生成」「继续」，`swipe` 翻页只对最后一条（原版 `isMessageSwipeable`）。重新生成 = 追加新的 swipe 备选（旧的可翻回）；继续 = 请求末尾加原版那条 system 提示、结果接在原消息后面（两份夹具：`P0-6-swipes` / `P0-6-continue`，含原始 chat 数组）。备选存 `message_swipes` 表（DB v3）。**待真机** | `public/script.js` |
-| P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | 🟨 | fixture:P0-7-jsonl（原版录制的真实聊天：逐字节往返 + swipes + 坏行容错）；App 内运行时持久化走 SQLite；**导出已做**（聊天页 ⋮ →「导出聊天记录」，SAF 选位置，最后一条助手消息带 swipe 备选，单测覆盖"导出后还能换一个"）；**导入未做** | `src/endpoints/chats.js` |
+| P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | 🟨 | fixture:P0-7-jsonl（原版录制的真实聊天：逐字节往返 + swipes + 坏行容错）；App 内运行时持久化走 SQLite；**导出已做**（聊天页 ⋮ →「导出聊天记录」，SAF 选位置，最后一条助手消息带 swipe 备选，单测覆盖"导出后还能换一个"）；**导入已做**（角色详情 ⋮ →「导入聊天记录」，.jsonl 解析后单事务写库，日期原样保留、swipe 备选一起进） | `src/endpoints/chats.js` |
 | P0-8 | 角色卡库（头像、标签、搜索、分组） | 🟨 | 两列网格 + 角色详情页（只读）+ **搜索**（按名字/简介过滤，卡顶一条圆角输入条）已做，**待真机**；标签（要解 PNG，未做）与分组未做 | `src/endpoints/characters.js` |
 | P0-9 | 开场白：新建聊天时插入 `first_mes` | 🟨 | fixture:P0-8-first-mes（原版 chat 数组 + 同一时刻的请求体交叉断言）；App 侧插入已实现，**待真机** | `public/script.js`（`createNewChat`/`selectCharacterById`） |
 

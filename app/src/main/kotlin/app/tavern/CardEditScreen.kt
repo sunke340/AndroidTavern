@@ -52,6 +52,8 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var scenario by remember(detail.id) { mutableStateOf(detail.scenario) }
     var firstMessage by remember(detail.id) { mutableStateOf(detail.firstMessage) }
     var messageExample by remember(detail.id) { mutableStateOf(detail.messageExample) }
+    // 备选开场白：可增删改。空串在保存时会被剔掉（界面上"加一条"先塞占位）
+    var greetings by remember(detail.id) { mutableStateOf(detail.alternateGreetings.toList()) }
 
     GlassDetailScaffold(
         title = "编辑角色卡",
@@ -68,6 +70,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         scenario = scenario,
                         firstMessage = firstMessage,
                         messageExample = messageExample,
+                        alternateGreetings = greetings,
                     )
                 },
             ) { Text("保存") }
@@ -93,6 +96,32 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             Field("场景（scenario）", scenario, minLines = 2) { scenario = it }
             Field("开场白（first_mes）", firstMessage, minLines = 4) { firstMessage = it }
             Field("示例对话（mes_example）", messageExample, minLines = 4) { messageExample = it }
+
+            Text(
+                "备选开场白（${greetings.count { it.isNotBlank() }} 条）",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            greetings.forEachIndexed { index, text ->
+                Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { next ->
+                            greetings = greetings.toMutableList().also { it[index] = next }
+                        },
+                        label = { Text("备选 ${index + 1}") },
+                        minLines = 3,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                    )
+                    TextButton(
+                        onClick = {
+                            greetings = greetings.toMutableList().also { it.removeAt(index) }
+                        },
+                    ) { Text("删除这一条", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+            TextButton(onClick = { greetings = greetings + "" }) { Text("＋ 加一条备选开场白") }
         }
     }
 }
