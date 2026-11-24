@@ -541,7 +541,11 @@ private fun ChatInputBar(
     // 生效档案：会话指定 → 卡指定 → 全局默认（三级继承的解析在 UiState 里）
     val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
 
-    val openModelSheet = { showModelSheet(sheet, state, viewModel, ConfigScope.Session) }
+    val openModelSheet = {
+        // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘
+        focusManager.clearFocus()
+        showModelSheet(sheet, state, viewModel, ConfigScope.Session)
+    }
 
     Row(
         modifier = Modifier
