@@ -1,4 +1,4 @@
-# 接手卡（2026-11-24 21:50）
+# 接手卡（2026-11-24 22:30）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,8 +8,9 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `2fd46c2` / tag `apk-m144` / 交付包 `artifacts/app-v113-2fd46c2.apk`。
-- **现在悬着一件事**（新会话第一件事，见第二节）：聊天页"翻历史时气泡是否继续长"。
+- **基线**：代码 `3c657c1` / tag `apk-m145` / 交付包 `artifacts/app-v114-3c657c1.apk`。
+- **现在悬着一件事**（新会话第一件事，见第二节）：聊天页"读流式气泡时阅读位置会不会被顶走"
+  —— 冻结已按用户要求撤掉，换成阅读锚点补偿，**等 v114 手机实测 + `tag=scroll` 日志**。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**（第 10 条）。
 
 ## 一、这一轮（2026-11-24 下午 → 晚上）做了什么
@@ -36,6 +37,11 @@
    详情页「新建会话」后返回直接落「会话」栏；四个标签补 `rubberOverscroll`。
 6. **聊天串流跟随**：贴底时"动画追高度差"的柔和抬升（v112 的"累积+收回"会抽搐，已废弃）；
    不在底部时不动视口。
+7. **v114：撤掉串流冻结，改成阅读锚点补偿**（用户 2026-11-24 晚点名）。三个场景按
+   `reverseLayout` 的锚点语义分开：贴底照旧追高度；看更早的消息本来不动；
+   **停在气泡自己身上时把滚动偏移补回 `Δh`**（`requestScrollToItem`），用一帧 `translationY`
+   桥接布局与滚动两趟的差量。补偿只认量到的高度变化，`isScrollInProgress` 一律让位。
+   新增 `tag=scroll` 诊断（模式/补偿/跳过/总量）。**只过了本机检查与 CI 编译，真机未验。**
 
 日志定位的两条硬事实（以后还用得上）：`tag=nav` 的 **帧数只有 2–5 = 一次长帧**；
 `tag=wi` / `tag=startup` 的数字能直接指认是解析、GC 还是首帧。读法见 [runbook](runbook.md) 6.5.1。
@@ -90,7 +96,7 @@
 
 | 想改什么 | 去哪 |
 |---|---|
-| 聊天 UI / 串流跟随 | `app/src/main/kotlin/app/tavern/ChatScreen.kt`（`smoothHeight` / `freezeStream`） |
+| 聊天 UI / 串流跟随 / 阅读锚点 | `app/src/main/kotlin/app/tavern/ChatScreen.kt`（`smoothHeight` / `readingBubble` / `anchoredHeight`） |
 | 状态机（几乎全部状态都在这里） | `ChatViewModel.kt`（`UiState` 一个 data class） |
 | 页面栈转场 | `PageStack.kt` |
 | 行系统 / 列表形状 | `ListRow.kt`、`Style.kt` |
