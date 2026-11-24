@@ -49,6 +49,14 @@
 会采到自己这一帧；用 `CardFrost`（预解 ~32px 小图）。副行不写角色描述，写「N 个会话 · 内嵌书 M 条」。
 长按出抽屉；删除二次确认并写会话数；按压 8% 黑（图上盖紫会染色）。
 
+**详情页卡头是"大图压字"**（200dp 图 + 底部渐变 + 名字/元信息），保留 TabRow；
+别再退回 96dp 小头像 + 右侧三行字的旧版式。
+
+**开场白切换**（`GreetingSwitch.kt`）：聊天页把 `‹ N/M ›` 贴在**开场白气泡上沿**、详情页开场白 tab
+用同款箭头翻页；两处都不放页头按钮。聊天页只在"这条会话还没有用户消息 + 卡不止一条开场白"时出现
+（用户 2026-11-25 定的 B 策略）；换一条 = 改写会话第一条消息。详情页"设为默认"写卡级
+`greetingIndex`，只在"翻到的不是默认那条"时出现。
+
 ## 动作单（长按抽屉）与确认框
 
 - 走 `SheetController` + `LocalSheetController`：**页面只 `sheet.show(...)`**，由骨架
@@ -59,7 +67,12 @@
   0.22 与 0.50 同色）；日志 `tag=glass 液态档 … 着色器=`。
 - 一级页：弹层起来前**底栏先滑走**（180ms）；收起时弹层先走、底栏 200ms 后回来。
 - 行内「删除」只关弹层 + 弹确认框，**不直接删**；确认框统一 `ConfirmDeleteDialog`（红色确认钮，
-  参数全写名字）。没有拖拽关闭。
+  参数全写名字）。
+- **确认框不是 `AlertDialog`**：它走 `ConfirmController` + 骨架里的 `GlassConfirmHost`（液态玻璃）。
+  调用点签名保持不变，但页面骨架必须提供控制器 —— 二级页都在 `GlassDetailScaffold` 里，别新开一个
+  不经过骨架的页面（那样确认框会静默不弹）。
+- **动作单的把手可拖**（组件已支持，位移按"弹层自身高度 1/4 或下甩 800dp/s"收回）。别在页面里
+  自己写拖拽；弹层内容超过 62% 屏高时会在弹层内滚。
 
 ## 玻璃
 
@@ -112,6 +125,17 @@
 - 设置分层：一级只放“去哪儿”（`SettingLinkRow` + 当前值），控件放二级页 `SettingsSubPage`。
 - 主题持久化存**名字**，重排 `ThemePreset` 枚举不影响已保存的选择。
 
+## 三级配置（会话 > 角色卡 > 全局）
+
+- 数据是 `data/config/ConfigOverride`：每项 `null` = **跟随上级**，空集 ≠ null（"全都不要"是合法选择）。
+  会话级存 `session:<id>`、卡级存 `card:<id>`（SharedPreferences），不动 DB。
+- **生效值只能从 `UiState.effective*` 这几个 getter 读**（profile / reasoning / preset /
+  worldBookNames / regexIds / regexScripts）。发送、世界书扫描、正则（输入与显示）、连接参数全读它们；
+  别再在各处写 `x ?: y ?: z` —— 漏一层就是"显示 A、实际发 B"。
+- 界面：`ConfigSheets.kt` 的四个抽屉（模型/预设/世界书/正则）+ `SessionConfigScreen`（会话级）
+  + 详情页「配置」tab（卡级）。单选直接选，多选点了不关、✓ 原地刷新。
+- 新增一个可配置项时，三层都要接：数据字段、抽屉、两级页面各一行。
+
 ## 预设与拖动排序（P1-5）
 
 - 提示词顺序是**数据**（`prompt_order`），拼提示词时按它遍历，别在 `PromptBuilder` 里再写死顺序。
@@ -155,6 +179,11 @@
 - 进入曲线 `Motion.Decelerate`；**可被打断的用弹簧不用 tween**；归位类阻尼必须 1.0。
 - 减动效统一 `rememberReduceMotion()`，别各自读系统设置。
 - 内容底部让位 `max(导航栏, 键盘)`，不相加；键盘用 `imePadding()`。
+- **聊天输入区高度是变量**（收起一行 / 聚焦翻倍 / 最多 5 行）：列表底部让位必须读**实测高度**
+  （`ChatInputBar` 的 `onHeightChanged` → LazyColumn `contentPadding`），不许写常量。
+  玻璃表面别做逐帧的尺寸动画（着色器随节点尺寸重建），展开只用"淡入"。
+- **发送 / 重新生成 / 继续共用 `beginCompletion(history, userText, replacing, continuation)`**：
+  `userText = null` 表示不追加用户消息。别复制一份发送逻辑（世界书、正则、思考强度会分叉）。
 - 橡皮筋 `Modifier.rubberOverscroll(...)` **每个可滚动面都要挂**（会话/角色卡/聊天/世界书/设置一二级/
   预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
