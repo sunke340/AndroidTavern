@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,7 +56,7 @@ private val PromptRowHeight = 60.dp
  * 一拎起来，那片的形状就会从"直角"变成"带头尾圆角"，看着像被人从整块里裁了一条出来；
  * 而其余行又原地不动，更像裁剪而不是"挪走一个东西"。所以这一页改成**每行一张独立卡片**：
  *
- * - 每行自己就是完整的圆角矩形（`Radius.card`）+ 1dp 描边，行与行之间 8dp 间距；
+ * - 每行自己就是完整的圆角矩形（`Radius.card`）+ 1dp 描边，**行与行之间不留缝**；
  * - 拖动时那张卡**抬起来**：投影 0 → 10dp、缩放 1.00 → 1.03（都用 `Motion.Fast`），
  *   画在同层最上面（`zIndex`），于是它在视觉上离开纸面、盖住邻居；
  * - 松手落回：投影与缩放同时收回去，卡片在原位。
@@ -115,8 +114,6 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
                 bottom = padding.calculateBottomPadding() + Space.xl,
             ),
-            // 卡片之间留缝：有了缝，"每行是一张卡"才看得出来
-            verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             itemsIndexed(state.promptOrder, key = { _, entry -> entry.identifier }) { _, entry ->
                 ReorderableItem(reorderState, key = entry.identifier) { isDragging ->
@@ -182,17 +179,18 @@ private fun PromptOrderCard(
             .background(MaterialTheme.colorScheme.surface, shape)
             .border(1.dp, borderColor, shape)
             .then(with(scope) { Modifier.longPressDraggableHandle(onDragStopped = onCommit) })
-            .padding(start = Space.m, end = Space.s),
+            .padding(start = Space.s, end = Space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 抓握纹在最左边：先"抓住"，再读名字
+        DragGrip(highlighted = dragging)
+        Spacer(Modifier.width(Space.s))
         Text(
             text = label,
             style = RowTitleStyle,
             modifier = Modifier.weight(1f),
         )
         Switch(checked = enabled, onCheckedChange = onToggle)
-        Spacer(Modifier.width(Space.xs))
-        DragGrip(highlighted = dragging)
     }
 }
 
