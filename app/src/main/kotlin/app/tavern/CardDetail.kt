@@ -18,6 +18,10 @@ data class CardDetail(
     val scenario: String,
     val firstMessage: String,
     val messageExample: String,
+    /** 卡里的 `system_prompt`（原版会替换掉默认的 main 提示）。 */
+    val systemPrompt: String = "",
+    /** 卡里的 `post_history_instructions`（插在历史之后的指令）。 */
+    val postHistoryInstructions: String = "",
     val alternateGreetings: List<String>,
     val creator: String,
     val characterVersion: String,

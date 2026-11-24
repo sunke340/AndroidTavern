@@ -85,6 +85,9 @@ interface ChatRepository {
     /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
     fun deleteSessionsForCard(cardId: String): Int
 
+    /** 卡改名后同步会话行里冗余的 `card_name`（会话列表显示的是这一列）。 */
+    fun updateCardName(cardId: String, cardName: String)
+
     /**
      * 导入一段聊天：建一个会话 + 批量写消息（单事务，一次失败不会留下半个会话）。
      *

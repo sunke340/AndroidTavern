@@ -121,6 +121,15 @@ class SqliteChatRepository(context: Context) : ChatRepository {
             arrayOf(cardId),
         )
 
+    override fun updateCardName(cardId: String, cardName: String) {
+        helper.writableDatabase.update(
+            TavernDatabase.TABLE_SESSIONS,
+            ContentValues().apply { put("card_name", cardName) },
+            "card_id = ?",
+            arrayOf(cardId),
+        )
+    }
+
     override fun importSession(
         cardId: String,
         cardName: String,

@@ -510,6 +510,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             scenario = card.scenario,
             firstMessage = card.firstMessage,
             messageExample = card.messageExample,
+            systemPrompt = card.systemPrompt,
+            postHistoryInstructions = card.postHistoryInstructions,
             alternateGreetings = card.alternateGreetings,
             creator = card.creator,
             characterVersion = card.characterVersion,
@@ -1347,7 +1349,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             card = updated
             _state.update { it.copy(cardEditOpen = false) }
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+            // 会话列表显示的是会话行里冗余的 card_name：卡改名后一并刷新，否则列表还挂着旧名
+            withContext(Dispatchers.IO) {
+                runCatching { chatRepository.updateCardName(cardId, trimmed) }
+            }
             _state.update { it.copy(cards = cards) }
+            refreshSessions()
             loadDetail(cardId)
             AppLog.i("card", "卡编辑保存 name=${trimmed.take(20)}")
             notify("已保存（原文件备份为 .bak.png）")
