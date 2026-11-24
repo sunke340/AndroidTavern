@@ -682,3 +682,27 @@ MainScreen（Destination + PageStack）
 
 **已知未修**：从贴底切出去的那一帧，`translationY` 会从"追高度的欠账"直接归零，
 欠账大时（极快的流）会往上收一下。日志 `模式=C … 平滑差=Npx` 就是量它，真机反馈再决定要不要补。
+
+## requestScrollToItem 会重播 `animateItem` 的淡入（2026-11-24 真机实测）
+
+v114（撤掉冻结、改成补偿滚动偏移）真机反馈两条，日志 `tag=scroll` 与 Compose 源码对上了：
+
+- **旧气泡一直闪**：补偿用的是 `LazyListState.requestScrollToItem()`，它内部
+  `snapToItemIndexInternal` 里 `if (positionChanged) itemAnimator.reset()`，而 `reset()` 会把
+  `keyIndexMap` 清成 `Empty`、`firstVisibleIndex = -1`。下一次 `itemAnimator.onMeasured()` 里
+  `previousIndex = previousKeyToIndexMap.getIndex(key) = -1` → **每个可见项都被判成"刚出现"**，
+  `shouldAnimateAppearance = true` → 重播一次淡入。长回复每 100–500ms 补一次，等于旧气泡不停
+  淡入 → 用户看到"旧气泡一直闪烁"，而串流气泡没挂 `animateItem`、所以不动。
+- **拖动时文字一直往上顶**：因为 `requestScrollToItem` 会 `scroll{}` 抢 mutex、**取消进行中的拖动**，
+  所以只能"手势期间不补"；可手指拖动只改变偏移，气泡长高照样把内容顶走 → "不跟手"。
+
+修法：补偿改用 **`dispatchRawDelta(Δ)`**（走嵌套滚动的低层通道：不动 `itemAnimator`、不抢 mutex、
+不打断拖动/惯性），于是可以**手势期间照补** —— 它只抵掉"长高顶上去的那一笔"，手指的位移照常生效。
+返回值是实际滚出去的像素：`<= 0`（到边界滚不动）时基线不动、由桥接先顶住，下一笔再试。
+
+判据（以后还会用到）：**任何"我在旁边顺手调一下滚动"的写法，先看它会不会 `itemAnimator.reset()`**；
+`scrollToItem` / `animateScrollToItem` / `requestScrollToItem` 三个都会。只想平移内容时用
+`dispatchRawDelta`。
+
+同轮拿到的两个数字：`平滑差` 实测只有 3px（从贴底切出去那一下的欠账，肉眼看不出，不用修）；
+补偿与长高严格 1:1（`off` 递增 = `drift`），`顶Y` 在非拖动期间恒定（585 / 1496 / 2154）。

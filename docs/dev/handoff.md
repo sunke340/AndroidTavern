@@ -1,4 +1,4 @@
-# 接手卡（2026-11-24 22:30）
+# 接手卡（2026-11-24 23:05）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,7 +8,7 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `3c657c1` / tag `apk-m145` / 交付包 `artifacts/app-v114-3c657c1.apk`。
+- **基线**：v115 起又改过 `ChatScreen`（补偿换 `dispatchRawDelta`）；v114 = `3c657c1` / `apk-m145`。
 - **现在悬着一件事**（新会话第一件事，见第二节）：聊天页"读流式气泡时阅读位置会不会被顶走"
   —— 冻结已按用户要求撤掉，换成阅读锚点补偿，**等 v114 手机实测 + `tag=scroll` 日志**。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**（第 10 条）。

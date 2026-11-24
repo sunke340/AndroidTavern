@@ -88,6 +88,7 @@ import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.data.log.AppLog
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlin.math.roundToInt
 
 /**
  * 聊天页（全屏二级页）。
@@ -151,12 +152,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // reverseLayout 的滚动位置 = "第一可见项 + 它被滚过去的距离"。气泡长高 delta 时，Compose
     // 只把这条锚点钉在气泡的**下沿**，于是整屏内容被顶上去 delta（旧轮次记过这个"瞬移一行"）。
     // 贴底时用动画追上去就顺眼了；读气泡自己时不能追 —— 抬上去再滑回来就是把读到的那段拽走。
-    // 所以这里把**滚动偏移**补上 delta：偏移加大 = 内容整体往下让 delta，气泡上沿停回原处。
+    // 所以这里把**滚动量**补上 delta：内容整体往下让 delta，气泡上沿停回原处。
     //
-    // 两个约束决定了它不抢手指：
-    // 1. 只调偏移（requestScrollToItem），不启动滚动动画、不累积任务、不做逐 token 滚；
-    // 2. 布局与滚动是两趟，差量这一帧先由 translationY 抹平，等偏移在下一帧落地时
-    //    两个量同时归零（恒等于原位置）—— 所以既不是用绘制位移长期掩盖布局，也不会闪。
+    // 为什么用 dispatchRawDelta 而不是 requestScrollToItem（v115，真机实测后改）：
+    // 1. requestScrollToItem 内部会 `itemAnimator.reset()` —— 所有挂了 `animateItem` 的**旧气泡**
+    //    每补一次就重播一次淡入（180ms），长回复里就是"旧气泡一直闪"（v114 报的）；
+    // 2. 它还会取消进行中的拖动/惯性（`scroll{}` 抢 mutex），所以只能"手势期间不补" ——
+    //    可那段长高照样会把内容顶走，手感就是"拖动时文字一直往上顶、不跟手"（v114 报的）。
+    // dispatchRawDelta 走嵌套滚动的低层通道：不动动画器、不抢 mutex、不打断手势，只把这一笔
+    // 长高顶回去 —— 手指的位移照常生效，这才是"跟手"。
+    //
+    // 布局与滚动仍是两趟：差量这一帧先由 translationY 抹平，等补偿落地时两边同时归零
+    // （恒等于原位置）—— 所以既不是用绘制位移长期掩盖布局，也不会闪。
     var anchoredHeight by remember { mutableIntStateOf(0) }
     val streamProbe = remember { StreamProbe() }
     val anchorDiag = remember { AnchorDiag() }
@@ -171,18 +178,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             anchoredHeight = streamHeight
             return@LaunchedEffect
         }
-        if (listState.isScrollInProgress) {
-            // 手势/惯性优先（原则 4）：这一段长高不补，基线推到最新；
-            // 手指松开后从新位置重新开始保护，不会攒出一笔"回头债"。
-            anchorDiag.skipped("scrolling", drift, streamProbe.topY)
-            anchoredHeight = streamHeight
+        // reverseLayout 里正 delta = "往前滚 = 内容往下让"，正好抵掉长高顶上去的量
+        val moved = listState.dispatchRawDelta(drift.toFloat()).roundToInt()
+        if (moved <= 0) {
+            // 滚不动（到边界）：这帧先由桥接顶住，基线不动，下一笔再试
+            anchorDiag.blocked(drift, streamProbe.topY)
             return@LaunchedEffect
         }
-        val from = listState.firstVisibleItemScrollOffset
-        // reverseLayout 里偏移方向是"往前滚 = 内容往下"，所以是加不是减。
-        listState.requestScrollToItem(0, from + drift)
-        anchoredHeight = streamHeight
-        anchorDiag.compensated(drift, from, from + drift, streamHeight, streamProbe.topY)
+        anchoredHeight += moved.coerceAtMost(drift)
+        anchorDiag.compensated(moved, drift, streamHeight, streamProbe.topY, listState.isScrollInProgress)
     }
 
     // 滚动模式 A/B/C 的变化各记一条（只记切换，不记每帧；脚本/日志里靠它对齐上下文）
@@ -647,9 +651,9 @@ private data class ScrollMode(val mode: String, val index: Int, val offset: Int)
  * 冲干净（那里面还有启动和请求的线索）。所以模式切换（罕见）原样记，补偿与跳过都按窗口合并。
  *
  * 字段（对照 [ChatScreen] 里的阅读锚点保护）：
- * - `drift`：这一笔补的像素 = 气泡这次长高多少；
- * - `off a→b`：滚动偏移补偿前后（reverseLayout 下加大 = 内容往下让）；
- * - `气泡高`：补偿后的气泡高度；
+ * - `+Npx`：这一笔实际滚出去的像素（= 被顶掉的量）；
+ * - `drift`：这一笔要补的量 = 气泡这次长高多少（两者不等 = 只滚出去一部分）；
+ * - `气泡高`：补偿后的气泡高度；`拖动中` = 补的时候手指正按着（正常，且必须照补）；
  * - `顶Y`：气泡上沿在窗口里的 Y —— **这是验收证据**，补偿有效时它应当基本不变。
  */
 private class AnchorDiag {
@@ -687,26 +691,28 @@ private class AnchorDiag {
         mergedDrift = 0
     }
 
-    fun compensated(drift: Int, from: Int, to: Int, height: Int, topY: Int) {
+    fun compensated(moved: Int, drift: Int, height: Int, topY: Int, scrolling: Boolean) {
         totalCount++
-        totalDrift += drift
+        totalDrift += moved
         val now = System.currentTimeMillis()
         if (now - lastAt < 300L) {
             mergedCount++
-            mergedDrift += drift
+            mergedDrift += moved
             return
         }
         lastAt = now
         val extra = if (mergedCount > 0) " 合并=$mergedCount 笔/${mergedDrift}px" else ""
-        AppLog.i("scroll", "补偿 drift=${drift}px off $from→$to 气泡高=$height 顶Y=$topY$extra")
+        val drag = if (scrolling) " 拖动中" else ""
+        AppLog.i("scroll", "补偿 +${moved}px(drift=$drift) 气泡高=$height 顶Y=$topY$drag$extra")
         mergedCount = 0
         mergedDrift = 0
     }
 
-    fun skipped(reason: String, drift: Int, topY: Int) {
+    /** 补偿没滚出去（到边界）：桥接先顶住，基线不动，下一笔再试。 */
+    fun blocked(drift: Int, topY: Int) {
         val now = System.currentTimeMillis()
         if (now - lastAt < 500L) return
         lastAt = now
-        AppLog.i("scroll", "补偿跳过 reason=$reason drift=${drift}px 顶Y=$topY")
+        AppLog.i("scroll", "补偿失败 reason=roll drift=${drift}px 顶Y=$topY")
     }
 }
