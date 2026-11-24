@@ -1,14 +1,14 @@
-# 项目状态快照（写于 2026-11-24 13:40）
+# 项目状态快照（写于 2026-11-24 14:00）
 
 **用途**：换会话/压缩上下文后，先读这一页就能接上。更细的规则在 [AGENTS.md](../../AGENTS.md)、
 [app/AGENTS.md](../../app/AGENTS.md)，进度唯一真相在 [compat-matrix.md](../compat-matrix.md)。
 
 ## 当前基线
 
-- 代码：`9dfff92`（tag `apk-m121`；`apk-m118` 是结构整理收尾版）；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
+- 代码：`f25f7ed`（tag `apk-m123`；`apk-m118` 是结构整理收尾版）；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
   列表改版之前的最后一版是 `apk-m100` / `99ec1f5`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` / `tools/check-*.sh` 全绿
-- 已交付 APK：`app-v95-9dfff92.apk`（签名固定，可覆盖安装；上一版 `app-v94-0261d41.apk`）
+- 已交付 APK：`app-v96-f25f7ed.apk`（签名固定，可覆盖安装；上一版 `app-v95-9dfff92.apk`）
   - ⚠️ `apk-latest` 这个 release 永远跟**最后一次 `main` 提交**重建（含纯文档提交），
     所以它的 BUILD_ID 不一定等于交付包的 sha；**以 `artifacts/` 里的文件为准**
 - **结构整理做完了**：P1（抽两个工具件）、P2（AGENTS 42KB→9KB）、P3（组件预览页）、
@@ -106,6 +106,8 @@
 | 删除确认框（v92 新增） | 长按会话/角色卡 → 删除 → 确认框里「删除」两字应为**红色**（原来只有档案编辑那处是红的） | `ConfirmDeleteDialog.kt` |
 | 组件预览（v93 新增） | 设置→关于→「组件预览」：胶囊/发送钮/动作单面/页头带/卡片条都压在彩色带上；拖滑杆松手才变 | `GalleryScreen.kt` |
 | v94 是纯重构 | 只需抽验三处列表（会话/模型/世界书）外观与手势没变；出问题回退 `apk-m117` | `ListRow.kt` |
+| 底栏滑块不再"从左侧滑来"（v96 修） | 任一二级页返回主页，滑块应当在当前 tab **原位出现**、不滑动；切 tab 时才是 200ms 滑动 | `TavernBottomBar` 的 `pillMeasured` |
+| 预设改成「长按 → 编辑」二级页（v96） | 长按预设 → 抽屉「编辑」→ 进新页面拖动换位；松手退出再进，顺序还在 | `PresetEditScreen.kt` |
 | 预设页（v95 新增） | 设置→预设：导入一份 ST 预设 → 选中 → 关掉「聊天历史」→ 进聊天点右上 ⋮ 看「请求」，消息链里历史应当消失；长按拖动换位后松手、退出再进，顺序应当还在 | `PresetPage` / `PromptOrderEditor` |
 
 ## 已经做完的（能装、能日常聊）
@@ -258,6 +260,8 @@
 - 兼容 = 文件格式往返 + 提示词逐条等价；不改写卡内容、不在发送前加工提示词。
 - DB 是运行时真相，JSONL 只做导入导出（ADR 0003：原生 SQLite，不用 Room）。
 - UI 方向「C · Dense Ink」：细线分隔、1px 描边、信息密度高；主题墨紫 `#5C3BAE`（深色 `#C6B4F5`）。
-- 不引第三方 UI 库（玻璃模糊是**自研**的，见 [ADR 0005](../adr/0005-glass-without-haze.md) /
+- **材质与转场自研；纯列表机械可以引库**：拖动排序用 `sh.calvin.reorderable:3.1.0`
+  （[ADR 0008](../adr/0008-reorderable-library.md)，+115 KB；ADR 0005 那条"不引第三方 UI 库"
+  收窄到材质范围）。玻璃模糊是**自研**的，见 [ADR 0005](../adr/0005-glass-without-haze.md) /
   [ADR 0006](../adr/0006-glass-blur-on-node.md)；曾引 Haze，已撤）、
   不引 navigation-compose、不引 Coil/material-icons-extended。

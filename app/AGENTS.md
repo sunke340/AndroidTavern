@@ -97,10 +97,11 @@
 ## 预设与拖动排序（P1-5）
 
 - 提示词顺序是**数据**（`prompt_order`），拼提示词时按它遍历，别在 `PromptBuilder` 里再写死顺序。
-- 拖动换位（`PromptOrderEditor`）：**长按整行起拖**（56dp 行里放拖拽手柄太窄，手指抓不住）；
-  位移走 `graphicsLayer.translationY`，目标位次按「起点 + 累计位移 / 行高」算（不逐帧累加，
-  否则会漂），换位后把「换过去的行数」从位移里扣掉；贴边自动滚用 `dispatchRawDelta`（不起协程）；
-  **拖动只改内存，松手才落盘**。
+- 顺序的开关与拖动在**编辑页**（`PresetEditScreen`，长按预设 → 编辑），列表页只负责选。
+- 拖动换位用 **`sh.calvin.reorderable`**（`PresetOrderEditor`），别手写：
+  长压起拖用 `Modifier.longPressDraggableHandle()`（整行可拖，不做拖拽手柄 —— 56dp 行里手柄太窄）；
+  `onMove` 里**同步**改完列表（不 `launch`，否则被拎起来那行会闪一帧）；**松手才落盘**。
+  版本升级前先看它 POM 里声明的 Compose 版本（见 [ADR 0008](../docs/adr/0008-reorderable-library.md)）。
 - 内置默认预设**不许改顺序**：没有文件可回写，改了会让人以为永久生效。
 - 顺序覆盖存 SharedPreferences，**不改预设文件本身**（预设要能原样导回 PC 版）。
 

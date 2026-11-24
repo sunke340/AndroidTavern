@@ -45,7 +45,7 @@
 | P1-2 | 世界书进阶：secondary keys + 4 种 selectiveLogic | ✅ | fixture:P1-2-logic（四种逻辑一次录全：AND_ANY/NOT_ALL/NOT_ANY/AND_ALL 各一条，命中与不命中都在同一条请求里） | 同上 |
 | P1-3 | 世界书递归扫描 / group scoring / sticky / cooldown / delay | 🟨 | fixture:P1-3-recursion / P1-3-groups / P1-3-sticky / P1-3-cooldown / P1-3-delay / P1-3-delay-passed 全通过；sticky 计时状态还没落库（App 重启重置）。outlet 位置只记录不注入 | 同上 |
 | P1-4 | 世界书 token 预算与裁剪顺序 | 🟨 | fixture:P1-4-budget（5% 预算，6 条等长条目只进 3 条）。预算用的是"当一条消息算"的 token（裸计数 + 6），见 P1-6 | 同上 |
-| P1-5 | 预设（采样参数子集）与 prompt_order 编辑 | ✅ | 解析 + 顺序 + 界面都做完：`fixture:P1-5-prompt-order`（原版用改过的顺序表实发）逐条相等；`PresetParser` 对 vendor `Default.json` 反向核对；设置→预设：导入/选择/删除、顺序开关 + **长按拖动换位**（松手落盘）、恢复原顺序；拼提示词带 order/prompts，请求带 top_p 与两个 penalty。**不做**：逐角色顺序（只做全局那条）、提示词正文编辑（手机上改长文本不如在 PC 版改） | `default/content/presets/openai/Default.json`、`public/scripts/PromptManager.js` |
+| P1-5 | 预设（采样参数子集）与 prompt_order 编辑 | ✅ | 解析 + 顺序 + 界面都做完：`fixture:P1-5-prompt-order`（原版用改过的顺序表实发）逐条相等；`PresetParser` 对 vendor `Default.json` 反向核对；设置→预设：导入/选择/删除，长按→编辑进二级页做顺序开关 + **长按拖动换位**（松手落盘）、恢复原顺序；拼提示词带 order/prompts，请求带 top_p 与两个 penalty。**不做**：逐角色顺序（只做全局那条）、提示词正文编辑（手机上改长文本不如在 PC 版改） | `default/content/presets/openai/Default.json`、`public/scripts/PromptManager.js` |
 | P1-6 | Token 计数（cl100k / o200k）与上下文裁剪 | 🟨 | fixture:P1-6-tokens（原版页面里调 `getTokenCountAsync()` 录的 10 条计数，逐条相等）。Claude/Llama 等 sentencepiece 词表未接，回落 cl100k；上下文裁剪未做 | `public/scripts/tokenizers.js`、`src/endpoints/tokenizers.js` |
 | P1-7 | 作者注（深度注入、role、间隔、参与扫描） | ⬜ | fixture:P1-7-an | `public/scripts/authors-note.js` |
 | P1-8 | 人设 / 用户名 / 名称宏 | ⬜ | fixture:P1-8-persona | `public/scripts/personas.js` |
