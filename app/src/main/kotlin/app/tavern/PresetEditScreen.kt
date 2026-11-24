@@ -3,7 +3,6 @@ package app.tavern
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,10 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,6 +54,8 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
         viewModel.movePrompt(from.index, to.index)
     }
+    // 恢复默认放在右上角：这一页的主体是列表，底部再挂一个按钮会把"列表就是页面"又切一刀
+    var menuOpen by remember { mutableStateOf(false) }
 
     GlassDetailScaffold(
         title = name,
@@ -55,6 +64,21 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         glass = state.visualEffects.effective() == VisualEffects.Glass,
         // 自己用 contentPadding 让位：列表满屏、能从页头底下穿过去
         contentTopInset = 0.dp,
+        actions = {
+            CapsuleIcon(
+                icon = Icons.Filled.MoreVert,
+                contentDescription = "更多",
+            ) { menuOpen = true }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("恢复默认顺序") },
+                    onClick = {
+                        menuOpen = false
+                        viewModel.resetPromptOrder()
+                    },
+                )
+            }
+        },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -100,11 +124,6 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                     }
                 }
-            }
-
-            item {
-                Spacer(Modifier.height(Space.m))
-                SecondaryAction(text = "恢复预设原顺序", onClick = viewModel::resetPromptOrder)
             }
         }
     }

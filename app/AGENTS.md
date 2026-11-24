@@ -100,7 +100,9 @@
 - 顺序的开关与拖动在**编辑页**（`PresetEditScreen`，长按预设 → 编辑），列表页只负责选。
 - 编辑页的列表**就是页面本身**：`contentTopInset = 0.dp` + `contentPadding` 让位（和聊天页同一套路），
   **不要把 `LazyColumn` 塞进 `heightIn(max = …)` 的固定框里** —— 那看着像开了个小窗口，
-  滚动也会变成"外层不动、内层在滚"的两层。需要底部按钮就放进列表最后一项。
+  滚动也会变成"外层不动、内层在滚"的两层。
+- **页面级操作放页头右上角的圆钮 + `DropdownMenu`**（`GlassDetailScaffold(actions = …)` + `CapsuleIcon`），
+  底部不再挂按钮 —— 列表既然是整页，底部按钮会把"整页"又切一刀。
 - 拖动换位用 **`sh.calvin.reorderable`**（`PresetOrderEditor`），别手写：
   长压起拖用 `Modifier.longPressDraggableHandle()`（整行可拖，不做拖拽手柄 —— 56dp 行里手柄太窄）；
   `onMove` 里**同步**改完列表（不 `launch`，否则被拎起来那行会闪一帧）；**松手才落盘**。
