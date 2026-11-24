@@ -1,6 +1,6 @@
 # AGENTS.md — `app/`
 
-> ⚠️ 这个模块装着**全部界面**（33 个文件、约 8.1k 行，包 `app.tavern` 是扁平的）。
+> ⚠️ 这个模块装着**全部界面**（35 个文件、约 8.9k 行，包 `app.tavern` 是扁平的）。
 > 分层评估与「为什么不拆包」见 [structure-audit.md](../docs/dev/structure-audit.md)。
 > **历史与细节不在这里**：踩过什么、数字怎么来的，全在 [pitfalls.md](../docs/dev/pitfalls.md)。
 > 本文件只放每次都要遵守的规则。
@@ -154,6 +154,13 @@
   预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
   `onPostScroll` 把 available 全报成已消费；回弹必须能被手指打断（代数守卫）。
+
+**聊天串流跟随**（`ChatScreen`，2026-11-24 定）：
+- 贴底（`reverseLayout` 的 `firstVisibleItemIndex==0 && offset==0`）才跟随；
+- 内容长高用**一条动画追高度差**（`实测高度 − 平滑高度` 平移上去），**不要**"加一笔补偿再收回"
+  —— 文字到得快时那样会累积、抽搐（v112 踩过）；
+- 不在底部时不动视口：看更早的消息（下标 > 0）本来就稳；停在串流气泡自己身上时
+  要么冻结（现状），要么按 pitfalls 里的 B/C 方案处理 —— **别改成无条件跟随**。
 
 ## 日志与自查
 
