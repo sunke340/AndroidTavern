@@ -4,9 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,7 +24,7 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +
         if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
     // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
     val enabledBooks = state.worldBooks.count { it.enabled }
     val worldBookSummary = "全局 ${state.worldBooks.size} 本（启用 $enabledBooks）· $bookCards 张卡带内嵌书"

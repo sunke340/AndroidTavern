@@ -9,24 +9,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,7 +58,7 @@ fun CharactersScreen(
     bottomPadding: Dp = 0.dp,
 ) {
     // 页头一直铺到状态栏后面，网格要让出"状态栏 + 页头"的高度
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
     val overscroll = rememberRubberOverscroll()
 
     // 长按出的抽屉与删除确认：与会话、世界书、模型档案同一个手势
@@ -165,23 +160,14 @@ fun CharactersScreen(
 
     pendingDelete?.let { card ->
         val count = sessionCounts[card.id] ?: 0
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("删除角色卡？") },
-            text = {
-                Text("「${card.name}」和它的 $count 个会话会一起从应用里删掉，不能撤销。")
+        ConfirmDeleteDialog(
+            title = "删除角色卡？",
+            message = "「${card.name}」和它的 $count 个会话会一起删掉，卡文件也会从应用里删除，不能撤销。",
+            onConfirm = {
+                pendingDelete = null
+                viewModel.deleteCard(card.id)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        viewModel.deleteCard(card.id)
-                    },
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
-            },
+            onDismiss = { pendingDelete = null },
         )
     }
 }

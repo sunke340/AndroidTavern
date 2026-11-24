@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -40,7 +39,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -267,42 +265,27 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     }
 
     if (confirmDeleteCard) {
-        AlertDialog(
-            onDismissRequest = { confirmDeleteCard = false },
-            title = { Text("删除角色卡？") },
-            text = {
-                Text("会连带删除它的 ${sessions.size} 个会话，不能撤销。卡文件也会从应用里删掉。")
+        ConfirmDeleteDialog(
+            title = "删除角色卡？",
+            message = "「${cardRef?.name ?: "这张卡"}」和它的 ${sessions.size} 个会话会一起删掉，" +
+                "卡文件也会从应用里删除，不能撤销。",
+            onConfirm = {
+                confirmDeleteCard = false
+                viewModel.deleteCard(cardId)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDeleteCard = false
-                        viewModel.deleteCard(cardId)
-                    },
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteCard = false }) { Text("取消") }
-            },
+            onDismiss = { confirmDeleteCard = false },
         )
     }
 
     pendingDeleteSession?.let { session ->
-        AlertDialog(
-            onDismissRequest = { pendingDeleteSession = null },
-            title = { Text("删除会话？") },
-            text = { Text("「${session.title}」的 ${session.messageCount} 条消息会一起删掉。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDeleteSession = null
-                        viewModel.deleteSession(session.id)
-                    },
-                ) { Text("删除") }
+        ConfirmDeleteDialog(
+            title = "删除会话？",
+            message = "「${session.title}」的 ${session.messageCount} 条消息会一起删掉，不能撤销。",
+            onConfirm = {
+                pendingDeleteSession = null
+                viewModel.deleteSession(session.id)
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteSession = null }) { Text("取消") }
-            },
+            onDismiss = { pendingDeleteSession = null },
         )
     }
 }

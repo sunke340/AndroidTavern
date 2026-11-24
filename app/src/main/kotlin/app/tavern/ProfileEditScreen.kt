@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -21,7 +20,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -162,23 +160,14 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("删除「${draft.name}」？") },
-            text = { Text("这条档案的 API Key 也会一起删除，删了找不回来。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDelete = false
-                        draft.id?.let(viewModel::deleteProfile)
-                    },
-                ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
+        ConfirmDeleteDialog(
+            title = "删除「${draft.name}」？",
+            message = "这条档案的 API Key 也会一起删除，删了找不回来。",
+            onConfirm = {
+                confirmDelete = false
+                draft.id?.let(viewModel::deleteProfile)
             },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
-            },
+            onDismiss = { confirmDelete = false },
         )
     }
 }

@@ -139,6 +139,9 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
 - 选卡弹层（`CardPickerBody`）也走同一个 `GlassSheetScaffold`，宿主同样在 `TabsRoot`；
   页面里不要再写 `ModalBottomSheet`。
 - 行内的「删除」只关弹层 + 交给调用方弹确认框，**不直接删**。
+- **确认框统一用 `ConfirmDeleteDialog`**（`ConfirmDeleteDialog.kt`）：标题 + 一句后果 + **红色确认钮**
+  （`colorScheme.error`）。别再手写 `AlertDialog` —— 原来 7 处各写一遍，于是同一个动作出现两种措辞，
+  而且只有档案编辑那处的确认钮是红的。参数全部写名字：两个回调都是 lambda，写反了编译器不报。
 - 目前**没有拖拽关闭**（只能点遮罩或返回键）；要做就照动效文档的两段式（跟手段 1:1 + 松手弹簧）。
 
 ### 列表不要做"出现/消失"的淡入淡出（2026-11-23）

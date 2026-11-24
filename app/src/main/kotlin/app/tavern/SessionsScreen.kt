@@ -3,18 +3,11 @@ package app.tavern
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +37,7 @@ fun SessionsScreen(
     bottomPadding: Dp = 0.dp,
 ) {
     // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
     // 拉到头还能继续拖（带阻尼），松手弹回
     val overscroll = rememberRubberOverscroll()
     var pendingDelete by remember { mutableStateOf<ChatSession?>(null) }
@@ -112,21 +105,14 @@ fun SessionsScreen(
     }
 
     pendingDelete?.let { session ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("删除会话？") },
-            text = { Text("「${session.title}」的 ${session.messageCount} 条消息会一起删掉，不能撤销。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        viewModel.deleteSession(session.id)
-                    },
-                ) { Text("删除") }
+        ConfirmDeleteDialog(
+            title = "删除会话？",
+            message = "「${session.title}」的 ${session.messageCount} 条消息会一起删掉，不能撤销。",
+            onConfirm = {
+                pendingDelete = null
+                viewModel.deleteSession(session.id)
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
-            },
+            onDismiss = { pendingDelete = null },
         )
     }
 }

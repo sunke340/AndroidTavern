@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,7 +34,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -150,21 +148,14 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 
     pendingDelete?.let { profile ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("删除档案？") },
-            text = { Text("「${profile.name}」和它保存的 API Key 会一起删掉，不能撤销。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        viewModel.deleteProfile(profile.id)
-                    },
-                ) { Text("删除") }
+        ConfirmDeleteDialog(
+            title = "删除档案？",
+            message = "「${profile.name}」和它保存的 API Key 会一起删掉，不能撤销。",
+            onConfirm = {
+                pendingDelete = null
+                viewModel.deleteProfile(profile.id)
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
-            },
+            onDismiss = { pendingDelete = null },
         )
     }
 }
@@ -375,21 +366,14 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
         Text("导入世界书（.json）")
     }
     pendingDelete?.let { name ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("删除世界书？") },
-            text = { Text("「$name」会从这台设备删掉，之后可以重新导入。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteWorldBook(name)
-                        pendingDelete = null
-                    },
-                ) { Text("删除") }
+        ConfirmDeleteDialog(
+            title = "删除世界书？",
+            message = "「$name」会从这台设备删掉，之后可以重新导入。",
+            onConfirm = {
+                viewModel.deleteWorldBook(name)
+                pendingDelete = null
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
-            },
+            onDismiss = { pendingDelete = null },
         )
     }
 }

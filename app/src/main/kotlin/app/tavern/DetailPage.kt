@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -110,7 +109,7 @@ fun GlassDetailScaffold(
     // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）。
     // 注意是**并集**不是相加：键盘弹出时导航栏区域本来就被键盘盖住了，两个数相加会多抬一个导航栏高度。
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -201,7 +200,7 @@ private fun DetailHeader(
 ) {
     val background = MaterialTheme.colorScheme.background
     // 页头铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
     // 按压来源：缩放/压暗在 GlassSurface 上，点击在里面的 Box 上，两者共用同一个 source
     val backPress = remember { MutableInteractionSource() }
     val actionPress = remember { MutableInteractionSource() }

@@ -22,6 +22,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+
+/**
+ * 状态栏高度。
+ *
+ * 页头一直铺到状态栏后面，所以每页内容让位都要"状态栏 + 页头 + 间距"。这个值原来在 7 个文件里
+ * 各写一遍 `WindowInsets.statusBars.asPaddingValues().calculateTopPadding()`，现在只有一个出处。
+ */
+@Composable
+fun statusBarTop(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
 /**
  * 三个底部页面共用的页头**浮层**：左边大标题，右边玻璃胶囊装的图标动作。
@@ -46,7 +56,7 @@ fun PageHeader(
     val background = MaterialTheme.colorScheme.background
     val actionPress = remember { MutableInteractionSource() }
     // 页头一直铺到屏幕最顶上（状态栏后面），跟系统状态栏连成一片
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBar = statusBarTop()
     // 色罩：到页头底边都是饱和的，只在 28dp 收尾段里化开（线性衰减会压不住标题下沿的字）
     val scrim = headerScrim(background)
 
