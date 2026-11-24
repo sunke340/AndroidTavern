@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import app.tavern.data.log.AppLog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -247,6 +248,17 @@ fun GlassSurface(
         }
     }
     val liquidOn = liquidEffect != null
+
+    // 诊断（2026-11-24）：非默认档（页头带 / 弹层）到底有没有跑着色器、参数是多少。
+    // 真机没有 logcat，只能靠日志事后区分"改了参数没感觉"和"根本没生效"。
+    LaunchedEffect(liquid, liquidOn) {
+        if (liquid != null && liquid !== LiquidGlassSpec.Default) {
+            AppLog.i(
+                "glass",
+                "液态档 face=${liquid.faceWhite} 折射=${liquid.refraction} 着色器=$liquidOn",
+            )
+        }
+    }
 
     // 按压动画：直接吃 interaction 流，**不要**用 collectIsPressedAsState()。
     //
