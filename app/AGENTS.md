@@ -121,8 +121,12 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
   两处都在**录图层之外**，所以弹层能真的糊住背后内容。
 - **不要在页面里直接 composed 弹层**：它会画在录图层里面，玻璃采样会采到自己这一帧。
 - 弹层参数：上两角 24dp 圆角、`shadow = false`、**`liquid = LiquidGlassSpec.Sheet`**
-  （faceWhite 0.40，比胶囊的 0.22 **更实**一档 —— 弹层面积大，太透会被背后的内容顶掉文字；
+  （faceWhite 0.50，比胶囊的 0.22 **更实**一档 —— 弹层面积大，太透会被背后的内容顶掉文字；
   **单独一份实例，调弹层不连带改胶囊**）；
+  ⚠️ **要判断这档效果，必须在彩色内容上开弹层（角色卡网格）**：白底列表上"白面混白底"，
+  0.22 与 0.50 几乎同色，肉眼分不出来 —— 这不是没生效。链路是
+  `spec.faceWhite → uFaceWhite → rgb = mix(rgb, uFaceColor, uFaceWhite)`（`LiquidGlass.kt`）；
+  非默认档每次会打一行 `tag=glass 液态档 face=… 着色器=true/false`，导出日志即可确认。
   遮罩黑 32%、180ms 淡入、点遮罩关闭、`BackHandler` 关闭；滑入 `Motion.Slow/Standard`，
   减动效时改淡入。
 - **一级页弹层起来之前，底栏先向下滑走**（`TavernBottomBar(hidden=…)`，180ms；
@@ -280,6 +284,9 @@ MainScreen（Destination + PageStack）
 - **深色暗带已删除**，见下面 2026-11-23 那一节，不要再加回来。
 - **不要给浮层垫矩形底色**：胶囊周边必须能看见背景和消息。曾经在底栏/输入区脚下压过
   "透明 → 底色"的渐变，结果被读成"胶囊被装进一个方形容器里"（2026-11-23 用户指出，已删）。
+- **聊天页磨砂页头下沿的影子减半**（`shadowScale = 0.5f`，0.16 → 0.08）：它正对着消息正文，
+  整强度会一直抢注意力（用户 2026-11-24）。注意"页头下方"与"输入区"是两条不同的投影，
+  改错地方看起来会"没变化"。
 - **页头默认是半透明色罩**（2026-11-23 定调，同一天先改成磨砂、当天又收回来）：只有聊天页是
   磨砂条（`GlassSurface` + 下圆角、`shadow = false`，`GlassDetailScaffold(frostedHeader = true)`）；
   其余页头一律"色罩 + `HeaderFadeTail` 28dp 渐变尾巴"。`GlassBand` 这个手写磨砂带已经删了，别再写。
