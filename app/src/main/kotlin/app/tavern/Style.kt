@@ -3,6 +3,7 @@ package app.tavern
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -378,10 +379,17 @@ fun ListRow(
 ) {
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
-    // 按下就亮：反馈必须发生在手指落下的那一帧，不能等抬起
+    // 按下**立即**满色，松开才淡回去。
+    // 之前两侧都是 120ms 的 tween：点一下通常 80~120ms 就抬手并跳页，底色还没长到能看见
+    // 就已经进二级页了（用户 2026-11-24："还没出现就进去了"）。
+    // 反馈属于"必须跟手"的那一类，不该有进入时长；退出时长只为不留一块硬色。
     val tint by animateFloatAsState(
         targetValue = if (pressed) 1f else 0f,
-        animationSpec = tween(Motion.Fast, easing = Motion.Decelerate),
+        animationSpec = if (pressed) {
+            snap()
+        } else {
+            tween(Motion.Fast + 40, easing = Motion.Decelerate)
+        },
         label = "row-tint",
     )
     val tintColor = MaterialTheme.colorScheme.primary
