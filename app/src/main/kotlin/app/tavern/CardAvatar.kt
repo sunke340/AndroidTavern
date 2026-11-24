@@ -1,6 +1,8 @@
 package app.tavern
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
@@ -21,7 +23,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import app.tavern.data.log.AppLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /** 头像缓存：卡 PNG 的缩略图。16 张足够撑满一屏两列网格。 */
@@ -60,22 +66,58 @@ fun CardAvatar(cardId: String, fallbackText: String, modifier: Modifier = Modifi
         label = "avatar-alpha",
     )
 
-    if (image != null) {
-        Image(
-            bitmap = image,
-            contentDescription = null,
-            modifier = modifier.alpha(alpha),
-            contentScale = ContentScale.Crop,
-        )
-    } else {
-        // 还没解出来 / 解不出来：给个占位，别让网格塌成空白
+    // 占位块**一直在下面**，图片出来只是淡入盖上去。
+    // 以前是 if/else 两支：图片那一支的 alpha 从 0 开始 → 中间有一帧是"空的"，
+    // 观感就是"头像闪一下"（用户 2026-11-24 报的启动闪烁）。
+    Box(modifier) {
         Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Text(fallbackText.take(1), style = MaterialTheme.typography.titleLarge)
+            if (image == null) {
+                Text(fallbackText.take(1), style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize().alpha(alpha),
+                contentScale = ContentScale.Crop,
+            )
         }
     }
+}
+
+/** 一次最多预热几张：会话首屏不会同时露出更多，避免把启动拖慢。 */
+private const val PRELOAD_LIMIT = 8
+
+/**
+ * 预热头像缓存（会话列表首屏用）。
+ *
+ * 为什么不在行里现解：`CardAvatar` 是异步解码，第一帧只能画占位块，解完再淡入 ——
+ * 十几行各解各的，观感就是"进去时头像一块块闪出来"。这里在**发布会话列表之前**
+ * 把这屏要用到的几张（去重、并行）解好，行一出现就是最终画面。
+ *
+ * 只解码，不解码不了就跳过（坏卡不该让列表出不来）。
+ */
+suspend fun preloadAvatars(context: Context, cardIds: Collection<String>) {
+    val ids = cardIds.filter { it.isNotBlank() }.distinct().take(PRELOAD_LIMIT)
+    if (ids.isEmpty()) return
+    val started = SystemClock.elapsedRealtime()
+    val repository = AppGraph.cards(context)
+    coroutineScope {
+        ids.map { id ->
+            async(Dispatchers.IO) {
+                if (avatarCache.get(id) != null) return@async
+                runCatching {
+                    val bytes = repository.load(id) ?: return@runCatching
+                    decodeSampled(bytes, target = 320)?.asImageBitmap()?.also { avatarCache.put(id, it) }
+                }
+            }
+        }.awaitAll()
+    }
+    AppLog.i("startup", "头像预热 ${ids.size} 张 ${SystemClock.elapsedRealtime() - started}ms")
 }
 
 /**

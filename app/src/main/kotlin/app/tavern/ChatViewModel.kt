@@ -257,6 +257,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val sessions = withContext(Dispatchers.IO) {
                 runCatching { chatRepository.sessions() }.getOrDefault(emptyList())
             }
+            // 首屏要用的头像先解好，再发布会话列表：否则每行都是"占位块 → 淡入图片"，
+            // 十几行各解各的，看着就是进去时头像一块块闪（用户 2026-11-24 报）。
+            runCatching {
+                preloadAvatars(getApplication<Application>(), sessions.map { it.cardId })
+            }.onFailure { AppLog.w("startup", "头像预热失败：${it.message}") }
             _state.update { it.copy(sessions = sessions, sessionsLoaded = true) }
             AppLog.i(
                 "startup",
