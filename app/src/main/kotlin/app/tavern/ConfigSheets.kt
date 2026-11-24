@@ -128,12 +128,15 @@ internal fun showWorldBookSheet(
     viewModel: ChatViewModel,
     scope: ConfigScope,
     current: Set<String>,
+    /** 这一层是否已经有覆盖。勾完一项原地重弹时 state 还是旧的，所以由调用方告诉它。 */
+    levelActive: Boolean = false,
 ) {
     val all = state.worldBooks.map { it.name }.toSet()
-    val thisLevel = when (scope) {
+    val stored = when (scope) {
         ConfigScope.Session -> state.sessionOverride.worldBookNames
         ConfigScope.Card -> state.cardOverride.worldBookNames
     }
+    val thisLevel = if (levelActive) stored ?: current else stored
     val actions = mutableListOf<SheetAction>()
     if (thisLevel != null) {
         actions += SheetAction("跟随上级") {
@@ -166,8 +169,8 @@ internal fun showWorldBookSheet(
                 ConfigScope.Session -> viewModel.useSessionWorldBooks(next)
                 ConfigScope.Card -> viewModel.useCardWorldBooks(next)
             }
-            // 原地刷新（dismiss + show 在同一帧，不会真的关掉抽屉）
-            showWorldBookSheet(sheet, state, viewModel, scope, next)
+            // 原地刷新（dismiss + show 在同一帧，不会真的关掉抽屉）；这一层从此有覆盖了
+            showWorldBookSheet(sheet, state, viewModel, scope, next, levelActive = true)
         }
     }
     sheet.show(title = "世界书", actions = actions)
@@ -180,12 +183,15 @@ internal fun showRegexSheet(
     viewModel: ChatViewModel,
     scope: ConfigScope,
     current: Set<String>,
+    /** 同 [showWorldBookSheet]：原地重弹时 state 还是旧的。 */
+    levelActive: Boolean = false,
 ) {
     val all = state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
-    val thisLevel = when (scope) {
+    val stored = when (scope) {
         ConfigScope.Session -> state.sessionOverride.regexIds
         ConfigScope.Card -> state.cardOverride.regexIds
     }
+    val thisLevel = if (levelActive) stored ?: current else stored
     val actions = mutableListOf<SheetAction>()
     if (thisLevel != null) {
         actions += SheetAction("跟随上级") {
@@ -216,7 +222,7 @@ internal fun showRegexSheet(
                 ConfigScope.Session -> viewModel.useSessionRegex(next)
                 ConfigScope.Card -> viewModel.useCardRegex(next)
             }
-            showRegexSheet(sheet, state, viewModel, scope, next)
+            showRegexSheet(sheet, state, viewModel, scope, next, levelActive = true)
         }
     }
     if (state.regexScripts.isEmpty()) {
