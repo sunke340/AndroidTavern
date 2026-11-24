@@ -1,8 +1,8 @@
 package app.tavern
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -57,7 +57,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -91,9 +90,10 @@ import app.tavern.core.model.ChatRole
  * 动效只做三件有信息量的事：新消息入场、流式光标、发送↔停止的按钮形变。
  *
  * 串流跟随的规矩（2026-11-24 定）：
- * - 列表贴底时，文本每长高一行，整屏**柔和地**抬一行（先把内容按增量下移，再 180ms 收回）；
- * - 列表不在底部时**冻结**串流文本（气泡停止长高），视口一像素都不动 ——
- *   用户这时在读上文，任何自动位移都是抢视线。
+ * - 列表贴底时，文本长高多少就"滑"多少（动画追高度差，而不是每行跳一下）；
+ * - 不在底部、看的是**更早的消息**时：气泡照常长，但视口本来就不动；
+ * - 不在底部、正停在**串流气泡自己**身上时：冻结文本，视口一像素都不动 ——
+ *   否则气泡长高会把正在读的这一段顶走。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,38 +113,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         }
     }
 
-    // 贴底时"柔和抬升"：文本每长高 delta，先把内容按 delta 往下平移，再用 180ms 收回。
-    // 不加这层的观感是：每换一行，整屏"啪"地往上跳一行（用户 2026-11-24 报）。
-    var lift by remember { mutableFloatStateOf(0f) }
-    var streamHeight by remember { mutableIntStateOf(0) }
-    var lastStreamHeight by remember { mutableIntStateOf(0) }
-
-    // 不在底部时**冻结**串流文本：气泡不再长高 → 视口一像素都不动。
-    // 用户这时大概率在读上文，任何自动位移都是在抢视线（用户 2026-11-24 要求）。
+    // 用户滚到了"串流气泡自己身上"（既不在底部，也不是在看更早的消息）：
+    // 这时气泡继续长高会把视口顶走，所以只在这种情况冻结文本。
+    // 看更早的消息（index > 0）时**不冻结**：气泡在视口外长，画面本来就不动。
+    val insideStreamingBubble = !atBottom && listState.firstVisibleItemIndex == 0
+    val freezeStream = insideStreamingBubble && state.isStreaming
     var frozenStream by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(atBottom) {
-        frozenStream = if (atBottom) null else state.streamingText
-        // 离开底部时把未收完的抬升补偿清掉，免得回来时"跳一下"
-        if (!atBottom) lift = 0f
+    LaunchedEffect(freezeStream) {
+        frozenStream = if (freezeStream) state.streamingText else null
     }
     val shownStream = frozenStream ?: state.streamingText
+
+    // 串流气泡的高度：量出来以后用**一条动画去追它**，追不上差多少就往下平移多少。
+    // 于是每换一行是"滑"上去的，而不是"啪"地跳一行（用户 2026-11-24）。
+    // 旧写法是"每次长高就把补偿加上去、再收回"，文字到得快时补偿越积越多 → 画面抽搐。
+    var streamHeight by remember { mutableIntStateOf(0) }
+    val smoothHeight = remember { Animatable(0f) }
     LaunchedEffect(streamHeight) {
-        val previous = lastStreamHeight
-        val delta = streamHeight - previous
-        lastStreamHeight = streamHeight
-        // 第一帧（气泡刚出现）不抬：那是"从无到有"，不是"长高一行"
-        if (previous != 0 && delta > 0 && atBottom) {
-            lift += delta.toFloat()
-            animate(lift, 0f, animationSpec = tween(Motion.Base, easing = Motion.Decelerate)) { value, _ ->
-                lift = value
-            }
-        }
+        val target = streamHeight.toFloat()
+        // 气泡刚出现的那一次不产生位移：直接对齐（否则会从半空滑下来）
+        if (smoothHeight.value == 0f) smoothHeight.snapTo(target)
+        else smoothHeight.animateTo(target, tween(Motion.Base, easing = Motion.Decelerate))
     }
-    // 新一轮串流 / 换会话：补偿归零，别把上一轮的残值带过来。
-    // `streamHeight` 故意不重置：新气泡第一次布局会自己报高度，把它当"起点"（previous=0）跳过。
+    // 新一轮串流 / 换会话：高度归零，下一轮气泡重新量
     LaunchedEffect(state.isStreaming, state.sessionId) {
-        lift = 0f
-        lastStreamHeight = 0
+        if (state.isStreaming) {
+            streamHeight = 0
+            smoothHeight.snapTo(0f)
+        }
     }
     val regexScripts = state.regexScripts
     val displayText: (String) -> String = remember(regexScripts) {
@@ -196,8 +192,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = Space.m)
-                // 柔和抬升就落在这：内容先按增量下移，再收回（只改绘制，不触发重新布局）
-                .graphicsLayer { translationY = if (atBottom) lift else 0f }
+                // 柔和抬升就落在这：布局已经跑到前面去了，差多少就下移多少（只改绘制，不重新布局）
+                .graphicsLayer { translationY = if (atBottom) streamHeight - smoothHeight.value else 0f }
                 .rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
