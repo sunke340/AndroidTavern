@@ -13,6 +13,8 @@ import app.tavern.data.regex.RegexRepository
 import app.tavern.data.regex.impl.PreferencesRegexRepository
 import app.tavern.data.config.ConfigOverrideRepository
 import app.tavern.data.config.impl.PreferencesConfigOverrideRepository
+import app.tavern.data.sessionstate.SessionScanStateRepository
+import app.tavern.data.sessionstate.impl.PreferencesSessionScanStateRepository
 import app.tavern.data.settings.SettingsRepository
 import app.tavern.data.settings.impl.PreferencesSettingsRepository
 import app.tavern.data.worldinfo.WorldBookRepository
@@ -49,6 +51,9 @@ object AppGraph {
 
     @Volatile
     private var configOverrideStore: ConfigOverrideRepository? = null
+
+    @Volatile
+    private var scanStateStore: SessionScanStateRepository? = null
 
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
@@ -90,6 +95,13 @@ object AppGraph {
         configOverrideStore ?: synchronized(this) {
             configOverrideStore ?: PreferencesConfigOverrideRepository(context.applicationContext)
                 .also { configOverrideStore = it }
+        }
+
+    /** 世界书计时状态（sticky / cooldown）：按会话 id 存一段文本。 */
+    fun sessionScanStates(context: Context): SessionScanStateRepository =
+        scanStateStore ?: synchronized(this) {
+            scanStateStore ?: PreferencesSessionScanStateRepository(context.applicationContext)
+                .also { scanStateStore = it }
         }
 
     /** 模型档案（多套连接配置）。Key 仍由它自己的 SecretStore 管，别在这里碰明文。 */

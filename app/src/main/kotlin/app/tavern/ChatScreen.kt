@@ -542,8 +542,12 @@ private fun ChatInputBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Space.m, vertical = Space.s)
-            // 列表底部让位跟着**实测高度**走：聚焦翻倍后若还用常量 80dp，最后一条会被盖住
-            .onSizeChanged { onHeightChanged(it.height) },
+            // 列表底部让位跟着**实测高度**走：聚焦翻倍后若还用常量 80dp，最后一条会被盖住。
+            // 高度也记一行：真机上"最后一条被盖住/列表跳"这类问题，第一件事就是看这个数
+            .onSizeChanged {
+                onHeightChanged(it.height)
+                AppLog.i("ui", "输入区高度=${it.height}px")
+            },
         verticalAlignment = Alignment.Bottom,
     ) {
         GlassSurface(

@@ -25,6 +25,7 @@ import app.tavern.core.lorebook.LorebookScanResult
 import app.tavern.core.lorebook.LorebookScanner
 import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.lorebook.LorebookScanState
+import app.tavern.core.lorebook.LorebookScanStateCodec
 import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.preset.PresetDefaults
 import app.tavern.core.preset.PromptOrderEntry
@@ -39,6 +40,7 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
 import app.tavern.data.presets.PresetRef
+import app.tavern.data.sessionstate.SessionScanStateRepository
 import app.tavern.data.config.ConfigOverride
 import app.tavern.data.config.ConfigOverrideRepository
 import app.tavern.data.settings.CardBookOverride
@@ -292,6 +294,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val regexRepository = AppGraph.regex(application)
     private val presetRepository: PresetRepository = AppGraph.presets(application)
     private val configOverrides: ConfigOverrideRepository = AppGraph.configOverrides(application)
+    private val sessionScanStates: SessionScanStateRepository = AppGraph.sessionScanStates(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -754,8 +757,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 chatRepository.deleteSession(id)
-                // 会话没了，它的配置覆盖也不该留着（按 sessionId 存，不清就是垃圾数据）
+                // 会话没了，它的配置覆盖与计时状态也不该留着（按 sessionId 存，不清就是垃圾数据）
                 runCatching { configOverrides.clear(ConfigOverrideRepository.session(id)) }
+                runCatching { sessionScanStates.clear(id) }
             }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
             _state.update { it.copy(sessions = sessions) }
@@ -824,6 +828,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionConfig = withContext(Dispatchers.IO) {
             configOverrides.load(ConfigOverrideRepository.session(id))
         }
+        // sticky / cooldown 的计时状态跟着会话走（原版存在 chat_metadata.timedWorldInfo）：
+        // 不读回来的话，App 一重启，还在生效的 sticky 条目就提前失效了
+        val scanStateText = withContext(Dispatchers.IO) {
+            runCatching { sessionScanStates.load(id) }.getOrNull()
+        }
+        worldInfoStates[id] = LorebookScanStateCodec.decode(scanStateText)
         val cardConfig = withContext(Dispatchers.IO) {
             configOverrides.load(ConfigOverrideRepository.card(session.cardId))
         }
@@ -1939,6 +1949,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             global = global,
         )
         worldInfoStates[sessionKey] = result.state
+        // 每轮都落一份：进程被杀也不会丢"正在生效的 sticky"
+        runCatching {
+            sessionScanStates.save(sessionKey, LorebookScanStateCodec.encode(result.state))
+        }
         return result
     }
 

@@ -37,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.unit.dp
+import app.tavern.data.log.AppLog
 
 /**
  * 一次确认请求。用**控制器 + 骨架宿主**而不是 `AlertDialog`：
@@ -64,6 +65,7 @@ class ConfirmController {
     fun dismiss() {
         val current = spec ?: return
         spec = null
+        AppLog.i("ui", "确认框取消：${current.title}")
         current.onDismiss()
     }
 
@@ -71,6 +73,7 @@ class ConfirmController {
     internal fun confirm() {
         val current = spec ?: return
         spec = null
+        AppLog.i("ui", "确认框确认：${current.title}")
         current.onConfirm()
     }
 }
@@ -100,6 +103,10 @@ fun GlassConfirmHost(
     }
     val content = spec ?: lastSpec
     val visible = spec != null
+    // 确认框是删数据的最后一道闸：弹没弹、点了哪个，日志里要能分辨
+    LaunchedEffect(visible, content?.title) {
+        if (visible) AppLog.i("ui", "确认框显示：${content?.title ?: ""}")
+    }
     val reduceMotion = rememberReduceMotion()
 
     BackHandler(enabled = visible) { controller.dismiss() }

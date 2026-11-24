@@ -50,6 +50,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import app.tavern.data.log.AppLog
+import kotlin.math.roundToInt
 
 /** 底栏先滑走，弹层随后才上来（用户 2026-11-24 要求的先后顺序）。 */
 const val SheetEnterDelayMillis = 180
@@ -213,6 +215,10 @@ private fun GlassSheetPlate(
                             val closeByDrag = dragY > plateHeightPx * 0.25f
                             val closeByFling = velocity > with(density) { 800.dp.toPx() }
                             if (closeByDrag || closeByFling) {
+                                AppLog.i(
+                                    "ui",
+                                    "抽屉拖拽关闭 位移=${dragY.roundToInt()}px 速度=${velocity.roundToInt()}px/s",
+                                )
                                 // 顺势让出场动画从当前位置滑走，别再自己补一段位移（会看着像弹了两下）
                                 onDismiss()
                             } else {
