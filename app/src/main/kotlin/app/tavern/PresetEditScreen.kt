@@ -4,8 +4,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,12 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -79,6 +76,9 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         viewModel.movePrompt(from.index, to.index)
     }
     var menuOpen by remember { mutableStateOf(false) }
+    // 拖动中“冻住”的片型：行在列表里换位置时形状不能跟着变（那看着就是跳变）
+    var frozenKey by remember { mutableStateOf<String?>(null) }
+    var frozenPiece by remember { mutableStateOf(RowPiece.Single) }
     // 这一页也是可滚动面：跟其它列表一样要能"拉过头再弹回来"
     val overscroll = rememberRubberOverscroll()
 
@@ -115,8 +115,26 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 bottom = padding.calculateBottomPadding() + Space.xl,
             ),
         ) {
-            itemsIndexed(state.promptOrder, key = { _, entry -> entry.identifier }) { _, entry ->
-                ReorderableItem(reorderState, key = entry.identifier) { isDragging ->
+            itemsIndexed(state.promptOrder, key = { _, entry -> entry.identifier }) { index, entry ->
+                ReorderableItem(reorderState, key = entry.identifier) { itemScope ->
+                    // 长压拖拽的 modifier 只在这个 scope 里可见
+                    val handle = with(itemScope) {
+                        Modifier.longPressDraggableHandle(
+                            onDragStarted = {
+                                frozenPiece = rowPieceAt(index, state.promptOrder.size)
+                                frozenKey = entry.identifier
+                            },
+                            onDragStopped = {
+                                frozenKey = null
+                                viewModel.commitPromptOrder()
+                            },
+                        )
+                    }
+                    val isDragging = frozenKey == entry.identifier
+                    // 起拖那一刻的片型要冻住：拖动中行会在列表里换位置，而片型是按位置算的
+                    // （首尾圆角、中间直角）。不冻的话，被拖着的那行会一边移动一边改形状 —— 就是"跳变"。
+                    val piece = if (isDragging) frozenPiece else rowPieceAt(index, state.promptOrder.size)
+                    val shape = pieceShape(piece)
                     val lift by animateDpAsState(
                         targetValue = if (isDragging) 10.dp else 0.dp,
                         animationSpec = tween(Motion.Fast),
@@ -127,71 +145,55 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         animationSpec = tween(Motion.Fast),
                         label = "prompt-scale",
                     )
-                    PromptOrderCard(
-                        label = promptLabel(entry.identifier),
-                        enabled = entry.enabled,
-                        dragging = isDragging,
-                        lift = lift,
-                        scale = scale,
-                        onToggle = { viewModel.setPromptEnabled(entry.identifier, it) },
-                        modifier = Modifier.zIndex(if (isDragging) 1f else 0f),
-                        onCommit = viewModel::commitPromptOrder,
-                        // 长压拖拽的 modifier 只在这个 scope 里可见，得把它一起传下去
-                        scope = this,
-                    )
+
+                    // 行的外观和别的列表完全一致（GroupPiece：组的外轮廓只画一圈、衔接处只有一条分隔线），
+                    // 拖动只改投影与缩放 —— 形状不动，所以不会跳变，也不会"像是被裁出来的一条"。
+                    GroupPiece(
+                        piece = piece,
+                        modifier = Modifier
+                            .zIndex(if (isDragging) 1f else 0f)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                this.shape = shape
+                                shadowElevation = lift.toPx()
+                            },
+                        dividerInset = RowToken.padH + 16.dp + Space.m,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(RowToken.height)
+                                .then(handle)
+                                .padding(horizontal = RowToken.padH),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // 抓握纹在最左边：先"抓住"，再读名字
+                            DragGrip(highlighted = isDragging)
+                            Spacer(Modifier.width(Space.m))
+                            Text(
+                                text = promptLabel(entry.identifier),
+                                style = RowTitleStyle,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Switch(
+                                checked = entry.enabled,
+                                onCheckedChange = { viewModel.setPromptEnabled(entry.identifier, it) },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * 一张提示词卡：名字 + 开关 + 右侧抓握纹。
- *
- * 长压整张卡就能拖（见 [PresetEditScreen] 的注释）。右下角那三道横线只是**暗示**：
- * 它不可点、不接管手势，纯视觉 —— 没有它的话"这行能拖"完全没有线索。
- */
-@Composable
-private fun PromptOrderCard(
-    label: String,
-    enabled: Boolean,
-    dragging: Boolean,
-    lift: Dp,
-    scale: Float,
-    onToggle: (Boolean) -> Unit,
-    onCommit: () -> Unit,
-    scope: ReorderableCollectionItemScope,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(Radius.card)
-    val borderColor = LocalTavernPalette.current.cardBorder
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(PromptRowHeight)
-            // 投影与缩放都走 graphicsLayer：拖动时这张卡要"浮"在同层之上
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.shape = shape
-                shadowElevation = lift.toPx()
-            }
-            .background(MaterialTheme.colorScheme.surface, shape)
-            .border(1.dp, borderColor, shape)
-            .then(with(scope) { Modifier.longPressDraggableHandle(onDragStopped = onCommit) })
-            .padding(start = Space.s, end = Space.m),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 抓握纹在最左边：先"抓住"，再读名字
-        DragGrip(highlighted = dragging)
-        Spacer(Modifier.width(Space.s))
-        Text(
-            text = label,
-            style = RowTitleStyle,
-            modifier = Modifier.weight(1f),
-        )
-        Switch(checked = enabled, onCheckedChange = onToggle)
-    }
+/** 片型对应的形状：和 `GroupPiece` 内部一致（首/尾两片各圆两个角，中间是直角）。 */
+private fun pieceShape(piece: RowPiece) = when (piece) {
+    RowPiece.Single -> RoundedCornerShape(Radius.group)
+    RowPiece.Top -> RoundedCornerShape(topStart = Radius.group, topEnd = Radius.group)
+    RowPiece.Bottom -> RoundedCornerShape(bottomStart = Radius.group, bottomEnd = Radius.group)
+    RowPiece.Middle -> RectangleShape
 }
 
 /** 抓握纹：三道横线。只是"这里能拖"的暗示，不接管任何手势。 */
