@@ -34,7 +34,7 @@ sealed interface Destination {
 
 **别再回到 early return 的写法**：那样换页是整棵树直接替换，做不了进出动画（踩过）。
 
-### 页面转场：自写 `PageStack`，不用 `AnimatedContent`（2026-11-23 最终结案）
+### 页面转场：自写 `PageStack`，不用 `AnimatedContent`（2026-11-24 用户验收通过）
 
 **结论**：`AnimatedContent` **做不到**"退场那页（深）盖在上面滑走"。它给两层套的 zIndex 取自
 **同一段转场的那一个** `ContentTransform.targetContentZIndex`（源码：`ZIndexModifierElement(
@@ -52,6 +52,7 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
   两个 `1/4` 是同一个量（这版是用户验收过的动势，**别再改 None**）；
 - **只动 `graphicsLayer.translationX`**：整页不重新量尺寸，老 `SizeTransform` 那个坑自然消失；
 - 减动效（`rememberReduceMotion`）→ 只交叉淡化；`NavAnimation.None` → 瞬间切。
+- **tab 之间**仍是内层 `AnimatedContent`（`w/8` 横移 + 180ms 淡入）；那是有意保留的，不是漏改。
 - **离场页必须拿"它还是当前页时"的状态快照**（`snapshots[dest]`，每帧只给当前页写）。
   否则页面读实时 `UiState`，而返回是把状态一起改掉的（`closeDetail()` 同时清 `detailCardId`），
   离场页会走到自己的 `?: return` 渲染空 —— 层在、内容没了，看着就是"退场页凭空消失"。
@@ -106,7 +107,7 @@ AnimatedContent(
 `sessionsList` / `charactersGrid` 现在在 `MainScreen` 里 `remember`，再传下去。
 
 ```
-MainScreen（Destination + AnimatedContent）
+MainScreen（Destination + PageStack）
 ├── TabsRoot（Scaffold + 自绘底栏）
 │   ├── SessionsScreen    会话列表 → 选卡弹层新建 → 点一行进 Chat
 │   ├── CharactersScreen  角色卡网格（两列 3:4）
