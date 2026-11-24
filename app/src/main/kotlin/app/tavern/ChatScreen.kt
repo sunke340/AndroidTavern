@@ -81,6 +81,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
@@ -128,19 +129,23 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val density = LocalDensity.current
 
     // 消息操作（P0-6）：长按气泡出动作单；编辑与删除各自一个弹层
+    // 长按手势的 lambda 会被 pointerInput 记住（只按 realIndex/正文重启），所以里面要读**最新**的
+    // state —— 否则连发几条之后，长按旧气泡还会按"旧的最后一条"去决定有没有「重新生成」。
+    val latestState by rememberUpdatedState(state)
     val sheet = LocalSheetController.current
     val clipboard = LocalClipboardManager.current
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var deletingIndex by remember { mutableStateOf<Int?>(null) }
 
     fun messageActions(index: Int): List<SheetAction> {
-        val message = state.transcript.getOrNull(index) ?: return emptyList()
+        val message = latestState.transcript.getOrNull(index) ?: return emptyList()
         val actions = mutableListOf<SheetAction>()
         actions += SheetAction("复制") { clipboard.setText(AnnotatedString(message.content)) }
         actions += SheetAction("编辑") { editingIndex = index }
         // 只有最后一条助手消息能重新生成（原版也一样：重新生成作用在最后一条上）
-        if (index == state.transcript.lastIndex && message.role == ChatRole.Assistant) {
+        if (index == latestState.transcript.lastIndex && message.role == ChatRole.Assistant) {
             actions += SheetAction("重新生成") { viewModel.regenerateLast() }
+            actions += SheetAction("继续") { viewModel.continueLast() }
         }
         actions += SheetAction("删除这条", destructive = true) { deletingIndex = index }
         return actions
