@@ -48,6 +48,12 @@ fun SessionsScreen(
     val now = remember(state.sessions) { System.currentTimeMillis() }
     val listItems = remember(state.sessions, now) { buildSessionItems(state.sessions, now) }
 
+    if (!state.sessionsLoaded) {
+        // 还没读到库：什么也不写。"还没有会话"是**结论**，不能在加载完成前先说出来
+        // （用户 2026-11-24 报的"进来空白半秒，然后突然刷出来"）。
+        return
+    }
+
     if (state.sessions.isEmpty()) {
         Column(
             modifier = Modifier

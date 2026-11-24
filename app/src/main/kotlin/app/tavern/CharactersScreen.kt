@@ -69,6 +69,10 @@ fun CharactersScreen(
         state.sessions.groupingBy { it.cardId }.eachCount()
     }
 
+    if (!state.cardsLoaded) {
+        // 还没读完库：别把"未加载"说成"还没有卡"
+        return
+    }
     if (state.cards.isEmpty()) {
         Column(
             modifier = Modifier

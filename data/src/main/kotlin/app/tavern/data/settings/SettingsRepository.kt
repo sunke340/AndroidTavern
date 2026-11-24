@@ -47,6 +47,15 @@ interface SettingsRepository {
     fun saveVisualEffects(name: String)
 
     /**
+     * **首帧就要用**的外观项：只读 SharedPreferences，**不碰 Keystore**。
+     *
+     * 为什么要单独一个口子：`load()` 会解密 API Key（Keystore 冷启动几十到几百 ms），
+     * 而主题/视觉档/转场这三项决定第一帧长什么样。排在解密后面 = 先按默认值画一帧
+     * （"一开始是轻量、一瞬间后变玻璃"）。所以 UI 侧先同步读这一份，Key 慢慢解。
+     */
+    fun uiAppearance(): UiAppearance
+
+    /**
      * 这张卡的内嵌世界书开关覆盖（按条目 **uid**，不是下标 —— 卡在 PC 上改过内嵌书再导回来，
      * 下标会整体错位，uid 不会）。
      *
@@ -70,6 +79,15 @@ interface SettingsRepository {
     /** 保存 API Key（加密后落盘；空串表示清除）。 */
     fun saveApiKey(key: String)
 }
+
+/** 首帧外观项（全部是纯字符串，取值由 UI 层解释）。 */
+data class UiAppearance(
+    val themePreset: String,
+    val themeMode: String,
+    val navAnimation: String,
+    val visualEffects: String,
+    val messageStyle: String,
+)
 
 /**
  * 卡内嵌世界书的本地覆盖。两个集合互斥：

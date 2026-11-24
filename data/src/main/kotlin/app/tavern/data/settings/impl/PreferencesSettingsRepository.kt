@@ -5,6 +5,7 @@ import app.tavern.data.secret.SecretStore
 import app.tavern.data.secret.impl.KeystoreSecretStore
 import app.tavern.data.settings.AppSettings
 import app.tavern.data.settings.CardBookOverride
+import app.tavern.data.settings.UiAppearance
 import app.tavern.data.settings.SettingsRepository
 
 /**
@@ -57,6 +58,23 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_NAV_ANIMATION,
         visualEffects = prefs.getString(KEY_VISUAL_EFFECTS, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_VISUAL_EFFECTS,
+    )
+
+    /**
+     * 只读偏好的外观项。这里**故意不碰** [secrets] —— 首帧等不起 Keystore。
+     * 与 [load] 用同一组默认值，所以"预读"和"正式读"不会给出两种答案。
+     */
+    override fun uiAppearance(): UiAppearance = UiAppearance(
+        themePreset = prefs.getString(KEY_THEME_PRESET, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_THEME_PRESET,
+        themeMode = prefs.getString(KEY_THEME_MODE, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_THEME_MODE,
+        navAnimation = prefs.getString(KEY_NAV_ANIMATION, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_NAV_ANIMATION,
+        visualEffects = prefs.getString(KEY_VISUAL_EFFECTS, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_VISUAL_EFFECTS,
+        messageStyle = prefs.getString(KEY_MESSAGE_STYLE, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_MESSAGE_STYLE,
     )
 
     override fun saveConnection(baseUrl: String, model: String) {

@@ -1,5 +1,6 @@
 package app.tavern
 
+import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -14,11 +15,15 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import app.tavern.data.log.AppLog
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 页面栈转场：**自己管叠放次序**，不再用 `AnimatedContent`。
@@ -85,9 +90,31 @@ internal fun <S> PageStack(
         running = mode != NavAnimation.None
         pages.add(target)
         if (running) {
+            // 转场期间的帧统计：一次长帧（解析/GC/着色器编译）会把 280ms 的动画直接吃掉，
+            // 事后再猜是"哪一步卡"很难，所以把"最长帧"直接写进日志（真机没有 logcat）。
+            val startedAt = SystemClock.elapsedRealtime()
+            val stats = launch {
+                var last = 0L
+                var maxGap = 0L
+                var frames = 0
+                while (running) {
+                    withFrameNanos { now ->
+                        if (last != 0L) maxGap = maxOf(maxGap, (now - last) / 1_000_000)
+                        last = now
+                        frames += 1
+                    }
+                }
+                AppLog.i(
+                    "nav",
+                    "转场 ${mode.name} 用时 ${SystemClock.elapsedRealtime() - startedAt}ms" +
+                        "，帧 $frames，最长帧 ${maxGap}ms",
+                )
+            }
             // 淡入（减动效）与位移共用同一条时长曲线，保证两档切换时节奏一致
             progress.animateTo(1f, tween(Motion.Slow, easing = Motion.Decelerate))
             running = false
+            // 统计协程要等下一帧才醒；给个上限，避免它卡住转场收尾
+            withTimeoutOrNull(500) { stats.join() }
         }
         // 只留下目标页（从头删，目标页永远在最后，所以它的组合不会被丢掉）
         while (pages.size > 1) pages.removeAt(0)

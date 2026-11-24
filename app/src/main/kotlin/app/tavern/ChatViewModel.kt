@@ -1,6 +1,7 @@
 package app.tavern
 
 import android.app.Application
+import android.os.SystemClock
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
@@ -149,9 +150,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val isStreaming: Boolean = false,
         val status: String = "",
         val cards: List<CardRef> = emptyList(),
+        /** 卡列表是否读完过一次（同 [sessionsLoaded]：没读完不能显示"还没有卡"）。 */
+        val cardsLoaded: Boolean = false,
         val cardId: String? = null,
         val cardName: String = "",
         val sessions: List<ChatSession> = emptyList(),
+        /** 会话列表是否**读完过一次**。false 时界面不能显示"还没有会话"（那只是还没读到）。 */
+        val sessionsLoaded: Boolean = false,
         val sessionId: String? = null,
         val requestPreview: String = "",
         val showRequest: Boolean = false,
@@ -236,12 +241,42 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var keySaveJob: Job? = null
 
     init {
+        // 首帧就要用的外观项：同步读偏好（**不碰 Keystore**）。否则第一帧只能按默认值画
+        // ——「一进来是轻量主题、一瞬间后变玻璃」就是这么来的（用户 2026-11-24 报）。
+        val startupAt = SystemClock.elapsedRealtime()
+        applyAppearanceSync()
+        AppLog.i("startup", "外观预读 ${SystemClock.elapsedRealtime() - startupAt}ms")
+
         refreshWorldBooks()
         refreshRegexScripts()
         refreshPresets()
+
+        // 会话列表**单独先发**：它是一级页首屏的内容，不该排在 Key 解密、档案种子后面。
         viewModelScope.launch {
-            // 先把连接配置读回来：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填
+            val sessionsAt = SystemClock.elapsedRealtime()
+            val sessions = withContext(Dispatchers.IO) {
+                runCatching { chatRepository.sessions() }.getOrDefault(emptyList())
+            }
+            _state.update { it.copy(sessions = sessions, sessionsLoaded = true) }
+            AppLog.i(
+                "startup",
+                "会话就绪 +${SystemClock.elapsedRealtime() - startupAt}ms" +
+                    "（本步 ${SystemClock.elapsedRealtime() - sessionsAt}ms，${sessions.size} 条）",
+            )
+            // 冷启动只把最近一个会话打开，停在列表（不钻进聊天）
+            sessions.firstOrNull()?.let { openSessionInternal(it.id, navigate = false) }
+        }
+
+        viewModelScope.launch {
+            // 连接配置：Key 存在 Keystore 加密存储里，重开 App 不该再要你重填。
+            // 解密慢（冷启动几十~几百 ms），所以排在会话后面；外观项上面已经摆好了。
+            val settingsAt = SystemClock.elapsedRealtime()
             val saved = withContext(Dispatchers.IO) { settingsRepository.load() }
+            AppLog.i(
+                "startup",
+                "配置解密 +${SystemClock.elapsedRealtime() - startupAt}ms" +
+                    "（本步 ${SystemClock.elapsedRealtime() - settingsAt}ms）",
+            )
 
             // 模型档案：表里还没有档案就用老的单套配置种一条（幂等），
             // 之后**档案才是真相**，老字段留着只为回退时数据还在。
@@ -272,6 +307,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     activeProfileId = active?.id,
                     temperatureText = saved.temperature.toString(),
                     maxTokensText = saved.maxTokens.toString(),
+                    // 外观已经由 applyAppearanceSync 摆好；这里以同一份偏好再写一次（幂等），
+                    // 免得"预读"和"正式读"哪天不一致。
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
                     themePreset = runCatching { ThemePreset.valueOf(saved.themePreset) }
@@ -285,31 +322,54 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
+            val cardsAt = SystemClock.elapsedRealtime()
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
-            _state.update { it.copy(cards = cards) }
+            _state.update { it.copy(cards = cards, cardsLoaded = true) }
+            AppLog.i(
+                "startup",
+                "卡就绪 +${SystemClock.elapsedRealtime() - startupAt}ms（本步 ${SystemClock.elapsedRealtime() - cardsAt}ms，${cards.size} 张）",
+            )
 
-            val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
-            _state.update { it.copy(sessions = sessions) }
-
-            // 冷启动直接回到最近一次会话（标题里带卡名与时间，一眼能认出来）
-            val latest = sessions.firstOrNull()
-            if (latest != null) {
-                // 冷启动停在会话列表，不直接钻进聊天：从哪里来回哪里去
-                openSessionInternal(latest.id, navigate = false)
-                return@launch
-            }
-
-            // 会话改成按需创建（从角色详情点"新建会话"）：删到 0 个也不会被自动补回来
-            _state.update {
-                it.copy(
-                    status = if (cards.isEmpty()) {
-                        "没有可用的卡：assets/cards 下至少要有一张"
-                    } else {
-                        "还没有会话：去「角色」选一张卡"
-                    },
-                )
+            // 会话已经由上面那一发读过，这里不再查库；只补一句空状态说明
+            val current = _state.value
+            if (current.sessionsLoaded && current.sessions.isEmpty()) {
+                _state.update {
+                    it.copy(
+                        status = if (cards.isEmpty()) {
+                            "没有可用的卡：assets/cards 下至少要有一张"
+                        } else {
+                            "还没有会话：去「角色」选一张卡"
+                        },
+                    )
+                }
             }
         }
+    }
+
+    /**
+     * 首帧外观同步落地（主题 / 深浅 / 转场 / 视觉档 / 对话样式）。
+     *
+     * 只读 SharedPreferences，微秒级；**故意绕开** [SettingsRepository.load] 里的 Keystore 解密。
+     * 这几项决定第一帧长什么样，等解密回来再设置就是"闪一下"。
+     */
+    private fun applyAppearanceSync() {
+        runCatching {
+            val look = settingsRepository.uiAppearance()
+            _state.update {
+                it.copy(
+                    themePreset = runCatching { ThemePreset.valueOf(look.themePreset) }
+                        .getOrDefault(ThemePreset.Violet),
+                    themeMode = runCatching { ThemeMode.valueOf(look.themeMode) }
+                        .getOrDefault(ThemeMode.Follow),
+                    navAnimation = runCatching { NavAnimation.valueOf(look.navAnimation) }
+                        .getOrDefault(NavAnimation.Slide),
+                    visualEffects = runCatching { VisualEffects.valueOf(look.visualEffects) }
+                        .getOrDefault(VisualEffects.Off),
+                    messageStyle = runCatching { MessageStyle.valueOf(look.messageStyle) }
+                        .getOrDefault(MessageStyle.Card),
+                )
+            }
+        }.onFailure { AppLog.w("ui", "外观预读失败：${it.message}") }
     }
 
     // ---- 卡 ----------------------------------------------------------------
@@ -992,7 +1052,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** 重新读全局世界书列表，顺便把启用中的那些书解析进缓存。 */
     fun refreshWorldBooks() {
         viewModelScope.launch {
+            val started = SystemClock.elapsedRealtime()
             val books = withContext(Dispatchers.IO) { worldBookRepository.list() }
+            val listMs = SystemClock.elapsedRealtime() - started
             val entries = withContext(Dispatchers.IO) {
                 books.filter { it.enabled }.mapNotNull { ref ->
                     worldBookRepository.load(ref.name)?.let { book ->
@@ -1011,7 +1073,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             globalBookEntries.clear()
             globalBookEntries.putAll(entries)
             _state.update { it.copy(worldBooks = books) }
-            AppLog.i("worldinfo", "全局书 ${books.size} 本，启用 ${entries.size} 本")
+            AppLog.i(
+                "wi",
+                "刷新全局书 ${books.size} 本（数条目 ${listMs}ms，总 ${SystemClock.elapsedRealtime() - started}ms），" +
+                    "启用 ${entries.size} 本",
+            )
         }
     }
 
@@ -1049,11 +1115,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadWorldBook(name: String) {
+        val started = SystemClock.elapsedRealtime()
         val view = withContext(Dispatchers.IO) {
+            val parseAt = SystemClock.elapsedRealtime()
             val book = worldBookRepository.load(name) ?: return@withContext null
+            val parseMs = SystemClock.elapsedRealtime() - parseAt
             val overrides = worldBookRepository.disabledEntries(name)
             val forced = worldBookRepository.forcedEntries(name)
-            WorldBookView(
+            val buildAt = SystemClock.elapsedRealtime()
+            val view = WorldBookView(
                 name = name,
                 entries = book.entries.map { entry ->
                     val forcedOn = entry.disabled && entry.uid in forced
@@ -1070,12 +1140,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 loaded = true,
             )
+            AppLog.i(
+                "wi",
+                "开书 $name：解析 ${parseMs}ms，建条目 ${SystemClock.elapsedRealtime() - buildAt}ms，" +
+                    "${view.entries.size} 条",
+            )
+            view
         }
         if (view == null) {
             _state.update { it.copy(status = "这本书读不出来了：$name", worldBookView = null) }
         } else {
             // 读的过程中用户可能已经返回了，别把页面又推回来
             _state.update { if (it.worldBookView?.name == name) it.copy(worldBookView = view) else it }
+            AppLog.i("wi", "开书 $name 落地 +${SystemClock.elapsedRealtime() - started}ms")
         }
     }
 

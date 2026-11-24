@@ -248,6 +248,9 @@ internal fun buildLiquidGlassEffect(
     if (!glassSupported) return null
     if (nodeSize.width <= 0 || nodeSize.height <= 0) return null
     return runCatching {
+        // AGSL 编译是**同步**的：每个新的玻璃面第一次出现都要付这笔钱（真机常见几十 ms）。
+        // 记下来是为了区分"页面转场卡"到底是列表重活还是着色器编译（用户 2026-11-24 报的开书卡顿）。
+        val buildStarted = System.nanoTime()
         val shader = RuntimeShader(LIQUID_AGSL)
         shader.setFloatUniform("uNodeSize", nodeSize.width.toFloat(), nodeSize.height.toFloat())
         shader.setFloatUniform("uShapeSize", shapeSize.width.toFloat(), shapeSize.height.toFloat())
@@ -266,7 +269,13 @@ internal fun buildLiquidGlassEffect(
         shader.setFloatUniform("uFaceColor", faceColor.red, faceColor.green, faceColor.blue)
         shader.setFloatUniform("uRimMode", if (spec.rimBottomOnly) 1f else 0f)
         shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tintAlpha)
-        RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
+        val effect = RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
+        val buildMs = (System.nanoTime() - buildStarted) / 1_000_000
+        // 只记"慢"的：正常应该 1–2ms，超过 8ms 才值得看
+        if (buildMs >= 8) {
+            AppLog.i("glass", "着色器编译 ${buildMs}ms（面 ${nodeSize.width}x${nodeSize.height}）")
+        }
+        effect
     }.onFailure {
         // 真机没 logcat：着色器编译失败必须留痕，否则只会看到"按钮没效果"
         AppLog.e("glass", "液态玻璃着色器失败（退回描边样式）", it)
