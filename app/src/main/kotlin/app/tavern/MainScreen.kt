@@ -123,6 +123,9 @@ internal sealed interface Destination {
 
     /** 聊天 → ⋮ → 会话配置（三级）：三级继承最内层。 */
     data object SessionConfig : Destination
+
+    /** 角色详情 → ⋮ → 编辑卡（写回 PNG）。 */
+    data class CardEdit(val cardId: String) : Destination
 }
 
 private fun depthOf(destination: Destination): Int = when (destination) {
@@ -136,6 +139,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     Destination.Gallery -> 2
     is Destination.PresetEdit -> 2
     Destination.SessionConfig -> 3
+    is Destination.CardEdit -> 2
 }
 
 /** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
@@ -150,6 +154,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     Destination.Gallery -> "gallery"
     is Destination.PresetEdit -> "preset-edit"
     Destination.SessionConfig -> "session-config"
+    is Destination.CardEdit -> "card-edit"
 }
 
 @Composable
@@ -175,6 +180,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 // 会话配置叠在聊天页之上：返回落回聊天（chatOpen 保持 true）
                 state.sessionConfigOpen -> Destination.SessionConfig
                 state.chatOpen -> Destination.Chat
+                detailId != null && state.cardEditOpen -> Destination.CardEdit(detailId)
                 detailId != null && cardConfig != null -> Destination.CardConfig(detailId, cardConfig)
                 detailId != null -> Destination.Detail(detailId)
                 // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
@@ -296,6 +302,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         Destination.SessionConfig -> {
                             if (live) BackHandler { viewModel.closeSessionConfig() }
                             SessionConfigScreen(state = snap, viewModel = viewModel)
+                        }
+
+                        is Destination.CardEdit -> {
+                            if (live) BackHandler { viewModel.closeCardEditor() }
+                            CardEditScreen(state = snap, viewModel = viewModel)
                         }
                     }
                 }

@@ -32,4 +32,13 @@ interface CardRepository {
 
     /** 删掉一张卡的文件。**会话不在这里处理**——由调用方决定要不要连带删。 */
     fun delete(id: String): Boolean
+
+    /**
+     * 改写一张卡的字段并写回 PNG（卡编辑）。
+     *
+     * 写之前先备份第一次改动前的原文件（`<名字>.bak.png`，只备份一次），
+     * 再用临时文件 + 重命名原子替换 —— 写到一半断电也不会留下半张卡。
+     * `IDAT` 等图片数据由 [app.tavern.core.card.PngCard.write] 保证逐字节不变。
+     */
+    fun saveCard(id: String, card: app.tavern.core.card.CharacterCard): Boolean
 }

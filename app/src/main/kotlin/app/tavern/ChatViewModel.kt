@@ -242,6 +242,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val profileDraft: ProfileDraft? = null,
         /** 会话配置二级页（从聊天页 ⋮ 进）。 */
         val sessionConfigOpen: Boolean = false,
+        /** 编辑角色卡（从详情页 ⋮ 进）。 */
+        val cardEditOpen: Boolean = false,
         /** 当前这张卡的全部开场白（第一条是 first_mes，其后是备选）。换开场白只读它。 */
         val greetings: List<String> = emptyList(),
         /**
@@ -481,7 +483,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun selectDetailTab(tab: DetailTab) = _state.update { it.copy(detailTab = tab) }
 
     fun closeDetail() {
-        _state.update { it.copy(detailCardId = null, detail = null, cardConfigPage = null) }
+        _state.update {
+            it.copy(detailCardId = null, detail = null, cardConfigPage = null, cardEditOpen = false)
+        }
     }
 
     private suspend fun loadDetail(cardId: String) {
@@ -1284,6 +1288,62 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
 
     fun openCardConfigPage(page: CardConfigPage) = _state.update { it.copy(cardConfigPage = page) }
+
+    // ---- 卡编辑（写回 PNG）--------------------------------------------------
+
+    fun openCardEditor() {
+        if (_state.value.detailCardId == null) return
+        _state.update { it.copy(cardEditOpen = true) }
+        AppLog.i("card", "打开卡编辑")
+    }
+
+    fun closeCardEditor() = _state.update { it.copy(cardEditOpen = false) }
+
+    /**
+     * 把编辑后的字段写回卡文件（备份在 `.bak.png`，原子替换）。
+     *
+     * 只改这六个文本字段；内嵌世界书、扩展字段、图片数据都原样保留
+     * （[app.tavern.core.card.PngCard.write] 只换卡片 JSON，IDAT 逐字节不动 —— P0-3 有单测）。
+     */
+    fun saveCardFields(
+        name: String,
+        description: String,
+        personality: String,
+        scenario: String,
+        firstMessage: String,
+        messageExample: String,
+    ) {
+        val cardId = _state.value.detailCardId ?: return
+        val loaded = card ?: return
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            notify("名字不能为空")
+            return
+        }
+        viewModelScope.launch {
+            val updated = loaded
+                .withField("name", JsonPrimitive(trimmed))
+                .withField("description", JsonPrimitive(description))
+                .withField("personality", JsonPrimitive(personality))
+                .withField("scenario", JsonPrimitive(scenario))
+                .withField("first_mes", JsonPrimitive(firstMessage))
+                .withField("mes_example", JsonPrimitive(messageExample))
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { cardRepository.saveCard(cardId, updated) }.getOrDefault(false)
+            }
+            if (!ok) {
+                notify("写回失败：卡文件可能已被移动或损坏")
+                return@launch
+            }
+            card = updated
+            _state.update { it.copy(cardEditOpen = false) }
+            val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+            _state.update { it.copy(cards = cards) }
+            loadDetail(cardId)
+            AppLog.i("card", "卡编辑保存 name=${trimmed.take(20)}")
+            notify("已保存（原文件备份为 .bak.png）")
+        }
+    }
 
     fun closeCardConfigPage() = _state.update { it.copy(cardConfigPage = null) }
 

@@ -3,6 +3,7 @@ package app.tavern.data.cards.impl
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import app.tavern.core.card.CharacterCard
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
 import app.tavern.data.cards.CardRef
@@ -167,6 +168,26 @@ class CardStore(context: Context) : CardRepository {
     override fun delete(id: String): Boolean {
         val file = fileFor(id) ?: return false
         return file.isFile && file.delete()
+    }
+
+    override fun saveCard(id: String, card: CharacterCard): Boolean {
+        val file = fileFor(id)?.takeIf { it.isFile } ?: return false
+        return runCatching {
+            val original = file.readBytes()
+            val updated = PngCard.write(original, card)
+            // 备份：只留"第一次改之前"的那份，反复编辑不会把备份也覆盖掉
+            val backup = File(file.parentFile, "${file.nameWithoutExtension}.bak.png")
+            if (!backup.exists()) backup.writeBytes(original)
+            // 原子替换：先写临时文件，再 rename（同一目录内 rename 是原子的）
+            val temp = File(file.parentFile, "${file.name}.tmp")
+            temp.writeBytes(updated)
+            if (!temp.renameTo(file)) {
+                temp.delete()
+                error("写回失败（重命名）")
+            }
+            AppLog.i("card", "写回卡 ${id.take(8)} ${original.size}→${updated.size} 字节（备份 ${backup.name}）")
+            true
+        }.onFailure { AppLog.e("card", "写回卡失败 ${id.take(8)}", it) }.getOrDefault(false)
     }
 
     private fun fileFor(id: String): File? =

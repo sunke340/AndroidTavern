@@ -94,6 +94,13 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
             ) { uri -> if (uri != null) viewModel.importChat(cardId, uri) }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
+                    text = { Text("编辑卡片") },
+                    onClick = {
+                        menuOpen = false
+                        viewModel.openCardEditor()
+                    },
+                )
+                DropdownMenuItem(
                     text = { Text("导入聊天记录") },
                     onClick = {
                         menuOpen = false
