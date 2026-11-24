@@ -1,6 +1,6 @@
 # AGENTS.md — `app/`
 
-> ⚠️ 这个模块装着**全部界面**（30 个文件、约 7.6k 行，包 `app.tavern` 是扁平的）。
+> ⚠️ 这个模块装着**全部界面**（33 个文件、约 8.1k 行，包 `app.tavern` 是扁平的）。
 > 分层评估与「为什么不拆包」见 [structure-audit.md](../docs/dev/structure-audit.md)。
 > **历史与细节不在这里**：踩过什么、数字怎么来的，全在 [pitfalls.md](../docs/dev/pitfalls.md)。
 > 本文件只放每次都要遵守的规则。
@@ -24,8 +24,8 @@
 
 ## 列表：一套行系统
 
-- 行一律 `ListRow`，成组用 `ListGroup` / `GroupPiece`（`Style.kt`），别手写 `Row` 拼"差不多"的行。
-  尺寸字号在 `RowToken` / `RowTitleStyle` / `RowSubtitleStyle` / `RowMetaStyle`（`tnum` 等宽数字）。
+- 行一律 `ListRow`，成组用 `ListGroup` / `GroupPiece`（**`ListRow.kt`**），别手写 `Row` 拼"差不多"的行。
+  尺寸字号在同一份文件里：`RowToken` / `RowTitleStyle` / `RowSubtitleStyle` / `RowMetaStyle`（`tnum` 等宽数字）。
 - **行不画背景与分隔线**（归 `GroupPiece`）；**边框只画组的外轮廓**，每片画一圈就是双线。
 - 分隔线从文字左缘起（有头像 64dp / 无头像 12dp），**最后一行不画**。
 - **按下即亮**：7% 主色、`indication = null` 关涟漪；**出现/消失不加动画**，只留 `placementSpec`。

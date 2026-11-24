@@ -115,8 +115,9 @@ app.tavern
 | `ChatViewModel.kt` | `vm` |
 | `MainActivity` `TavernApp` `AppGraph` | 留 `app.tavern` |
 
-**注意**：拆包后 `Style.kt` 里的 `ListRow` / `ListGroup` / `GroupPiece` / `RowToken` 也跨包了，
-要么整体搬进 `ui.component/ListRow.kt`（推荐，顺手把 Style.kt 638 行瘦下来），要么加 import。
+**注意**：~~拆包后~~ **已提前做掉的那一半（2026-11-24，P4）**：`ListRow` / `ListGroup` / `GroupPiece` /
+`RowToken` / 三个行文字样式已经搬进**同包**的 `ListRow.kt`，`Style.kt` 从 638 行降到 307 行 ——
+同包拆文件零 import 代价。将来真要按包拆，这一份直接搬进 `ui.component/` 即可。
 
 **验收**：三项本机检查 + CI 编译 + 真机各页能打开（不需要逐项点，能进能返回即可）。
 
@@ -290,7 +291,7 @@ ChatViewModel
 | **P1** | `ConfirmDeleteDialog` + `statusBarTop()` + 三处措辞/颜色统一（第三节） | ✅ | 低（纯抽取；**唯一视觉变化**：确认钮统一成红色） | 三项本机检查 + CI 编译 + 真机长按删一条会话、删一张卡 |
 | ~~**P2**~~ ✅ | `app/AGENTS.md` 42.4 KB → **8.9 KB** + 逐字归档建 `docs/dev/pitfalls.md`（第五节） | — | 低 | 已达标：链 52.3 → 17.8 KB |
 | ~~**P3**~~ ✅ | `GalleryScreen`（debug only，材质三根滑杆）（第四节） | ✅ | 低 | 已做（`59139f4`）：入口 设置→关于，滑杆松手即应用并给出一行可粘贴的 `copy(...)` |
-| **P4** | `Style.kt` 只留 token，行系统搬进**同包**的 `ListRow.kt` | ✅ | 低（同包拆文件 = 零 import） | 本机检查 + CI + 真机三处列表外观不变 |
+| ~~**P4**~~ ✅ | `Style.kt` 638 行 → **307 行**（只留 space/radius/页头小件/按钮/空态），行系统搬进同包 **`ListRow.kt`**（364 行） | ✅ | 低 | 已做：原文每一个非 import 行都还在两份文件之一（脚本比对过） |
 | **不做** | 包分层（第二节）、拆 `ChatViewModel` 的 controller（第六节） | — | — | — |
 | 之后 | 功能线：P1-5 预设导入 → D 批三级继承 → P0-6 消息操作 → 世界书剩余 | — | — | 见 `compat-matrix.md` |
 
