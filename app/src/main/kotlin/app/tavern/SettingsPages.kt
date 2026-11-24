@@ -121,6 +121,8 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     ListGroup(
         count = state.profiles.size,
+        // 列表直接顶着页头会显得挤（其它设置二级页开头有 SectionLabel 自带 16dp）
+        modifier = Modifier.padding(top = Space.l),
         // 分隔线让出"行内边距 + 圆圈 + 间距"，从标题左缘起
         dividerInset = RowToken.padH + 20.dp + Space.m,
     ) { index, _ ->

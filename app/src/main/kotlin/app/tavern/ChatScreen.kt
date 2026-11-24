@@ -144,9 +144,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             modifier = Modifier.fillMaxSize().padding(horizontal = Space.m).rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
+                // 8 → 16：磨砂页头下面再多留一点，首条消息不贴着头（用户 2026-11-24）
                 top = DetailHeaderHeight +
                     WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                    Space.s,
+                    Space.l,
                 // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
                 // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
                 bottom = padding.calculateBottomPadding() + ChatInputAreaHeight,

@@ -68,7 +68,9 @@ fun SessionsScreen(
             modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
             state = listState,
             contentPadding = PaddingValues(
-                top = PageHeaderHeight + Space.s + statusBar,
+                // 页头 + 分组标题自己的 16dp 上边距已经够，不再另加 8（用户 2026-11-24：
+                // "和标题离得有点远，往上一点点"）
+                top = PageHeaderHeight + statusBar,
                 bottom = Space.l + bottomPadding,
             ),
         ) {
@@ -77,7 +79,7 @@ fun SessionsScreen(
                     is SessionListItem.Day -> SectionLabel(
                         text = item.label,
                         // 与行内文字左缘对齐（面板 16dp + 行内 12dp），标题不会比内容更靠边
-                        modifier = Modifier.padding(start = Space.l + RowToken.padH, top = Space.xs),
+                        modifier = Modifier.padding(start = Space.l + RowToken.padH),
                     )
 
                     is SessionListItem.Session -> GroupPiece(
