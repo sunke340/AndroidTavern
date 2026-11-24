@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>角色卡 · 三个方案</title>
+<style>
+  :root{--bg:#F8F6FC;--surface:#fff;--border:#E0DAEE;--primary:#5C3BAE;--on:#1A1722;--osv:#6A6280;}
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  body{margin:0;padding:34px 30px 40px;background:#ECE8F3;color:var(--on);
+    font-family:"Noto Sans CJK SC",system-ui,sans-serif;}
+  h1{font-size:21px;margin:0 0 4px;}
+  p.sub{font-size:13px;color:#6A6280;margin:0 0 26px;}
+  .row{display:flex;gap:36px;align-items:flex-start;}
+  .col{width:360px;}
+  .cap{font-size:12.5px;line-height:1.7;color:#5B5470;margin-top:12px;}
+  .cap b{color:#1A1722;}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;margin-right:6px;}
+  .tag.old{background:#E6E1EF;color:#5B5470;}
+  .tag.new{background:#5C3BAE;color:#fff;}
+  .tag.alt{background:#fff;color:#5C3BAE;border:1px solid #C9BCE8;}
+
+  .phone{width:360px;height:788px;border-radius:34px;background:var(--bg);border:1px solid #CFC7DE;
+    overflow:hidden;position:relative;box-shadow:0 10px 30px rgba(60,40,100,.10);}
+  .status{height:28px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;font-size:10.5px;color:#4A4360;font-weight:600;}
+  .scrim{position:absolute;left:0;right:0;top:0;height:128px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(248,246,252,.96) 0%,rgba(248,246,252,.92) 62%,rgba(248,246,252,0) 100%);}
+  .header{position:absolute;left:0;right:0;top:0;height:100px;display:flex;align-items:flex-end;
+    padding:0 16px 10px;z-index:3;}
+  .header h2{font-size:22px;font-weight:700;letter-spacing:-.2px;margin:0;flex:1;}
+  .capsule{height:44px;padding:0 16px;border-radius:22px;display:flex;align-items:center;gap:14px;
+    background:rgba(255,255,255,.55);border:1px solid #E9E3F5;box-shadow:0 3px 10px rgba(90,60,150,.10);}
+  .capsule .i{font-size:19px;}
+  .content{position:absolute;left:0;right:0;top:100px;bottom:0;overflow:hidden;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;}
+
+  .art{width:100%;aspect-ratio:3/4;display:block;}
+  .a1{background:linear-gradient(160deg,#3B2350,#7A4E8C 55%,#C98BA6);}
+  .a2{background:linear-gradient(200deg,#12303A,#2E6570 60%,#8FBFC4);}
+  .a3{background:linear-gradient(150deg,#40202A,#8A4A3C 60%,#D9A273);}
+  .a4{background:linear-gradient(210deg,#1F2436,#3F4C6B 60%,#93A6C9);}
+  .a5{background:linear-gradient(170deg,#2C2018,#5E4A33 60%,#B79B72);}
+  .a6{background:linear-gradient(140deg,#243024,#4B6347 60%,#9DB48C);}
+
+  /* 现在 */
+  .card-old{border-radius:12px;background:var(--surface);border:1px solid var(--border);overflow:hidden;}
+  .card-old .txt{padding:8px 9px;}
+  .card-old .n{font-size:14px;font-weight:500;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-old .d{font-size:11px;line-height:16px;color:var(--osv);display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden;}
+
+  /* 方案 A */
+  .card-a{border-radius:18px;background:var(--surface);overflow:hidden;}
+  .card-a .txt{padding:8px 2px 10px;}
+  .card-a .n{font-size:15px;font-weight:600;line-height:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-a .m{font-size:11px;line-height:16px;color:var(--osv);font-variant-numeric:tabular-nums;margin-top:1px;}
+
+  /* 方案 B */
+  .card-b{position:relative;border-radius:18px;overflow:hidden;}
+  .card-b .veil{position:absolute;left:0;right:0;bottom:0;height:96px;
+    background:linear-gradient(180deg,rgba(10,6,18,0) 0%,rgba(10,6,18,.28) 55%,rgba(10,6,18,.66) 100%);
+    display:flex;align-items:flex-end;padding:10px 11px;}
+  .card-b .n{font-size:15px;font-weight:600;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.35);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-b .m{font-size:11px;color:rgba(255,255,255,.78);font-variant-numeric:tabular-nums;margin-top:1px;}
+
+  .bottombar{position:absolute;left:16px;right:16px;bottom:18px;height:56px;border-radius:28px;
+    background:rgba(255,255,255,.5);border:1px solid #E9E3F5;display:flex;align-items:center;
+    justify-content:space-around;box-shadow:0 6px 18px rgba(80,55,140,.10);}
+  .tab{font-size:11px;color:#8B84A0;display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .tab .g{font-size:17px;}
+  .tab.on{color:var(--primary);font-weight:600;}
+
+  /* 长按抽屉 */
+  .dim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(16,10,26,0) 46%,rgba(16,10,26,.18) 62%,rgba(16,10,26,.34) 100%);}
+  .sheet{position:absolute;left:0;right:0;bottom:0;border-radius:24px 24px 0 0;background:var(--bg);
+    padding:12px 0 26px;}
+  .sheet .grab{width:36px;height:4px;border-radius:2px;background:#D6CFE4;margin:0 auto 10px;}
+  .sheet .t{font-size:11px;color:var(--osv);padding:0 16px 6px;}
+  .sheet .it{font-size:16px;padding:14px 16px;border-top:1px solid #EDE9F5;}
+  .sheet .it.red{color:#B3261E;}
+</style>
+</head>
+<body>
+<h1>角色卡页 · 现状与两个方案</h1>
+<p class="sub">360dp 宽（真机 1260px ÷ 3.5），两列、间距 10dp、左右 16dp。图都是色块占位。</p>
+
+<div class="row">
+
+  <!-- ================= 现在 ================= -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="status"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h2>角色</h2><div class="capsule"><span class="i">＋</span></div></div>
+      <div class="content"><div class="grid" style="padding-top:8px">
+
+        <div class="card-old">
+          <div class="art a1"></div>
+          <div class="txt"><div class="n">Seraphina</div>
+            <div class="d">曾经的圣骑士，如今在边境的酒馆里靠讲故事换酒喝。她记得每一个死去的同伴的名字。</div></div>
+        </div>
+
+        <div class="card-old">
+          <div class="art a2"></div>
+          <div class="txt"><div class="n">白塔的守夜人</div>
+            <div class="d">塔上的灯已经烧了四百年。他每天日落点灯，日出记下夜里发生的事。</div></div>
+        </div>
+
+        <div class="card-old">
+          <div class="art a3"></div>
+          <div class="txt"><div class="n">雨宫 澪</div>
+            <div class="d">总在下雨天出现在同一间咖啡店。她说她在等一个不会再回来的人。</div></div>
+        </div>
+
+        <div class="card-old">
+          <div class="art a4"></div>
+          <div class="txt"><div class="n">周末的地下城</div>
+            <div class="d">群像卡。四个人，一本地图，每周六晚上八点集合。</div></div>
+        </div>
+
+        <div class="card-old">
+          <div class="art a5"></div>
+          <div class="txt"><div class="n">Mia</div></div>
+        </div>
+
+        <div class="card-old">
+          <div class="art a6"></div>
+          <div class="txt"><div class="n">青叶与织</div>
+            <div class="d">竹林深处的两位织布人。</div></div>
+        </div>
+
+      </div></div>
+      <div class="bottombar">
+        <div class="tab"><span class="g">▤</span>会话</div>
+        <div class="tab on"><span class="g">▢</span>角色</div>
+        <div class="tab"><span class="g">⚙</span>设置</div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag old">现在</span><b>卡片在替描述占地方</b><br>
+      · 副行是<b>角色描述</b>（两行 11sp）：多数卡这里写的是人设正文，截两行读不出意思；<br>
+      · 没有「我聊过这张吗」的信息 —— 会话数、内嵌书都看不到；<br>
+      · 有描述的卡比没描述的高一截（Mia 那张），一行里两张卡底边不齐；<br>
+      · 12dp 圆角 + 1px 描边，跟新列表的 18dp 无描边面板不是一套语言；长按没有动作。</div>
+  </div>
+
+  <!-- ================= 方案 A ================= -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="status"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h2>角色</h2><div class="capsule"><span class="i">＋</span></div></div>
+      <div class="content"><div class="grid" style="padding-top:8px">
+
+        <div class="card-a">
+          <div class="art a1"></div>
+          <div class="txt"><div class="n">Seraphina</div><div class="m">12 个会话 · 内嵌书 8 条</div></div>
+        </div>
+
+        <div class="card-a">
+          <div class="art a2"></div>
+          <div class="txt"><div class="n">白塔的守夜人</div><div class="m">3 个会话</div></div>
+        </div>
+
+        <div class="card-a">
+          <div class="art a3"></div>
+          <div class="txt"><div class="n">雨宫 澪</div><div class="m">1 个会话</div></div>
+        </div>
+
+        <div class="card-a">
+          <div class="art a4"></div>
+          <div class="txt"><div class="n">周末的地下城</div><div class="m">28 个会话 · 内嵌书 42 条</div></div>
+        </div>
+
+        <div class="card-a">
+          <div class="art a5"></div>
+          <div class="txt"><div class="n">Mia</div><div class="m">未开始</div></div>
+        </div>
+
+        <div class="card-a">
+          <div class="art a6"></div>
+          <div class="txt"><div class="n">青叶与织</div><div class="m">4 个会话</div></div>
+        </div>
+
+      </div></div>
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="t">白塔的守夜人</div>
+        <div class="it">开始新会话</div>
+        <div class="it">编辑信息</div>
+        <div class="it red">删除角色卡</div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag new">方案 A（推荐）</span><b>图 + 名字 + 一行元信息</b><br>
+      · 描述不再进卡片（详情页里本来就有）；副行换成 <b>会话数 · 内嵌书</b>，用的是已经加载的数据，
+      不需要改数据库；<br>
+      · 名字 15sp/600（与列表行一致）、元信息 11sp 等宽数字；<br>
+      · 圆角 18dp、去掉 1px 描边（靠白底与页面底色区分），与分组面板同一套；<br>
+      · <b>长按出抽屉</b>：开始新会话 / 编辑信息 / 删除卡（与会话、模型、世界书同一手势）。</div>
+  </div>
+
+  <!-- ================= 方案 B ================= -->
+  <div class="col">
+    <div class="phone">
+      <div class="scrim"></div>
+      <div class="status"><span>8:12</span><span>● ● ● ▮</span></div>
+      <div class="header"><h2>角色</h2><div class="capsule"><span class="i">＋</span></div></div>
+      <div class="content"><div class="grid" style="padding-top:8px">
+
+        <div class="card-b"><div class="art a1"></div>
+          <div class="veil"><div><div class="n">Seraphina</div><div class="m">12 个会话</div></div></div></div>
+
+        <div class="card-b"><div class="art a2"></div>
+          <div class="veil"><div><div class="n">白塔的守夜人</div><div class="m">3 个会话</div></div></div></div>
+
+        <div class="card-b"><div class="art a3"></div>
+          <div class="veil"><div><div class="n">雨宫 澪</div><div class="m">1 个会话</div></div></div></div>
+
+        <div class="card-b"><div class="art a4"></div>
+          <div class="veil"><div><div class="n">周末的地下城</div><div class="m">28 个会话</div></div></div></div>
+
+        <div class="card-b"><div class="art a5"></div>
+          <div class="veil"><div><div class="n">Mia</div><div class="m">未开始</div></div></div></div>
+
+        <div class="card-b"><div class="art a6"></div>
+          <div class="veil"><div><div class="n">青叶与织</div><div class="m">4 个会话</div></div></div></div>
+
+      </div></div>
+      <div class="bottombar">
+        <div class="tab"><span class="g">▤</span>会话</div>
+        <div class="tab on"><span class="g">▢</span>角色</div>
+        <div class="tab"><span class="g">⚙</span>设置</div>
+      </div>
+    </div>
+    <div class="cap"><span class="tag alt">方案 B</span><b>名字压在图上（相册式）</b><br>
+      · 卡片＝图，信息全压在底部渐变里；同屏能多放半行，视觉最"满"；<br>
+      · 代价：名字落在图上看不清时要靠渐变救（浅色插画尤其危险）、没有对比度保证；<br>
+      · 元信息只能挤在图上，长名字 + 长元信息会互相顶；<br>
+      · 与"线感/克制"的方向比，这个更偏海报。</div>
+  </div>
+
+</div>
+</body>
+</html>
