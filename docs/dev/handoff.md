@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 00:45）
+# 接手卡（2026-11-25 02:10）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,103 +8,120 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `0631bff` / tag `apk-m148` / 交付包 `artifacts/app-v117-0631bff.apk`。
-  **用户 2026-11-25 00:40 真机确认："确实正常了"**（本轮三件事全部收口）。
-- **没有悬着的事**：聊天跟随（含 A↔C 接缝）、页面转场掉帧、橡皮筋溢出——三条都已修并被日志/真机确认。
-- **下一件事**（直接开工）：**P0-6 消息操作**，开工前先录 `P0-6-swipes` 夹具，见第五节。
-- **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**（第 10 条）。
+- **基线**：代码 `5926993`（tag `apk-m154`）/ 交付包 `artifacts/app-v123-5926993.apk`；
+  这一夜的包 v118–v122 都在 `artifacts/`（每个都验过签名与 dex `BUILD_ID`）。
+- **没有悬着的事**：用户 2026-11-25 列出的 10 条需求 + P0-6 消息操作**全部落码并出包**。
+  **但全部还没有真机验收** —— 上一轮（串流跟随/转场/橡皮筋）才是验过的。
+- **下一件事**：按 [status.md](status.md)「待真机验」那张表从上到下点一遍；再往后是世界书剩余、
+  卡编辑（写回 PNG）。P0-6 的余项：`继续` 的裸拼在真实模型上是否粘字（夹具里是 `ok ok`）。
+- **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**。
 
-## 一、最近三轮（v115 → v117）：结论 + 证据 + "别再回的方向"
+## 一、这一夜做了什么（10 条需求 + P0-6）
 
-| 问题 | 结论 | 证据（真机日志） | 别再做什么 |
-|---|---|---|---|
-| 串流时读气泡被顶走 / 旧气泡闪 / 拖动不跟手 | 阅读锚点补偿：量到长高 `Δh` 就 `dispatchRawDelta(Δh)` 把内容让回去 | 74 笔补偿全部 `+N == drift`、47 笔带 `拖动中`、0 笔失败；非拖动期间「顶Y」恒定 | 冻结文本（用户否掉）；`requestScrollToItem`（会 `itemAnimator.reset()` → 旧气泡重播淡入；还会取消拖动）；"手势期间不补" |
-| A↔C 边界"收一下 / 沉一下" | 离开贴底把追高欠账折成滚动量；回到贴底对齐平滑高度 | `边界 离开贴底 欠账=33/117px 折成滚动=33/117px`、`回到贴底 欠账=53/12px 折成滚动=0` | 把 `平滑差` 当"没问题"（v114 我只凭 3px 样本就下过这个错结论） |
-| 二级页转场丢几帧动画 | 起动画**之前**先预热新页首帧（`PageStack.warming`） | `帧 26 / 最长帧 74–83ms` → **`帧 35 / 最长帧 8–16ms`**；新页首帧 9–107ms | 为"点下去立刻动"去掉预热（那只是把成本挪回动画里） |
-| 详情页各 tab 内容盖住 Tab 栏 | 橡皮筋的绘位移从来没裁剪；裁在滚动容器自己的槽位 | 同时间窗 `rubber 回弹 start raw=-444 visual=-224`（画高 81dp，Tab 栏 48dp） | 只给详情页打补丁 —— 根因在共享组件 `RubberOverscroll` |
+| 需求 | 实现要点 | 关键决策 / 依据 |
+|---|---|---|
+| 1 抽屉把手拖拽 | 把手区整宽 28dp 可拖，跟手用 `translationY`；松手按"位移 > 弹层高 1/4 或下甩 > 800dp/s"收回，否则临界阻尼弹回 | 不改高度（拖动中重排会换行）；共享组件，全 App 生效 |
+| 5–8 输入区 | 一个玻璃胶囊：收起=单行（发送在胶囊内右端），聚焦=向上加一行（左模型右发送），文字最多 5 行，发送后收起 | 底部让位从常量 80dp 改成**实测高度**，否则翻倍后最后一条被盖 |
+| 9 模型钮 | 左下 40dp 玻璃圆钮，显示当前档案首字；抽屉列档案 + 思考强度（跟随/关/低/中/高） | 写**会话级**覆盖，不动全局默认 |
+| 2 三级配置 | `ConfigOverride`（null=跟随）+ `session:<id>` / `card:<id>` 存 SharedPreferences；会话配置页从聊天 ⋮ 进，卡配置在详情「配置」tab | 解析只在 `UiState.effective*` 这几个 getter；发送/世界书/正则/连接参数全读它们 |
+| 3 开场白 | 卡的全部开场白进 `UiState.greetings`；聊天页在"没说过话 + 不止一条"时于气泡**上沿**放 `‹ N/M ›`，选中=改写第一条消息；详情页 tab 用同款箭头翻页、非默认时出「设为默认」 | 用户要的形态（箭头贴气泡、不要页头按钮）；B 策略=只有空会话能换 |
+| 4 详情页 | 保留 TabRow，卡头改 200dp 大图 + 底部渐变压名字/元信息 | 用户明确"只重做卡头与信息" |
+| 10 玻璃确认框 | `AlertDialog`（独立窗口采不到内容层）→ 控制器 + 骨架宿主 + `LiquidGlassSpec.Sheet` | 8 处调用点签名不变，内部换实现 |
+| P0-6 | 长按气泡：复制/编辑/删除；最后一条助手消息还有重新生成、继续；swipe `‹ N/M ›` 翻页 | 重新生成=新增 swipe 备选；继续=末尾加原版那条 system 提示；备选存 `message_swipes`（DB v3） |
 
-## 二、聊天跟随（最终形态，别再改结构）
+## 二、三级配置（会话 > 角色卡 > 全局）
 
-- **三场景**（`reverseLayout` 下）：贴底 `idx==0 && off==0`；读气泡自己 `idx==0 && off>0`；
-  看更早的消息 `idx>0`（气泡**根本没被布局**，结构上就不动）。
-- **贴底**：一个 Animatable 追实测高度差，`translationY` 平滑抬升（`Motion.Base`）。
-- **读气泡**：文本照常长；每笔真实高度变化就滚回去同一笔量；**手势期间照补**（只抵掉长高那一笔，
-  手指位移照常）；布局与滚动两趟，差量那一帧由 `translationY` 桥接。
-- **边界**：离开贴底折成滚动量、回到贴底 snap 平滑高度。
-- 诊断 `tag=scroll`：`模式=A/B/C`、`补偿 +Npx(drift=N)`、`拖动中`、`补偿失败`、`边界 …`、每轮总量。
-- 细节与源码依据（`y_top = H + o - h`）在 [pitfalls](pitfalls.md) 最后三节。
+- 数据：`data/config/ConfigOverride`（profileId / reasoningEffort / presetName / worldBookNames /
+  regexIds / greetingIndex，**每项 null = 跟随上级**）。空集 ≠ null（"全都不要"是合法选择）。
+- 存储：SharedPreferences，作用域 `session:<id>` / `card:<id>`；删会话时顺手清。
+- 解析：`UiState.effectiveProfileId / effectiveReasoningEffort / effectivePresetName /
+  effectiveWorldBookNames / effectiveRegexIds / effectiveRegexScripts`。**别在别处再写 `x ?: y ?: z`。**
+- 切换会话：`openSessionInternal` 按覆盖重放连接参数（baseUrl/model/apiKey）与预设（promptOrder/提示词/采样）。
+- 界面：`ConfigSheets.kt` 四个抽屉构造器（模型/预设/世界书/正则），单选直接选，多选点了不关、✓ 原地刷新。
 
-## 三、转场与"首帧成本"
+## 三、聊天输入区几何（用户定的，别再改）
 
-- `PageStack` 现在起动画前会 `warming` 两帧：新页已入栈但只画旧页（新页停在 p=0 的起跑位），
-  等新页自己的第一帧跑完再 `running = true`。
-- 日志 `tag=nav` 每次两行：`转场预热 … 新页首帧 Xms（等 Yms）` + `转场 … 帧 N，最长帧 Mms`。
-  **X 是页面成本**（About 9–33 / 详情 41–91 / 内嵌世界书 83–107 / 聊天 90），**M 应 ≤20ms**。
-- 减首帧的既有手段：能用列表里已有的字段先渲染就先渲染（详情页描述）、数据驱动的列表一律
-  `LazyColumn`（详情页会话 tab 已改）。
+- 收起：单行，文字 + 发送（发送**在胶囊里**）。
+- 聚焦：高度翻倍 → 上行只放输入，下行左模型右发送（`AnimatedVisibility` 只淡入，不加高度动画：
+  玻璃着色器随节点尺寸重建，每帧重建代价高）。
+- 文字超过一行继续长高，最多 5 行；发送后清焦点收起。
+- 列表底部让位读**实测像素高度**（`onHeightChanged` → `contentPadding`），不是常量。
 
-## 四、待真机验（已出包，但没人逐项点过）
+## 四、消息操作（P0-6）
 
-[status.md](status.md) 的「待真机验」三组：**启动与性能 / 世界书与设置 / 详情页与导航**。
-新会话要做验收就照那张表从上到下点一遍。**聊天跟随 / 转场 / 橡皮筋不在其中**（已验）。
+| 动作 | 语义 | 证据 |
+|---|---|---|
+| 重新生成 | 不删行：新文本作为**新的 swipe 备选**追加，旧的可翻回 | `fixtures/expected/P0-6-swipes.json` |
+| 继续 | 请求末尾追加 system `[Continue your last message without repeating its original content.]`，结果接在原消息后面 | `fixtures/expected/P0-6-continue.json`（落盘 `ok ok`） |
+| swipe | 只对最后一条助手消息（原版 `isMessageSwipeable`）；备选 = `message_swipes` 表 | 同上，原始 chat 在 `fixtures/chats/` |
+| 编辑 / 删除 | 编辑同步改当前 swipe 那一份；删除走玻璃确认框，备选级联删 | 手工 |
 
-## 五、下一步优先级
+- `send()` 与上面三件事共用 `beginCompletion(history, userText, replacing, continuation)`；
+  `userText == null` = 不追加用户消息。**别再复制一份两百行的发送逻辑。**
+- 失败路径：`ReplaceTarget.append=false` 还原被撤下的那条；`append=true` 也是还原（继续不产生新行）。
 
-1. **P0-6 消息操作**：swipe / 重新生成 / 继续 / 编辑 / 删除单条。原版**只有最后一条助手消息能
-   swipe**（`script.js:9183 isMessageSwipeable`），`Generate('swipe')` 会把被换掉那条 `coreChat.pop()`；
-   存储是 `swipes[] + swipe_id + swipe_info[]`（P0-7 的 jsonl 夹具里能看到）。
-   **开工前先用 `capture.mjs` 录 `P0-6-swipes` 夹具**，会动 `ChatViewModel` 这条最热的状态机。
+## 五、待真机验（这一夜全部新 UI，一组一组点）
+
+1. **抽屉**：长按行 → 拖把手跟手、过半收回、否则弹回。
+2. **输入区**：聚焦翻倍、多行长高、发送后收起、最后一条不被盖。
+3. **模型**：左下钮首字正确；抽屉换模型/思考强度；日志 `tag=config`。
+4. **会话配置**：改一项后行尾"生效值 · 来源"变「会话」；切回跟随变「角色卡/全局」。
+5. **卡配置**：详情 → 配置，四行都生效（新开会话验证）。
+6. **开场白**：空会话翻页即换第一条；说过话后箭头消失；详情页「设为默认」影响新会话。
+7. **详情页**：大图卡头 + 名字压在图上、不被渐变糊掉。
+8. **确认框**：任意删除是玻璃、点遮罩/返回键能取消。
+9. **消息操作**：长按气泡四种动作；重新生成后 `‹ 1/2 ›` 能翻回；继续后文本接在末尾。
+
+## 六、下一步优先级
+
+1. 上面九组真机验收（最可能有问题的是输入区让位与抽屉拖拽手感）。
 2. 世界书剩余：sticky 计时落库、`@@` 装饰器、outlet 位置。
-3. **C 批模型档案**真机验收；**D 批三级继承**（会话 > 卡 > 全局，每项可跟随）。
-4. 可选零活：橡皮筋"猛甩一次不碰屏"单测；详情页 Greeting tab 的备选开场白（`detail` 到齐后才排版，
-   内容多时可能在动画中途掉一帧 —— 真要治就按 pitfalls「新页首帧」那套先占位再替换）。
+3. 卡编辑（写回 PNG，需要备份 + 校验）—— **明确没做**，别顺手改卡文件。
+4. C 批模型档案真机验收。
 
-## 六、这台机器与出包（每次都要用）
+## 七、这台机器与出包（每次都要用）
 
-- **本机编不了 `:app` / `:data`**：只能跑 `tools/test-core.sh`、`tools/check-kotlin-comments.sh`、
-  `check-kotlin-imports.sh`、`check-core-purity.sh`；Android 侧错误只有 CI 能暴露。
+- **本机编不了 `:app` / `:data`**：只能跑 `tools/test-core.sh`、三个 `check-*.sh`。
 - **出包循环**：
   1. `git commit` → `git tag apk-mN && git push origin HEAD apk-mN`
-  2. `bash tools/poll-ci.sh <sha>`（只认本次 sha 的 run；约 40s 一次）
-  3. 下载 `releases/download/apk-mN/app-debug.apk`（tag release 钉死，不会被覆盖）
-  4. **验 dex 里的 40-hex `BUILD_ID`**（`app-debug.apk` 大小经常撞车，v116/v117 都是 15753607B）
-  5. `tools/verify-apk.sh <apk> 55:E0:…:0B:E7` 验签名
-  6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk` 并 `present`
-- **日志**：设置 → 关于 → 导出日志（SAF）。排障入口见下一节。
-- **文档约定**：`status.md` 只写现状、每次**整篇重写**；`compat-matrix.md` 是进度唯一真相；
-  ADR **只增不改**；踩坑进 `pitfalls.md`；规则进两处 `AGENTS.md`（指令链 64 KB 上限）。
+  2. **等 run 真的 completed/success**（不是 `poll-ci.sh` 说 READY —— 见下）
+  3. 下载 `releases/download/apk-latest/app-debug.apk`
+  4. **验 dex 里的 40-hex `BUILD_ID`**（在 `classes17.dex` 里，`unzip` 没装就用 python `zipfile`）
+  5. `tools/verify-apk.sh <apk> 55:E0:…:0B:E7`
+  6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk`
+- ⚠️ **`poll-ci.sh` 会假 READY**：workflow 先更新 `apk-latest` 的 body（带新 sha）再上传资产，
+  脚本只看 body。2026-11-25 实测过一次"READY 但资产还是上一次的"。**唯一判据是下载后的 `BUILD_ID`。**
+- **日志**：设置 → 关于 → 导出日志（SAF）。
 
-## 七、日志 tag 速查（排障从这儿进）
+## 八、日志 tag 速查
 
 | tag | 看什么 |
 |---|---|
-| `nav` | 转场两行：`转场预热 … 新页首帧 Xms` + `转场 … 帧 N，最长帧 Mms`（M 大 = 动画期间在干活） |
-| `scroll` | 聊天：`模式=A/B/C`、`补偿 +Npx(drift=N)`、`拖动中`、`边界 …`、`串流结束 N 笔/Mpx` |
-| `rubber` | `回弹 start raw=… visual=…`、`fling 撞上限`、`回弹被打断`（raw 有上限 ±444） |
-| `glass` | 玻璃档开关、着色器编译 ≥8ms、降采样图层回读 |
-| `startup` / `wi` / `card` | 启动各步 +ms、世界书解析、读详情耗时（`读详情 <card> Xms 条目=N`） |
-| `chat` / `profile` / `ui` / `regex` / `diag` | 发送/完成/失败、档案、主题、正则条数、导出日志 |
+| `nav` | 转场两行：`转场预热 … 新页首帧 Xms` + `转场 … 帧 N，最长帧 Mms` |
+| `scroll` | 聊天跟随：`模式=A/B/C`、`补偿 +Npx`、`边界 …` |
+| `config` | 三级配置：`会话模型 id=…`、`会话预设=…`、`卡级模型 …`、`开会话配置` |
+| `chat` | 发送/完成/失败；`换开场白 index=…`、`重新生成：…`、`swipe 切到 N/M`、`继续：…` |
+| `rubber` / `glass` | 橡皮筋回弹、玻璃档与着色器 |
+| `startup` / `wi` / `card` | 启动各步、世界书解析、读详情耗时 |
 
-## 八、常用文件地图
+## 九、文件地图（这一夜动过的）
 
 | 想改什么 | 去哪 |
 |---|---|
-| 聊天 UI / 串流跟随 / 阅读锚点 | `ChatScreen.kt`（`smoothHeight` / `readingBubble` / `anchoredHeight` / 边界 effect） |
-| 页面栈转场 / 预热 | `PageStack.kt`（`warming` / `running` / `progress`） |
-| 橡皮筋 | `RubberOverscroll.kt`（最外层 `clipToBounds` 别删） |
-| 状态机（几乎全部状态） | `ChatViewModel.kt`（`UiState` 一个 data class） |
-| 角色详情页 / 卡配置二级页 | `CharacterDetailScreen.kt` / `CardConfigPageScreen.kt` |
-| 行系统 / 列表形状 | `ListRow.kt`、`Style.kt` |
-| 玻璃材质 | `Glass.kt`、`LiquidGlass.kt` + ADR 0005/0006/0007 |
-| 启动（外观预读 / 会话并行 / 遮罩） | `ChatViewModel.init`、`MainActivity`、`MainScreen.StartupCurtain` |
-| 缓存（卡面 / 世界书条目数） | `data/.../cards/impl/CardStore.kt`、`data/.../worldinfo/impl/FileWorldBookRepository.kt` |
+| 三级配置（数据/抽屉/页面） | `data/config/ConfigOverrideRepository.kt`、`app/.../ConfigSheets.kt`、`SessionConfigScreen.kt` |
+| 输入区 / 模型钮 / 消息操作入口 | `ChatScreen.kt`（`ChatInputBar` / `SendStopButton` / `ModelButton` / `EditMessageDialog`） |
+| 消息操作与发送 | `ChatViewModel.kt`（`beginCompletion` / `ReplaceTarget` / `regenerateLast` / `continueLast` / `selectSwipe`） |
+| 开场白 | `GreetingSwitch.kt`（箭头与 `‹ N/M ›`）、`CharacterDetailScreen.kt`（`GreetingTab`）、`ChatScreen` 的 greeting item |
+| 抽屉把手拖拽 | `ActionSheet.kt`（`GlassSheetPlate`） |
+| 玻璃确认框 | `ConfirmDeleteDialog.kt`（控制器 + `GlassConfirmHost`）、两个骨架里各挂一次 |
+| swipe 备选表 | `TavernDatabase.kt`（v3）、`SqliteChatRepository.kt`（`swipes` / `setSwipes`） |
+| 本质回归点 | `artifacts/app-v117-0631bff.apk`（串流跟随那一轮验收过的包） |
 
-## 九、这一轮踩的坑（一句话，细节全在 pitfalls）
+## 十、这一夜踩的坑（一句话）
 
-1. `requestScrollToItem` 会 `itemAnimator.reset()` → 挂 `animateItem` 的气泡**重播淡入**；
-   它还会 `scroll{}` 抢 mutex 取消拖动。要平移内容用 `dispatchRawDelta`。
-2. **新页首帧**（组合+测量+录图层）落在动画里 = 丢几帧；修法是起动画前预热，不是减动画时长。
-3. 任何 **`graphicsLayer` 平移**（橡皮筋 / 桥接 / 拖拽）都要问一句"它的槽位边界谁来裁" ——
-   滚动容器自带 clip 管不到外面那层平移。
-4. **长文本别等数据到齐才第一次排版**：能拿列表里已有的字段先顶上就先顶（详情页描述）。
-5. 日志读法：`nav` 的「帧数 2–5」= 一次长帧；`wi`/`startup` 的数字能直接指认解析/GC/首帧。
+1. **切片替换函数体时先确认另一个函数在它前面还是后面**：`ScrollArea` 排在 `GreetingTab` 之前，
+   用 `index()` 取到的是更靠前的位置 → 整段被复制，CI 报 `Conflicting overloads`（v120 修）。
+2. **`poll-ci.sh` 的 READY 不是"包已更新"**，必须验 `BUILD_ID`。
+3. **Shell 里 `git commit -m "...\"继续\"..."`** 会被引号截断；消息里有引号就写文件 + `-F`。
+4. **玻璃着色器随节点尺寸重建**：别给玻璃表面加逐帧尺寸动画（输入区展开用"只淡入"）。
+5. **`AlertDialog` 永远做不成液态玻璃**（独立窗口采不到内容层）—— 用控制器 + 骨架宿主。

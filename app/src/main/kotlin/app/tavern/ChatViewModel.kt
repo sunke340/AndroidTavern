@@ -2076,7 +2076,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     val combined = if (replacing.append) replacing.restore.content + text else text
                     if (text.isNotEmpty()) {
                         val next = if (replacing.append) {
-                            replacing.base.toMutableList().also { it[replacing.swipeId] = combined }
+                            replacing.base.toMutableList().also {
+                                it[replacing.swipeId.coerceIn(0, it.lastIndex)] = combined
+                            }
                         } else {
                             replacing.base + text
                         }
@@ -2446,7 +2448,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     lastSwipes = if (index == current.transcript.lastIndex &&
                         current.lastSwipes.isNotEmpty()
                     ) {
-                        current.lastSwipes.toMutableList().also { it[current.lastSwipeId] = text }
+                        // 下标夹一下：删过消息或老数据可能让 swipeId 越界，越界就是崩
+                        current.lastSwipes.toMutableList().also {
+                            it[current.lastSwipeId.coerceIn(0, it.lastIndex)] = text
+                        }
                     } else {
                         current.lastSwipes
                     },

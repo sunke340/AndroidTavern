@@ -451,7 +451,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             )
                             Spacer(Modifier.height(Space.xs))
                             GreetingSwitchBar(
-                                current = state.lastSwipeId,
+                                current = state.lastSwipeId.coerceIn(
+                                    0,
+                                    (state.lastSwipes.size - 1).coerceAtLeast(0),
+                                ),
                                 total = state.lastSwipes.size,
                                 onSelect = viewModel::selectSwipe,
                             )
