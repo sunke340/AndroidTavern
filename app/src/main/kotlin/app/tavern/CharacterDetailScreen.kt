@@ -9,7 +9,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,44 +22,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.tavern.data.chat.ChatSession
-
-/** 详情页的四个标签。删除卡这类破坏性操作不在这里，收进右上角「⋮」。 */
-private enum class DetailTab(val label: String) {
-    Description("简介"),
-    Greeting("开场白"),
-    Sessions("会话"),
-    Config("配置"),
-}
 
 /**
  * 角色详情页。
@@ -79,7 +60,9 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     val cardRef = state.cards.firstOrNull { it.id == cardId }
     val sessions = state.sessions.filter { it.cardId == cardId }
 
-    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    // 标签页存在 UiState 里：进聊天/进配置二级页时详情页会被移出组合树，
+    // 局部 remember 会归零 —— 表现就是"从会话 tab 进去，返回却停在简介"（用户 2026-11-24 报）。
+    val tabIndex = DetailTab.entries.indexOf(state.detailTab).coerceAtLeast(0)
     var confirmDeleteCard by remember { mutableStateOf(false) }
     // 动作单交给页面骨架渲染（GlassDetailScaffold 的浮层），这里只请求
     val sheet = LocalSheetController.current
@@ -139,7 +122,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 }
 
                 Button(
-                    onClick = { viewModel.startSessionForCard(cardId) },
+                    onClick = { viewModel.startSessionForCard(cardId, leaveDetail = true) },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 ) { Text("用这张卡开新会话") }
             }
@@ -153,7 +136,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 DetailTab.entries.forEachIndexed { index, tab ->
                     Tab(
                         selected = tabIndex == index,
-                        onClick = { tabIndex = index },
+                        onClick = { viewModel.selectDetailTab(tab) },
                         text = { Text(tab.label) },
                     )
                 }
@@ -296,9 +279,12 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
 @Composable
 private fun ScrollArea(content: @Composable () -> Unit) {
+    // 四个标签各自是一块可滚动面：每个都要橡皮筋（和会话/角色卡页一致）
+    val overscroll = rememberRubberOverscroll()
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .rubberOverscroll(overscroll)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),

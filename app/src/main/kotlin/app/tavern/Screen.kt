@@ -19,6 +19,14 @@ enum class SettingsPage(val title: String) {
     About("关于"),
 }
 
+/** 角色详情页的四个标签。删除卡这类破坏性操作不在这里，收进右上角「⋮」。 */
+enum class DetailTab(val label: String) {
+    Description("简介"),
+    Greeting("开场白"),
+    Sessions("会话"),
+    Config("配置"),
+}
+
 /** 角色卡配置的二级页（从角色详情 → 配置 进入，作用域是"这张卡"）。 */
 enum class CardConfigPage(val title: String) {
     WorldBook("内嵌世界书"),

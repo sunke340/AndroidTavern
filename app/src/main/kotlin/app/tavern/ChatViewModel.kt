@@ -183,6 +183,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val detailCardId: String? = null,
         /** 详情页的完整卡信息；打开详情后异步填上。 */
         val detail: CardDetail? = null,
+        /**
+         * 详情页停在哪个标签。存在这里而不是页面局部：进聊天/进配置二级页时详情页会被
+         * 移出组合树，局部 `remember` 会归零（"从会话进来、返回停在简介"就是这么来的）。
+         */
+        val detailTab: DetailTab = DetailTab.Description,
         /** 当前会话所属卡的样式覆盖；null = 跟随全局。 */
         val cardMessageStyle: MessageStyle? = null,
         /** 当前这张卡里被关掉的内嵌世界书条目（按条目 uid）。 */
@@ -389,9 +394,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ---- 卡 ----------------------------------------------------------------
 
     fun openDetail(cardId: String) {
-        _state.update { it.copy(detailCardId = cardId, detail = null) }
+        _state.update {
+            it.copy(
+                detailCardId = cardId,
+                detail = null,
+                // 换一张卡才回到第一个标签；同一张卡（比如从二级页返回）保持原标签
+                detailTab = if (it.detailCardId == cardId) it.detailTab else DetailTab.Description,
+            )
+        }
         viewModelScope.launch { loadDetail(cardId) }
     }
+
+    /** 详情页切标签。 */
+    fun selectDetailTab(tab: DetailTab) = _state.update { it.copy(detailTab = tab) }
 
     fun closeDetail() {
         _state.update { it.copy(detailCardId = null, detail = null, cardConfigPage = null) }
@@ -535,7 +550,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * 开场白按原版行为写成第一条消息——夹具 `fixtures/chats/P0-8-first-mes-chat.json`
      * 证明原版新建聊天时 chat[0] 就是 `first_mes`，且它会作为 assistant 进提示词历史。
      */
-    fun startSessionForCard(cardId: String) {
+    /**
+     * 用某张卡开一个新会话并进聊天。
+     *
+     * @param leaveDetail 从卡详情页点「新建会话」时传 true：顺手把详情页关掉并切到会话栏，
+     * 这样返回时落在主页的会话页，而不是又回到那张卡的详情（用户 2026-11-24 报）。
+     */
+    fun startSessionForCard(cardId: String, leaveDetail: Boolean = false) {
         viewModelScope.launch {
             val loaded = loadCard(cardId)
             if (loaded == null) {
@@ -546,7 +567,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             cardRepository.selectedId = cardId
             // 卡内嵌书的开关覆盖（send 时据此过滤/强制开启）
             val bookOverride = withContext(Dispatchers.IO) { bookOverrideOf(cardId, loaded.bookEntries()) }
-            _state.update { it.copy(bookDisabled = bookOverride.off, bookForced = bookOverride.forcedOn) }
+            _state.update {
+                it.copy(
+                    bookDisabled = bookOverride.off,
+                    bookForced = bookOverride.forcedOn,
+                    // 从详情页新建会话：返回目标是主页「会话」，不是这张卡的详情
+                    detailCardId = if (leaveDetail) null else it.detailCardId,
+                    detail = if (leaveDetail) null else it.detail,
+                    cardConfigPage = if (leaveDetail) null else it.cardConfigPage,
+                    screen = if (leaveDetail) Screen.Sessions else it.screen,
+                )
+            }
             val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
                 ?: loaded.name.ifBlank { cardId }
             startNewSession(
