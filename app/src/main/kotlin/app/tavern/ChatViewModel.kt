@@ -39,8 +39,8 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
 import app.tavern.data.presets.PresetRef
-import app.tavern.data.sessionconfig.SessionConfig
-import app.tavern.data.sessionconfig.SessionConfigRepository
+import app.tavern.data.config.ConfigOverride
+import app.tavern.data.config.ConfigOverrideRepository
 import app.tavern.data.settings.CardBookOverride
 import app.tavern.data.presets.PresetRepository
 import app.tavern.data.profiles.ProfileRepository
@@ -229,19 +229,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val profiles: List<ModelProfile> = emptyList(),
         /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
         val activeProfileId: String? = null,
-        /** 本会话指定的档案 id；null = 跟随全局默认档案（会话级配置的最内层）。 */
-        val sessionProfileId: String? = null,
-        /**
-         * 本会话的思考强度覆盖：null = 跟随档案；`"off"` = 关掉；其余（low/medium/high）原样发。
-         */
-        val sessionReasoningEffort: String? = null,
+        /** 会话级覆盖（三级继承最内层）。字段为 null = 跟随角色卡。 */
+        val sessionOverride: ConfigOverride = ConfigOverride(),
+        /** 角色卡级覆盖（中间层）。字段为 null = 跟随全局。 */
+        val cardOverride: ConfigOverride = ConfigOverride(),
         /** 非 null 时显示「档案编辑」页（三级）；null = 不在编辑。 */
         val profileDraft: ProfileDraft? = null,
+        /** 会话配置二级页（从聊天页 ⋮ 进）。 */
+        val sessionConfigOpen: Boolean = false,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
         val effectiveMessageStyle: MessageStyle
             get() = cardMessageStyle ?: messageStyle
+
+        // ---- 三级继承的生效值（会话 → 角色卡 → 全局）--------------------------
+        // 全 App 只有这几个 getter 能回答"现在真正用的是什么"，界面与请求都读它们；
+        // 各处自己写 `x ?: y ?: z` 迟早会有一处漏掉一层。
+
+        /** 真正生效的档案 id：会话 → 卡 → 全局默认档案。 */
+        val effectiveProfileId: String?
+            get() = sessionOverride.profileId ?: cardOverride.profileId ?: activeProfileId
+
+        /** 真正生效的思考强度：null = 跟随档案；`"off"` = 明确关掉。 */
+        val effectiveReasoningEffort: String?
+            get() = sessionOverride.reasoningEffort ?: cardOverride.reasoningEffort
+
+        /** 真正生效的预设名（null = 内置默认）。 */
+        val effectivePresetName: String?
+            get() = sessionOverride.presetName ?: cardOverride.presetName ?: activePreset
+
+        /** 参与的全局世界书：null = 按每本书自己的启用开关。 */
+        val effectiveWorldBookNames: Set<String>?
+            get() = sessionOverride.worldBookNames ?: cardOverride.worldBookNames
+
+        /** 参与的正则脚本 id（脚本名）：null = 全部启用。 */
+        val effectiveRegexIds: Set<String>?
+            get() = sessionOverride.regexIds ?: cardOverride.regexIds
+
+        /** 实际参与的正则脚本（显示与输入侧都读它，保证"看到的就是生效的"）。 */
+        val effectiveRegexScripts: List<RegexScript>
+            get() {
+                val only = effectiveRegexIds ?: return regexScripts
+                return regexScripts.filter { it.name in only }
+            }
     }
 
     private val cardRepository = AppGraph.cards(application)
@@ -251,7 +282,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val worldBookRepository = AppGraph.worldBooks(application)
     private val regexRepository = AppGraph.regex(application)
     private val presetRepository: PresetRepository = AppGraph.presets(application)
-    private val sessionConfigRepository: SessionConfigRepository = AppGraph.sessionConfigs(application)
+    private val configOverrides: ConfigOverrideRepository = AppGraph.configOverrides(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -353,7 +384,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // 首屏会话是先于档案打开的（会话列表不等 Key 解密），那一趟拿不到档案表，
             // 会话级"指定模型"会被跳过。档案摆好之后补一次，别让用户看到"切了模型没生效"。
             _state.value.sessionId?.let { openedId ->
-                val wanted = withContext(Dispatchers.IO) { sessionConfigRepository.load(openedId).profileId }
+                val wanted = withContext(Dispatchers.IO) {
+                    configOverrides.load(ConfigOverrideRepository.session(openedId)).profileId
+                }
                 if (wanted != null) applySessionProfileOverride(wanted)
             }
 
@@ -418,7 +451,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 detailTab = if (it.detailCardId == cardId) it.detailTab else DetailTab.Description,
             )
         }
-        viewModelScope.launch { loadDetail(cardId) }
+        viewModelScope.launch {
+            // 卡级覆盖（模型/预设/世界书/正则）跟着详情页一起进来：卡配置页要显示它
+            val stored = withContext(Dispatchers.IO) {
+                runCatching { configOverrides.load(ConfigOverrideRepository.card(cardId)) }
+                    .getOrDefault(ConfigOverride())
+            }
+            _state.update { it.copy(cardOverride = stored) }
+            loadDetail(cardId)
+        }
     }
 
     /** 详情页切标签。 */
@@ -697,7 +738,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) {
                 chatRepository.deleteSession(id)
                 // 会话没了，它的配置覆盖也不该留着（按 sessionId 存，不清就是垃圾数据）
-                runCatching { sessionConfigRepository.clear(id) }
+                runCatching { configOverrides.clear(ConfigOverrideRepository.session(id)) }
             }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
             _state.update { it.copy(sessions = sessions) }
@@ -763,7 +804,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             bookOverrideOf(session.cardId, loadedCard?.bookEntries().orEmpty())
         }
         // 会话级覆盖（现在只放了模型与思考强度；三级继承的其余项在这一层接着加）
-        val sessionConfig = withContext(Dispatchers.IO) { sessionConfigRepository.load(id) }
+        val sessionConfig = withContext(Dispatchers.IO) {
+            configOverrides.load(ConfigOverrideRepository.session(id))
+        }
+        val cardConfig = withContext(Dispatchers.IO) {
+            configOverrides.load(ConfigOverrideRepository.card(session.cardId))
+        }
 
         _state.update {
             it.copy(
@@ -782,16 +828,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
                 bookForced = bookOverride.forcedOn,
-                sessionProfileId = sessionConfig.profileId,
-                sessionReasoningEffort = sessionConfig.reasoningEffort,
+                sessionOverride = sessionConfig,
+                cardOverride = cardConfig,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
                 },
             )
         }
-        // 连接参数跟着会话走：指定了档案就用它，没指定就退回默认档案
-        applySessionProfileOverride(sessionConfig.profileId)
+        // 连接参数跟着会话走：会话指定 → 卡指定 → 默认档案
+        applySessionProfileOverride(sessionConfig.profileId ?: cardConfig.profileId)
+        // 预设同理：会话/卡指定了就加载那一份，否则回到全局选中的那份
+        loadPresetIntoState(sessionConfig.presetName ?: cardConfig.presetName)
     }
 
     /**
@@ -815,7 +863,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         _state.update {
             it.copy(
-                sessionProfileId = if (target != null) profile.id else null,
+                // 指定的档案没了：会话层回到"跟随"，别让界面显示一个不存在的档案
+                sessionOverride = if (target != null) it.sessionOverride
+                else it.sessionOverride.copy(profileId = null),
                 baseUrl = profile.baseUrl,
                 model = profile.model,
                 apiKey = key,
@@ -836,7 +886,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             persistSessionConfig(sessionId) { it.copy(profileId = profileId) }
             _state.update {
                 it.copy(
-                    sessionProfileId = profileId,
+                    sessionOverride = it.sessionOverride.copy(profileId = profileId),
                     baseUrl = profile.baseUrl,
                     model = profile.model,
                     apiKey = key,
@@ -852,7 +902,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
             persistSessionConfig(sessionId) { it.copy(profileId = null) }
-            applySessionProfileOverride(null)
+            val snapshot = _state.value
+            applySessionProfileOverride(snapshot.cardOverride.profileId)
             AppLog.i("config", "会话模型回到跟随默认")
             notify("模型跟随默认档案")
         }
@@ -863,17 +914,109 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
             persistSessionConfig(sessionId) { it.copy(reasoningEffort = effort) }
-            _state.update { it.copy(sessionReasoningEffort = effort) }
+            _state.update {
+                it.copy(sessionOverride = it.sessionOverride.copy(reasoningEffort = effort))
+            }
             AppLog.i("config", "会话思考强度=${effort ?: "跟随"}")
         }
     }
 
-    private suspend fun persistSessionConfig(sessionId: String, edit: (SessionConfig) -> SessionConfig) {
+    private suspend fun persistSessionConfig(sessionId: String, edit: (ConfigOverride) -> ConfigOverride) {
         withContext(Dispatchers.IO) {
             runCatching {
-                val current = sessionConfigRepository.load(sessionId)
-                sessionConfigRepository.save(sessionId, edit(current))
+                val scope = ConfigOverrideRepository.session(sessionId)
+                configOverrides.save(scope, edit(configOverrides.load(scope)))
             }.onFailure { AppLog.w("config", "会话配置写入失败：${it.message}") }
+        }
+    }
+
+    /** 会话级预设：null = 跟随（卡 → 全局）。 */
+    fun useSessionPreset(name: String?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(presetName = name) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(presetName = name)) }
+            loadPresetIntoState(name ?: _state.value.cardOverride.presetName)
+            AppLog.i("config", "会话预设=${name ?: "跟随"}")
+        }
+    }
+
+    /** 会话级世界书：null = 跟随；空集 = 这场对话不带任何全局书。 */
+    fun useSessionWorldBooks(names: Set<String>?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(worldBookNames = names) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(worldBookNames = names)) }
+            AppLog.i("config", "会话世界书=${names?.size ?: "跟随"} 本")
+        }
+    }
+
+    /** 会话级正则：null = 跟随（全部启用）；空集 = 全部关掉。 */
+    fun useSessionRegex(ids: Set<String>?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(regexIds = ids) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(regexIds = ids)) }
+            AppLog.i("config", "会话正则=${ids?.size ?: "跟随"} 条")
+        }
+    }
+
+    // ---- 角色卡级覆盖（中间层） --------------------------------------------
+
+    private suspend fun persistCardConfig(cardId: String, edit: (ConfigOverride) -> ConfigOverride) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val scope = ConfigOverrideRepository.card(cardId)
+                configOverrides.save(scope, edit(configOverrides.load(scope)))
+            }.onFailure { AppLog.w("config", "卡配置写入失败：${it.message}") }
+        }
+    }
+
+    /**
+     * 卡级换模型：这张卡以后开的会话默认用它。
+     *
+     * 如果当前开着的会话正跟着这张卡（会话级没指定），连接参数要立刻跟着变 ——
+     * 否则用户改完回聊天页，看到的还是旧模型。
+     */
+    fun useCardProfile(profileId: String?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(profileId = profileId) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(profileId = profileId)) }
+            val snapshot = _state.value
+            if (snapshot.sessionOverride.profileId == null) {
+                applySessionProfileOverride(profileId)
+            }
+            AppLog.i("config", "卡级模型 card=${cardId.take(8)} profile=${profileId ?: "跟随"}")
+        }
+    }
+
+    fun useCardPreset(name: String?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(presetName = name) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(presetName = name)) }
+            val snapshot = _state.value
+            if (snapshot.sessionOverride.presetName == null) loadPresetIntoState(name)
+            AppLog.i("config", "卡级预设 card=${cardId.take(8)} preset=${name ?: "跟随"}")
+        }
+    }
+
+    fun useCardWorldBooks(names: Set<String>?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(worldBookNames = names) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(worldBookNames = names)) }
+            AppLog.i("config", "卡级世界书 card=${cardId.take(8)} ${names?.size ?: "跟随"} 本")
+        }
+    }
+
+    fun useCardRegex(ids: Set<String>?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(regexIds = ids) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(regexIds = ids)) }
+            AppLog.i("config", "卡级正则 card=${cardId.take(8)} ${ids?.size ?: "跟随"} 条")
         }
     }
 
@@ -1102,7 +1245,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { if (it.notice?.id == id) it.copy(notice = null) else it }
     }
 
-    fun closeChat() = _state.update { it.copy(chatOpen = false) }
+    fun closeChat() = _state.update { it.copy(chatOpen = false, sessionConfigOpen = false) }
+
+    /** 打开会话配置（三级继承最内层的那一页）。 */
+    fun openSessionConfig() {
+        if (_state.value.sessionId == null) {
+            notify("还没有会话")
+            return
+        }
+        _state.update { it.copy(sessionConfigOpen = true) }
+        AppLog.i("config", "开会话配置")
+    }
+
+    fun closeSessionConfig() = _state.update { it.copy(sessionConfigOpen = false) }
 
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
 
@@ -1423,6 +1578,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 把某一份预设灌进状态（**不改"全局选中的那份"**）。
+     *
+     * 会话/卡指定预设时用它：`promptOrder` / 提示词文本 / 采样参数才是发送时真正读的三个东西，
+     * 只改 `activePreset` 不重算它们等于没换。
+     */
+    private suspend fun loadPresetIntoState(name: String?) {
+        val loaded = withContext(Dispatchers.IO) { name?.let { presetRepository.load(it) } }
+        val order = withContext(Dispatchers.IO) { name?.let { presetRepository.orderOverride(it) } }
+            ?: loaded?.order
+        _state.update {
+            it.copy(
+                promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
+                presetSampling = loaded?.sampling,
+            )
+        }
+    }
+
     /** 导入一份 ST 预设（`.json`）。导入后自动选中它。 */
     fun importPreset(uri: Uri) {
         viewModelScope.launch {
@@ -1588,7 +1762,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * 对模型输出只改显示、不改存档。宏（`{{char}}` / `{{user}}`）在这里注入。
      */
     private fun applyRegex(text: String, placement: RegexPlacement, card: CharacterCard): String {
-        val scripts = _state.value.regexScripts
+        // 用"生效中"的那份：会话/卡可能把某些脚本关了，显示与输入必须读同一个集合
+        val scripts = _state.value.effectiveRegexScripts
         if (scripts.isEmpty() || text.isEmpty()) return text
         val engine = RegexEngine(
             substitute = { value ->
@@ -1630,8 +1805,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // 强制开启的条目在解析时被标成 disabled（卡里没写 enabled 的那些），这里翻回来
             .map { if (it.uid in snapshot.bookForced) it.withDisabled(false) else it }
         // 全局书排在内嵌书之后（原版 character_first 策略：卡的书先，全局书后）
+        // 三级继承：会话/卡指定了"这场对话带哪些全局书"就按它来，否则按书自己的启用开关
+        val only = snapshot.effectiveWorldBookNames
         val globalEntries = snapshot.worldBooks
-            .filter { it.enabled }
+            .filter { if (only != null) it.name in only else it.enabled }
             .flatMap { globalBookEntries[it.name].orEmpty() }
         val entries = cardEntries + globalEntries
         if (entries.isEmpty()) {
@@ -1736,7 +1913,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             presencePenalty = snapshot.presetSampling?.presencePenalty,
             stream = true,
             // 思考强度：会话级覆盖优先（"off" = 明确关掉，不发这个字段），否则跟随档案
-            extraBody = when (val effort = snapshot.sessionReasoningEffort) {
+            extraBody = when (val effort = snapshot.effectiveReasoningEffort) {
                 null -> activeProfile?.reasoningEffort
                 "off" -> null
                 else -> effort

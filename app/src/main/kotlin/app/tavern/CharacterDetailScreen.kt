@@ -240,7 +240,20 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                             MessageStyle.Card -> "整行卡片"
                         }
 
-                        ListGroup(count = 3) { index, _ ->
+                        // 三级继承的中间层：这一层选的会作为"这张卡以后开的新会话"的默认值
+                        val cardProfile = state.profiles.firstOrNull {
+                            it.id == (state.cardOverride.profileId ?: state.activeProfileId)
+                        }
+                        val cardProfileName = cardProfile?.name ?: "未配置"
+                        val cardProfileSrc = if (state.cardOverride.profileId != null) "角色卡" else "全局"
+                        val cardBooks = effectiveBookNames(state)
+                        val cardBooksSrc = if (state.cardOverride.worldBookNames != null) "角色卡" else "全局"
+                        val cardRegex = effectiveRegexNames(state)
+                        val cardRegexSrc = if (state.cardOverride.regexIds != null) "角色卡" else "全局"
+                        val cardPreset = state.cardOverride.presetName ?: state.activePreset ?: "内置默认"
+                        val cardPresetSrc = if (state.cardOverride.presetName != null) "角色卡" else "全局"
+
+                        ListGroup(count = 7) { index, _ ->
                             when (index) {
                                 0 -> SettingLinkRow(
                                     title = "内嵌世界书",
@@ -254,7 +267,23 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     },
                                 ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
 
-                                1 -> SettingLinkRow("对话样式", styleLabel) {
+                                1 -> SettingLinkRow("模型", "$cardProfileName · $cardProfileSrc") {
+                                    showModelSheet(sheet, state, viewModel, ConfigScope.Card)
+                                }
+
+                                2 -> SettingLinkRow("世界书", "参与 ${cardBooks.size} 本 · $cardBooksSrc") {
+                                    showWorldBookSheet(sheet, state, viewModel, ConfigScope.Card, cardBooks)
+                                }
+
+                                3 -> SettingLinkRow("正则", "参与 ${cardRegex.size} 条 · $cardRegexSrc") {
+                                    showRegexSheet(sheet, state, viewModel, ConfigScope.Card, cardRegex)
+                                }
+
+                                4 -> SettingLinkRow("预设", "$cardPreset · $cardPresetSrc") {
+                                    showPresetSheet(sheet, state, viewModel, ConfigScope.Card)
+                                }
+
+                                5 -> SettingLinkRow("对话样式", styleLabel) {
                                     viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
                                 }
 

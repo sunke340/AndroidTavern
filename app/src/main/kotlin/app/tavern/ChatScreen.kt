@@ -296,18 +296,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
-            val sheet = LocalSheetController.current
-            val activeProfile = state.profiles.firstOrNull {
-                it.id == (state.sessionProfileId ?: state.activeProfileId)
-            }
+            val activeProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                // 原来是个**不可点的占位**，现在就是"会话配置"的入口（用户 2026-11-25 第 2 条）。
-                // 这一批先只到模型 / 思考强度，世界书、正则、预设的会话级选择下一批补。
+                // 原来是个**不可点的占位**，现在就是「会话配置」的入口（用户 2026-11-25 第 2 条）。
                 DropdownMenuItem(
-                    text = { Text("模型档案：${activeProfile?.name ?: "未配置"}") },
+                    text = { Text("会话配置：${activeProfile?.name ?: "未配置"}") },
                     onClick = {
                         menuOpen = false
-                        sheet.show(title = "模型", actions = modelSheetActions(state, viewModel))
+                        viewModel.openSessionConfig()
                     },
                 )
                 DropdownMenuItem(
@@ -429,13 +425,10 @@ private fun ChatInputBar(
     val focusManager = LocalFocusManager.current
     val sheet = LocalSheetController.current
     var focused by remember { mutableStateOf(false) }
-    val currentProfile = state.profiles.firstOrNull {
-        it.id == (state.sessionProfileId ?: state.activeProfileId)
-    }
+    // 生效档案：会话指定 → 卡指定 → 全局默认（三级继承的解析在 UiState 里）
+    val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
 
-    val openModelSheet = {
-        sheet.show(title = "模型", actions = modelSheetActions(state, viewModel))
-    }
+    val openModelSheet = { showModelSheet(sheet, state, viewModel, ConfigScope.Session) }
 
     Row(
         modifier = Modifier
@@ -676,43 +669,6 @@ private fun modelBadge(name: String?): String {
     if (text.isEmpty()) return "模"
     val first = text.first()
     return if (first.code < 128) first.uppercase() else first.toString()
-}
-
-/**
- * 「模型」抽屉的动作表：**会话级**换模型 + 会话级思考强度。
- *
- * 都只写本会话的覆盖，不动全局默认档案 —— 抽屉是从聊天页里点开的，改的应该是"这一段对话"。
- */
-private fun modelSheetActions(state: ChatViewModel.UiState, viewModel: ChatViewModel): List<SheetAction> {
-    val currentId = state.sessionProfileId ?: state.activeProfileId
-    val defaultName = state.profiles.firstOrNull { it.isDefault }?.name ?: "未配置"
-    val actions = mutableListOf<SheetAction>()
-    if (state.profiles.isEmpty()) {
-        actions += SheetAction("还没有模型档案（设置 → 模型）") { }
-    } else {
-        state.profiles.forEach { profile ->
-            val mark = if (profile.id == currentId) "✓ " else ""
-            actions += SheetAction("$mark${profile.name} · ${profile.model}") {
-                viewModel.useSessionProfile(profile.id)
-            }
-        }
-        if (state.sessionProfileId != null) {
-            actions += SheetAction("跟随默认档案（$defaultName）") { viewModel.clearSessionProfile() }
-        }
-    }
-    // null = 跟随档案；off = 明确关掉（不发 reasoning_effort）
-    val effortRows: List<Pair<String, String?>> = listOf(
-        "跟随档案" to null,
-        "关" to "off",
-        "低" to "low",
-        "中" to "medium",
-        "高" to "high",
-    )
-    effortRows.forEach { (label, value) ->
-        val mark = if (state.sessionReasoningEffort == value) "✓ " else ""
-        actions += SheetAction("思考强度：$mark$label") { viewModel.useSessionReasoning(value) }
-    }
-    return actions
 }
 
 /**
