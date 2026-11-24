@@ -109,6 +109,23 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
 - 按压：卡片上压 **8% 黑**（行是白面板才用 7% 主色，图上盖紫会染色），手感走
   `rememberPressTint()` —— 按下当帧满色、松开 160ms 淡回。
 
+### 动作单（长按抽屉）：自绘玻璃弹层，别用 `ModalBottomSheet`（2026-11-24）
+
+- **`ModalBottomSheet` 做不到真磨砂**：它渲染在独立的 Dialog 窗口里，而磨砂/折射是
+  "把主窗口内容录进 `GraphicsLayer` 再按窗口坐标采样"——跨窗口拿不到那张图层，
+  弹层只能画成半透明白板。
+- 现在的做法：`ActionSheet.kt` 里的 `SheetController` + `LocalSheetController`。
+  **页面只"请求"**（`sheet.show(title, actions)`），由最近的页面骨架渲染：
+  - 一级三页：`TabsRoot` 里的 `GlassActionSheetHost`（用底栏那张 `frostLayer`）；
+  - 二级/三级页：`GlassDetailScaffold` 里的同一个 host（用该页自己的 `frost`）。
+  两处都在**录图层之外**，所以弹层能真的糊住背后内容。
+- **不要在页面里直接 composed 弹层**：它会画在录图层里面，玻璃采样会采到自己这一帧。
+- 弹层参数：上两角 24dp 圆角、`shadow = false`、走液态玻璃默认参数；遮罩黑 32%、
+  180ms 淡入、点遮罩关闭、`BackHandler` 关闭；滑入 `Motion.Slow/Standard`，减动效时改淡入。
+- 行内的「删除」只关弹层 + 交给调用方弹确认框，**不直接删**。
+- 目前**没有拖拽关闭**（只能点遮罩或返回键）；要做就照动效文档的两段式（跟手段 1:1 + 松手弹簧）。
+- 选卡弹层（`CardPickerSheet`）还是 `ModalBottomSheet`，想统一可以下一轮搬过来。
+
 ### 列表不要做"出现/消失"的淡入淡出（2026-11-23）
 
 `Modifier.animateItem(fadeInSpec = …)` 会在换页时把**整格卡片从 alpha 0 淡上来**
