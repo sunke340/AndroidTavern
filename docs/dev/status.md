@@ -5,9 +5,9 @@
 
 ## 当前基线
 
-- 代码：`e84f874`（tag `apk-m98`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
+- 代码：`99ec1f5`（tag `apk-m100`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版）
 - 状态：CI 全绿；本机 `tools/test-core.sh` 全绿
-- 已交付 APK：`app-v80-e84f874.apk`（签名固定，可覆盖安装；上一版 `app-v79-935d65c.apk`）
+- 已交付 APK：`app-v82-99ec1f5.apk`（签名固定，可覆盖安装；上一版 `app-v81-2548bea.apk`）
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
 ## 接手先看这三件（2026-11-23 晚）

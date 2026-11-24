@@ -52,6 +52,16 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
   两个 `1/4` 是同一个量（这版是用户验收过的动势，**别再改 None**）；
 - **只动 `graphicsLayer.translationX`**：整页不重新量尺寸，老 `SizeTransform` 那个坑自然消失；
 - 减动效（`rememberReduceMotion`）→ 只交叉淡化；`NavAnimation.None` → 瞬间切。
+- **离场页必须拿"它还是当前页时"的状态快照**（`snapshots[dest]`，每帧只给当前页写）。
+  否则页面读实时 `UiState`，而返回是把状态一起改掉的（`closeDetail()` 同时清 `detailCardId`），
+  离场页会走到自己的 `?: return` 渲染空 —— 层在、内容没了，看着就是"退场页凭空消失"。
+- **第一帧不能拿上一轮的终态**（2026-11-24 用户："页面先跳到 -1/4 再复位"、"整屏闪一下"）：
+  目标一变的那一帧，`pages` 还是旧的、而 `progress` 还是上一轮的 1，离场页会按 **p=1**
+  渲染一帧（进 = `-w/4`，返回 = `+w`）→ 一帧闪现。
+  现在用 `running` 显式区分：`running=false` 时**只画原来那页、不做任何变换**；
+  效应里的顺序固定为「进度归零 → running=true → 加入新页」（同帧提交），
+  下一帧才是 `running + 两页 + p=0` 的正确起点。`graphicsLayer` 里没转场时强制
+  `alpha=1 / translationX=0`（减动效模式的 alpha 也曾被残留的 p=1 算成 0 → 整屏空白一帧）。
 
 **判据（怎么确认层次对了）**：返回时应该看到**退场页**在动（整屏右移）、它下面的页在归位；
 如果看到的是"上一页从上面滑进来盖住当前页"，就是叠放反了。逐帧证据的做法：录屏抽帧，
