@@ -52,6 +52,10 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var scenario by remember(detail.id) { mutableStateOf(detail.scenario) }
     var firstMessage by remember(detail.id) { mutableStateOf(detail.firstMessage) }
     var messageExample by remember(detail.id) { mutableStateOf(detail.messageExample) }
+    var systemPrompt by remember(detail.id) { mutableStateOf(detail.systemPrompt) }
+    var postHistoryInstructions by remember(detail.id) {
+        mutableStateOf(detail.postHistoryInstructions)
+    }
     // 备选开场白：可增删改。空串在保存时会被剔掉（界面上"加一条"先塞占位）
     var greetings by remember(detail.id) { mutableStateOf(detail.alternateGreetings.toList()) }
 
@@ -71,6 +75,8 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         firstMessage = firstMessage,
                         messageExample = messageExample,
                         alternateGreetings = greetings,
+                        systemPrompt = systemPrompt,
+                        postHistoryInstructions = postHistoryInstructions,
                     )
                 },
             ) { Text("保存") }
@@ -96,6 +102,10 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             Field("场景（scenario）", scenario, minLines = 2) { scenario = it }
             Field("开场白（first_mes）", firstMessage, minLines = 4) { firstMessage = it }
             Field("示例对话（mes_example）", messageExample, minLines = 4) { messageExample = it }
+            Field("系统提示（system_prompt）", systemPrompt, minLines = 2) { systemPrompt = it }
+            Field("历史后指令（post_history_instructions）", postHistoryInstructions, minLines = 2) {
+                postHistoryInstructions = it
+            }
 
             Text(
                 "备选开场白（${greetings.count { it.isNotBlank() }} 条）",

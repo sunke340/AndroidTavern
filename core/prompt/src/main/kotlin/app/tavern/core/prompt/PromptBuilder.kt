@@ -48,7 +48,15 @@ public class PromptBuilder {
             if (!entry.enabled) continue
             when (entry.identifier) {
                 Id.MAIN, Id.NSFW, Id.JAILBREAK, Id.ENHANCE_DEFINITIONS -> {
-                    val content = prompts[entry.identifier].orEmpty()
+                    // 卡里的 system_prompt / post_history_instructions 会**顶替**预设里
+                    // 对应那一段的正文（原版 openai.js:1498 与 :1507，两处都先看
+                    // forbid_overrides 与"该提示词是否被禁用"；我们这两条默认都不成立）。
+                    val override = when (entry.identifier) {
+                        Id.MAIN -> character.systemPrompt
+                        Id.JAILBREAK -> character.postHistoryInstructions
+                        else -> ""
+                    }
+                    val content = override.ifBlank { prompts[entry.identifier].orEmpty() }
                     if (content.isBlank()) continue
                     messages += system(substitute(content, charName, userName))
                 }

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "SysPrompt",
+    "is_user": false,
+    "is_system": false,
+    "send_date": "2026-11-24T19:24:25.516Z",
+    "mes": "FIRST-SYS",
+    "extra": {
+      "reasoning": ""
+    },
+    "swipes": [
+      "FIRST-SYS"
+    ],
+    "swipe_id": 0,
+    "swipe_info": [
+      {
+        "send_date": "2026-11-24T19:24:25.516Z",
+        "extra": {}
+      }
+    ]
+  },
+  {
+    "extra": {
+      "api": "openai",
+      "model": "gpt-4-turbo",
+      "reasoning": "",
+      "reasoning_duration": null,
+      "reasoning_signature": null,
+      "time_to_first_token": 21
+    },
+    "name": "SysPrompt",
+    "is_user": false,
+    "send_date": "2026-11-24T19:24:26.673Z",
+    "mes": "ok",
+    "title": "",
+    "gen_started": "2026-11-24T19:24:26.461Z",
+    "gen_finished": "2026-11-24T19:24:26.693Z",
+    "swipes": [
+      "ok"
+    ],
+    "swipe_id": 0,
+    "swipe_info": [
+      {
+        "send_date": "2026-11-24T19:24:26.673Z",
+        "gen_started": "2026-11-24T19:24:26.461Z",
+        "gen_finished": "2026-11-24T19:24:26.693Z",
+        "extra": {
+          "api": "openai",
+          "model": "gpt-4-turbo",
+          "reasoning": "",
+          "reasoning_duration": null,
+          "reasoning_signature": null,
+          "time_to_first_token": 21
+        }
+      }
+    ]
+  }
+]
