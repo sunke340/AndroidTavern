@@ -1,4 +1,4 @@
-# 接手卡（2026-11-24 23:15）
+# 接手卡（2026-11-25 00:05）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,9 +8,11 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `8a88c0f` / tag `apk-m146` / 交付包 `artifacts/app-v115-8a88c0f.apk`。
+- **基线**：代码 `fab55bf` / tag `apk-m147` / 交付包 `artifacts/app-v116-fab55bf.apk`。
 - **聊天跟随已收**：冻结撤掉 → 阅读锚点补偿（`dispatchRawDelta`），v115 用户真机验过"都正常了"；
-  只剩 A↔C 边界的"追高欠账"接缝（≤1 行，用户没感觉到），见 [status](status.md) 已知问题。
+  A↔C 接缝 v116 已修、待验。
+- **转场丢帧 v116 已动**：`PageStack` 起动画前先预热新页首帧（`warming`），并减了详情页首帧
+  （描述先用列表里的字段顶上、会话 tab 改 LazyColumn）。等真机日志看 `tag=nav` 的两行对比。
 - **下一件事**（新会话直接开工）：P0-6 消息操作，见第四节。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**（第 10 条）。
 
