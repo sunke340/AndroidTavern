@@ -9,10 +9,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,14 +37,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.tavern.data.chat.ChatSession
@@ -94,39 +101,66 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             // ---- 卡头：常驻，不随标签滚动 ----
+            //
+            // 版式（用户 2026-11-25 第 4 条：保留 TabRow，只重做卡头与信息）：
+            // 原来 96dp 小头像 + 右边三行小字，信息量和"这是一张卡"的观感都弱。
+            // 现在改成**大图压字**：名字与元信息落在图底的渐变上，主按钮紧跟图下。
+            val heroName = detail?.name ?: cardRef?.name ?: cardId
+            val heroMeta = buildString {
+                append(if (detail?.imported == true) "导入的卡" else "随包带的卡")
+                append(" · 描述 ${detail?.description?.length ?: cardRef?.description?.length ?: 0} 字")
+                val books = detail?.bookEntries?.size ?: 0
+                if (books > 0) append(" · 世界书 $books 条")
+            }
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(top = Space.l),
+                    .padding(horizontal = Space.l)
+                    .padding(top = Space.s),
             ) {
-                Row(verticalAlignment = Alignment.Top) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(18.dp)),
+                ) {
                     CardAvatar(
                         cardId = cardId,
-                        fallbackText = detail?.name ?: cardRef?.name.orEmpty(),
-                        modifier = Modifier
-                            .size(96.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                        fallbackText = heroName,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                    // 字压在图上必须自带底：浅色图上白字会糊成一片
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0.42f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = 0.62f),
+                                ),
+                            ),
+                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(Space.l),
+                    ) {
                         Text(
-                            detail?.name ?: cardRef?.name ?: cardId,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                            heroName,
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White,
                         )
                         Text(
-                            if (detail?.imported == true) "导入的卡" else "随包带的卡",
+                            heroMeta,
                             style = MaterialTheme.typography.labelSmall,
-                        )
-                        Text(
-                            "描述 ${detail?.description?.length ?: cardRef?.description?.length ?: 0} 字" +
-                                if ((detail?.bookEntries?.size ?: 0) > 0) "｜世界书 ${detail?.bookEntries?.size} 条" else "",
-                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.86f),
+                            modifier = Modifier.padding(top = Space.xs),
                         )
                     }
                 }
 
                 Button(
                     onClick = { viewModel.startSessionForCard(cardId, leaveDetail = true) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = Space.m),
                 ) { Text("用这张卡开新会话") }
             }
 
@@ -187,7 +221,9 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                         }
                     }
 
-                    DetailTab.Greeting -> ScrollArea { GreetingTab(detail) }
+                    DetailTab.Greeting -> ScrollArea {
+                        GreetingTab(detail, viewModel, state.cardOverride.greetingIndex ?: 0)
+                    }
 
                     // 行数由数据决定 → 必须懒加载（同世界书条目页）。这个 tab 的选择是会保留的，
                     // 返回详情页时若它正处于选中态，ListGroup 会把整张会话表（几十行 + 头像）
@@ -320,6 +356,66 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 viewModel.deleteSession(session.id)
             },
             onDismiss = { pendingDeleteSession = null },
+        )
+    }
+}
+
+@Composable
+private fun ScrollArea(content: @Composable () -> Unit) {
+    // 四个标签各自是一块可滚动面：每个都要橡皮筋（和会话/角色卡页一致）
+    val overscroll = rememberRubberOverscroll()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .rubberOverscroll(overscroll)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) { content() }
+}
+
+@Composable
+private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIndex: Int) {
+    // 空串要剔掉：有的卡在 alternateGreetings 里留了空项，翻过去就是一条空气泡
+    val greetings = (listOf(detail?.firstMessage.orEmpty()) + detail?.alternateGreetings.orEmpty())
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    if (greetings.isEmpty()) {
+        Text("（这张卡没有开场白）", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val preferred = defaultIndex.coerceIn(0, greetings.lastIndex)
+    var index by remember(greetings.size, preferred) { mutableIntStateOf(preferred) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(Space.m)) {
+        // 翻页箭头照聊天页那一套：先读、读到了再决定要不要设为默认
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GreetingChevron("‹", enabled = index > 0) { index -= 1 }
+            Text(
+                "${index + 1}/${greetings.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = Space.s),
+            )
+            GreetingChevron("›", enabled = index < greetings.lastIndex) { index += 1 }
+            if (index != preferred) {
+                Spacer(Modifier.weight(1f))
+                // 只在"翻到的不是默认那条"时出现 —— 只是想看看的时候不该冒出一个会改设置的按钮
+                TextButton(onClick = { viewModel.useCardGreeting(index) }) { Text("设为默认") }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                greetings[index],
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(Space.m),
+            )
+        }
+        Text(
+            if (greetings.size > 1) "新会话默认用第 ${preferred + 1} 条" else "这张卡只有这一条开场白",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

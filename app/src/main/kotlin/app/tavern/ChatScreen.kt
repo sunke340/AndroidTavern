@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -373,19 +374,45 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 if (state.transcript.isEmpty() && state.streamingText.isEmpty()) {
                     item { EmptyHint("还没有消息。发一句开始；点右上「请求」可以看到实际发出去的提示词。") }
                 }
-                items(state.transcript.asReversed()) { message ->
-                    MessageRow(
-                        message = message,
-                        style = state.effectiveMessageStyle,
-                        displayText = displayText,
-                        // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
-                        // 位移动画会不断重放，整屏看起来在闪。
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
-                            placementSpec = null,
-                            fadeOutSpec = tween(Motion.Fast),
-                        ),
+                // 开场白翻页（用户 2026-11-25 第 3 条）：只在"还没说过话 + 不止一条"时出现。
+                // 箭头贴在第一屏最上面那条气泡的**上沿**，和气泡同一个 item —— 翻页时一起动，不会脱节。
+                val canSwitchGreeting = state.greetings.size > 1 &&
+                    state.transcript.none { it.role == ChatRole.User }
+                val shownGreeting = greetingIndexOf(
+                    state.greetings,
+                    state.transcript.firstOrNull()?.content,
+                )
+                itemsIndexed(state.transcript.asReversed()) { index, message ->
+                    // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
+                    // 位移动画会不断重放，整屏看起来在闪。
+                    val itemAnim = Modifier.animateItem(
+                        fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                        placementSpec = null,
+                        fadeOutSpec = tween(Motion.Fast),
                     )
+                    val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
+                    if (isGreetingSlot) {
+                        Column(modifier = itemAnim) {
+                            GreetingSwitchBar(
+                                current = if (shownGreeting >= 0) shownGreeting else 0,
+                                total = state.greetings.size,
+                                onSelect = viewModel::selectGreeting,
+                            )
+                            Spacer(Modifier.height(Space.xs))
+                            MessageRow(
+                                message = message,
+                                style = state.effectiveMessageStyle,
+                                displayText = displayText,
+                            )
+                        }
+                    } else {
+                        MessageRow(
+                            message = message,
+                            style = state.effectiveMessageStyle,
+                            displayText = displayText,
+                            modifier = itemAnim,
+                        )
+                    }
                 }
         }
     }

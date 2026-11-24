@@ -124,6 +124,16 @@ class SqliteChatRepository(context: Context) : ChatRepository {
         helper.writableDatabase.delete(TavernDatabase.TABLE_MESSAGES, "id = ?", arrayOf(id.toString()))
     }
 
+    override fun updateMessage(id: Long, content: String) {
+        val values = ContentValues().apply { put("content", content) }
+        helper.writableDatabase.update(
+            TavernDatabase.TABLE_MESSAGES,
+            values,
+            "id = ?",
+            arrayOf(id.toString()),
+        )
+    }
+
     override fun append(sessionId: String, isUser: Boolean, content: String): StoredMessage {
         val db = helper.writableDatabase
         val now = System.currentTimeMillis()

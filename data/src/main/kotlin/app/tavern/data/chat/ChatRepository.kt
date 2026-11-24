@@ -51,6 +51,13 @@ interface ChatRepository {
     /** 撤回一条消息。请求失败时把刚写进去的用户消息撤掉，避免重试一次多一条。 */
     fun deleteMessage(id: Long)
 
+    /**
+     * 改写一条消息的正文（换开场白用：开场白就是会话里的第一条消息）。
+     *
+     * 只改这一条，不动 id 与 send_date —— 顺序与时间线不能因为换了个开场白就乱掉。
+     */
+    fun updateMessage(id: Long, content: String)
+
     /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
     fun deleteSessionsForCard(cardId: String): Int
 }

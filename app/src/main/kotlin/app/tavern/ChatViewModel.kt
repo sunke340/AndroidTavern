@@ -237,6 +237,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val profileDraft: ProfileDraft? = null,
         /** 会话配置二级页（从聊天页 ⋮ 进）。 */
         val sessionConfigOpen: Boolean = false,
+        /** 当前这张卡的全部开场白（第一条是 first_mes，其后是备选）。换开场白只读它。 */
+        val greetings: List<String> = emptyList(),
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -644,10 +646,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
                 ?: loaded.name.ifBlank { cardId }
+            // 卡级默认开场白：detail 页里选过哪一条，就从哪一条开始
+            val cardConfig = withContext(Dispatchers.IO) {
+                runCatching { configOverrides.load(ConfigOverrideRepository.card(cardId)) }
+                    .getOrDefault(ConfigOverride())
+            }
+            val greetings = greetingsOf(loaded)
+            val firstMessage = greetings.getOrNull(cardConfig.greetingIndex ?: 0)
+                ?: loaded.firstMessage
             startNewSession(
                 cardId = cardId,
                 cardName = displayName,
-                firstMessage = loaded.firstMessage,
+                firstMessage = firstMessage,
                 navigate = true,
             )
         }
@@ -830,6 +840,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 bookForced = bookOverride.forcedOn,
                 sessionOverride = sessionConfig,
                 cardOverride = cardConfig,
+                greetings = loadedCard?.let { greetingsOf(it) }.orEmpty(),
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
@@ -870,6 +881,64 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 model = profile.model,
                 apiKey = key,
             )
+        }
+    }
+
+    // ---- 开场白 ------------------------------------------------------------
+
+    /** 卡的全部开场白：第一条是 `first_mes`，后面是备选（空串剔除，否则会切到一条空气泡）。 */
+    private fun greetingsOf(card: CharacterCard): List<String> =
+        (listOf(card.firstMessage) + card.alternateGreetings)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    /**
+     * 聊天页换开场白：**只在会话还没有用户消息时允许**（用户 2026-11-25 定的 B 策略）。
+     *
+     * 换法就是改会话里的第一条消息 —— 原版 ST 里换开场白本来就是" swipe 第一条消息"，
+     * 所以不新增消息、不动时间线。
+     */
+    fun selectGreeting(index: Int) {
+        val sessionId = _state.value.sessionId ?: return
+        val snapshot = _state.value
+        val target = snapshot.greetings.getOrNull(index) ?: return
+        if (snapshot.transcript.any { it.role == ChatRole.User }) {
+            notify("这条会话已经聊过了：换开场白只能开新会话")
+            return
+        }
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            val first = stored.firstOrNull()
+            if (first != null && !first.isUser) {
+                withContext(Dispatchers.IO) { chatRepository.updateMessage(first.id, target) }
+                _state.update { current ->
+                    if (current.sessionId != sessionId) current
+                    else current.copy(
+                        transcript = listOf(ChatMessage(ChatRole.Assistant, target)) +
+                            current.transcript.drop(1),
+                    )
+                }
+            } else if (stored.isEmpty()) {
+                withContext(Dispatchers.IO) {
+                    chatRepository.append(sessionId, isUser = false, content = target)
+                }
+                _state.update { current ->
+                    if (current.sessionId != sessionId) current
+                    else current.copy(transcript = listOf(ChatMessage(ChatRole.Assistant, target)))
+                }
+            }
+            AppLog.i("chat", "换开场白 index=$index (${snapshot.greetings.size} 条)")
+        }
+    }
+
+    /** 卡级默认开场白（详情页「设为默认」）：以后用这张卡新开的会话从这一条开始。 */
+    fun useCardGreeting(index: Int) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(greetingIndex = index) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(greetingIndex = index)) }
+            AppLog.i("config", "卡级默认开场白 card=${cardId.take(8)} index=$index")
+            notify("这张卡新会话的默认开场白：第 ${index + 1} 条")
         }
     }
 
