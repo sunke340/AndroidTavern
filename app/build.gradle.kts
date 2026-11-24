@@ -87,6 +87,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // 拖动排序：只做"长按拖动换位"这一件事（LazyColumn + 边缘自动滚 + placement 动画）。
+    // 版本钉 3.1.0：它声明的 org.jetbrains.compose.* 仍是 1.7.0（对上我们的 BOM 2024.12.01
+    // = Compose 1.7.6）。**升级前先看它依赖的 Compose 版本**，升到要 1.8 的版本就得连工具链一起升。
+    implementation("sh.calvin.reorderable:reorderable:3.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

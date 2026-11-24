@@ -115,6 +115,8 @@ internal sealed interface Destination {
     data class WorldBookEntries(val name: String) : Destination
     /** 组件预览（debug only，从 设置 → 关于 进）。 */
     data object Gallery : Destination
+    /** 设置 → 预设 → 某一份（三级）：提示词顺序的开关与拖动。 */
+    data class PresetEdit(val name: String) : Destination
 }
 
 private fun depthOf(destination: Destination): Int = when (destination) {
@@ -126,6 +128,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     Destination.ProfileEdit -> 2
     is Destination.WorldBookEntries -> 2
     Destination.Gallery -> 2
+    is Destination.PresetEdit -> 2
 }
 
 /** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
@@ -138,6 +141,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     Destination.ProfileEdit -> "profile-edit"
     is Destination.WorldBookEntries -> "worldbook"
     Destination.Gallery -> "gallery"
+    is Destination.PresetEdit -> "preset-edit"
 }
 
 @Composable
@@ -166,6 +170,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 editingProfile -> Destination.ProfileEdit
                 // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
                 state.galleryOpen -> Destination.Gallery
+                // 预设编辑叠在"设置→预设"之上：返回落在预设列表，所以 settingsPage 不清
+                state.presetEditName != null -> Destination.PresetEdit(state.presetEditName)
                 // 世界书条目页叠在"设置→世界书"之上：返回落在书单
                 worldBook != null -> Destination.WorldBookEntries(worldBook.name)
                 settingsPage != null -> Destination.Settings(settingsPage)
@@ -255,6 +261,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     Destination.Gallery -> {
                         if (live) BackHandler { viewModel.closeGallery() }
                         GalleryScreen(state = snap, viewModel = viewModel)
+                    }
+
+                    is Destination.PresetEdit -> {
+                        if (live) BackHandler { viewModel.closePresetEditor() }
+                        PresetEditScreen(state = snap, viewModel = viewModel)
                     }
                 }
             }
@@ -546,18 +557,22 @@ private fun TavernBottomBar(
             // 之前是每个 tab 自己画一块 14% 主色：切换时一块消失、另一块出现，看着就是"闪一下"。
             val reduceMotion = rememberReduceMotion()
             var rowWidth by remember { mutableStateOf(0) }
+            // 第一次量到真实宽度之前 `cell` 是 0，滑块的目标其实是"最左边"。如果把这一跳
+            // 也交给动画，从任何二级页返回（底栏是重新组合的）就会看到滑块从最左边滑过来。
+            // 所以首次拿到宽度时 snap，之后才是滑动。
+            var pillMeasured by remember { mutableStateOf(false) }
             val cell = rowWidth.toFloat() / barItems.size
             val index = barItems.indexOfFirst { it.screen == current }.coerceAtLeast(0)
             val pillX by animateFloatAsState(
                 targetValue = index * cell,
-                animationSpec = if (reduceMotion) {
-                    snap()
-                } else {
+                animationSpec = when {
+                    reduceMotion || !pillMeasured -> snap()
                     // 屏幕上移动属于"空间连续"，用 ease-in-out 一类；200ms 跟得上手指又不算慢
-                    tween(200, easing = Motion.Standard)
+                    else -> tween(200, easing = Motion.Standard)
                 },
                 label = "tab-pill",
             )
+            LaunchedEffect(cell) { if (cell > 0f) pillMeasured = true }
             Box(Modifier.fillMaxSize().padding(Space.xs)) {
                 if (rowWidth > 0) {
                     Box(

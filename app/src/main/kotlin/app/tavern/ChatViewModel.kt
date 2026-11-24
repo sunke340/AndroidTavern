@@ -174,6 +174,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val presetPrompts: Map<String, String> = PresetDefaults.PROMPTS,
         /** 选中的预设带来的 top_p / 两个 penalty（温度与 max_tokens 仍走采样页那两个输入框）。 */
         val presetSampling: SamplingPreset? = null,
+        /** 非 null 时打开"编辑预设"二级页（顺序开关与拖动都在那一页里）。 */
+        val presetEditName: String? = null,
         /** 正则脚本（导入自 ST 的脚本数组）。 */
         val regexScripts: List<RegexScript> = emptyList(),
         /** 非 null 时显示某本全局书的条目列表。 */
@@ -1087,6 +1089,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             preset.sampling.maxTokens?.let { onMaxTokensChange(it.toString()) }
         }
     }
+
+    /**
+     * 打开"编辑预设"页（二级）。
+     *
+     * 顺手把它设为当前：顺序编辑必须对着**真正会发出去的那一份**，否则改完忘了选中，
+     * 用户会以为顺序没生效。
+     */
+    fun openPresetEditor(name: String) {
+        selectPreset(name)
+        _state.update { it.copy(presetEditName = name) }
+        AppLog.i("preset", "打开预设编辑 $name")
+    }
+
+    fun closePresetEditor() = _state.update { it.copy(presetEditName = null) }
 
     fun deletePreset(name: String) {
         viewModelScope.launch {
