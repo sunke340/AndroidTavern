@@ -44,6 +44,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    两个 1/4 是同一个量，读起来才是同一张纸在动。
  * 4. 动画只做在"进来那页"和"退场那页"的 `graphicsLayer.translationX` 上，
  *    整页不会重新量尺寸（这正是当年 `AnimatedContent` 的 `SizeTransform` 要关掉的东西）。
+ * 5. **动画开始前先预热新页**（2026-11-24）：新页最贵的是它自己的第一帧（组合+测量+录图层），
+ *    直接起动画会让那 30–80ms 吃掉动画的前几帧。现在先让新页在"起跑位/全透明"下过一帧、
+ *    动画再开始 —— 代价是响应多约 1 帧，换动画满帧。日志 `tag=nav` 的「新页首帧 Xms」
+ *    就是这笔钱；它应该出现在「转场」那行**之前**。
  */
 @Composable
 internal fun <S> PageStack(
@@ -62,6 +66,12 @@ internal fun <S> PageStack(
     var forward by remember { mutableStateOf(true) }
     /** 转场动画是否正在跑；false 时只画原来那页（见下面"还没开始转场"那段）。 */
     var running by remember { mutableStateOf(false) }
+    /**
+     * 预热帧：新页已经入栈、动画还没开始。这一两帧里只画旧页，新页摆到 p=0 的起跑位
+     * （滑入的屏外 / 减动效的全透明）—— 让新页最贵的第一帧（组合+测量+录图层）落在
+     * 动画**之前**，而不是吃掉动画的前几帧。
+     */
+    var warming by remember { mutableStateOf(false) }
     val progress = remember { Animatable(1f) }
     val latestOnRemoved by rememberUpdatedState(onRemoved)
 
@@ -79,16 +89,44 @@ internal fun <S> PageStack(
         val from = pages.last()
         if (from == target) return@LaunchedEffect
         forward = depthOf(target) >= depthOf(from)
-        // ⚠️ 顺序不能反：先把进度归零、再打开 running，最后才把新页塞进 pages。
-        // 三次写在同一帧里提交，所以下一帧看到的就是"running + 两页 + 进度 0"这个正确的起点。
+        // ⚠️ 顺序不能反：先把进度归零、再让旧页静止（running=false）、然后新页入栈，
+        // 预热完才打开 running。这些写在同一帧里提交，所以下一帧看到的是正确的起点。
         //
         // 反过来的代价（2026-11-24 用户报的"页面突然跳到 -1/4 再复位"）：
         // 如果 pages 先加新页、而 running/进度还是上一轮的值（progress = 1），
         // 那离场页会先用 p=1 的终态渲染一帧 —— 进方向是 `-w/4`、返回是 `+w` 的一帧闪现，
         // 肉眼看就是"整屏跳一下"，也就是用户说的闪烁。
         progress.snapTo(0f)
-        running = mode != NavAnimation.None
+        running = false
         pages.add(target)
+        val animating = mode != NavAnimation.None
+        var warmMs = 0L
+        if (animating) {
+            // 预热一帧：等**新页自己的第一帧**跑完（组合 + 测量 + 绘制），再开始动画。
+            // 不预热的话，新页的首帧（页面越重越久）会把 280ms 的转场吃掉几帧 ——
+            // 看起来就是"页面切换丢了几帧动画"（用户 2026-11-24 报）。
+            // 代价是"点下去到动画启动"多约 1 帧，比动画中途卡一下便宜。
+            val warmStart = SystemClock.elapsedRealtime()
+            var lastFrame = 0L
+            warming = true
+            try {
+                // 记下走这几帧时**最长的那一帧**：它就是"新页首帧"的真实成本，
+                // 和转场那行的「最长帧」同一把尺子，可以直接对比。
+                repeat(2) {
+                    withFrameNanos { now ->
+                        if (lastFrame != 0L) warmMs = maxOf(warmMs, (now - lastFrame) / 1_000_000)
+                        lastFrame = now
+                    }
+                }
+            } finally {
+                warming = false
+            }
+            AppLog.i(
+                "nav",
+                "转场预热 ${mode.name} 新页首帧 ${warmMs}ms（等 ${SystemClock.elapsedRealtime() - warmStart}ms）",
+            )
+        }
+        running = animating
         if (running) {
             // 转场期间的帧统计：一次长帧（解析/GC/着色器编译）会把 280ms 的动画直接吃掉，
             // 事后再猜是"哪一步卡"很难，所以把"最长帧"直接写进日志（真机没有 logcat）。
@@ -126,7 +164,7 @@ internal fun <S> PageStack(
         val p = progress.value
         // 还没开始转场（目标刚变、效应还没跑，或者第一帧）：**只画原来那页、不做任何变换**。
         // 这一帧的画面与点击前完全一致，所以不会闪；转场从下一帧开始。
-        val visible = if (running) pages else listOf(pages.last())
+        val visible = if (running || warming) pages else listOf(pages.last())
         visible.forEach { dest ->
             key(dest) {
                 val isIncoming = dest == target
@@ -138,20 +176,25 @@ internal fun <S> PageStack(
                         .zIndex(if (onTop) 1f else 0f)
                         .graphicsLayer {
                             val w = size.width
-                            // 没在转场时一律"原样"：位置 0、不透明。
-                            // （不这么写的话，第一帧会拿上一轮残留的 p=1 去算 alpha/位移 → 闪一下空白。）
-                            if (!running) {
+                            // 预热帧按 p=0 摆位：新页停在动画的起点（屏外/透明），旧页保持原样。
+                            val q = if (warming) 0f else p
+                            if (!running && !(warming && isIncoming)) {
+                                // 没在转场时一律"原样"：位置 0、不透明。
+                                // （不这么写的话，第一帧会拿上一轮残留的 p=1 去算 alpha/位移 → 闪一下空白。）
                                 alpha = 1f
                                 translationX = 0f
                             } else if (mode == NavAnimation.Fade) {
                                 // 减动效：只淡化，不位移
-                                alpha = if (isIncoming) p else 1f - p
+                                alpha = if (isIncoming) q else 1f - q
+                                translationX = 0f
                             } else if (isIncoming) {
                                 // 进来那页：进 = 从右滑入；返回 = 从左侧 1/4 归位
-                                translationX = if (forward) w * (1f - p) else -w / 4f * (1f - p)
+                                alpha = 1f
+                                translationX = if (forward) w * (1f - q) else -w / 4f * (1f - q)
                             } else {
                                 // 退场那页：进 = 左移 1/4（视差）；返回 = 整屏向右滑走
-                                translationX = if (forward) -w / 4f * p else w * p
+                                alpha = 1f
+                                translationX = if (forward) -w / 4f * q else w * q
                             }
                         },
                 ) {

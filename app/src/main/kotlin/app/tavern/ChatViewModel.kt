@@ -413,6 +413,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadDetail(cardId: String) {
+        val startedAt = SystemClock.elapsedRealtime()
         val card = loadCard(cardId) ?: run {
             _state.update { it.copy(status = "读卡失败：$cardId") }
             return
@@ -447,6 +448,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { current ->
             if (current.detailCardId == cardId) current.copy(detail = detail) else current
         }
+        // 详情是在**转场动画期间**到达的：这次状态变更会再触发一次组合。把耗时记下来，
+        // 才能判断"转场卡"是页面首帧贵，还是详情到达太晚（tag=nav 的转场帧数对时间戳）。
+        AppLog.i(
+            "card",
+            "读详情 ${cardId.take(8)} ${SystemClock.elapsedRealtime() - startedAt}ms 条目=${entries.size}",
+        )
     }
 
     /**

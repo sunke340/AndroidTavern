@@ -11,12 +11,15 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -169,44 +172,59 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                 label = "detail-tab",
             ) { index ->
                 when (DetailTab.entries[index]) {
-                    DetailTab.Description -> ScrollArea {
-                        Text(
-                            detail?.description?.ifBlank { "（这张卡没有描述）" } ?: "读取中…",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                    DetailTab.Description -> {
+                        // 先用角色卡列表里已经有的描述顶上：完整详情要读卡文件才到（几十 ms），
+                        // 让长描述在**转场那一帧**就排好版；等 detail 到了文本没变，Text 不会重排。
+                        // 不然长描述会在动画中途才排版一次 —— 那一下正好吃掉转场的好几帧。
+                        val text = (detail?.description ?: cardRef?.description).orEmpty()
+                        ScrollArea {
+                            Text(
+                                text.ifBlank {
+                                    if (detail == null) "读取中…" else "（这张卡没有描述）"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
 
                     DetailTab.Greeting -> ScrollArea { GreetingTab(detail) }
 
-                    DetailTab.Sessions -> ScrollArea {
+                    // 行数由数据决定 → 必须懒加载（同世界书条目页）。这个 tab 的选择是会保留的，
+                    // 返回详情页时若它正处于选中态，ListGroup 会把整张会话表（几十行 + 头像）
+                    // 在第一帧里组合出来，正好压在转场动画上。
+                    DetailTab.Sessions -> LazyColumn(
+                        modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
+                        contentPadding = PaddingValues(16.dp),
+                    ) {
                         if (sessions.isEmpty()) {
-                            Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall)
+                            item { Text("这张卡还没有会话", style = MaterialTheme.typography.bodySmall) }
                         } else {
-                            ListGroup(
-                                count = sessions.size,
-                                dividerInset = RowToken.dividerInsetWithAvatar,
-                            ) { index, _ ->
-                                val session = sessions[index]
-                                ListRow(
-                                    title = session.cardName,
-                                    subtitle = previewLine(
-                                        session.lastMessage,
-                                        session.lastFromUser,
-                                    ),
-                                    meta = sessionTimeLabel(session.updatedAt),
-                                    leading = { RowAvatar(session.cardId, session.cardName) },
-                                    onClick = { viewModel.openSession(session.id) },
-                                    onLongClick = {
-                                        sheet.show(
-                                            title = session.title,
-                                            actions = listOf(
-                                                SheetAction("删除会话", destructive = true) {
-                                                    pendingDeleteSession = session
-                                                },
-                                            ),
-                                        )
-                                    },
-                                )
+                            itemsIndexed(sessions) { index, session ->
+                                GroupPiece(
+                                    piece = rowPieceAt(index, sessions.size),
+                                    dividerInset = RowToken.dividerInsetWithAvatar,
+                                ) {
+                                    ListRow(
+                                        title = session.cardName,
+                                        subtitle = previewLine(
+                                            session.lastMessage,
+                                            session.lastFromUser,
+                                        ),
+                                        meta = sessionTimeLabel(session.updatedAt),
+                                        leading = { RowAvatar(session.cardId, session.cardName) },
+                                        onClick = { viewModel.openSession(session.id) },
+                                        onLongClick = {
+                                            sheet.show(
+                                                title = session.title,
+                                                actions = listOf(
+                                                    SheetAction("删除会话", destructive = true) {
+                                                        pendingDeleteSession = session
+                                                    },
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
