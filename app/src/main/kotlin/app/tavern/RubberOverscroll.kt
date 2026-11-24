@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -250,7 +251,13 @@ fun Modifier.rubberOverscroll(
         }
     }
 
+    // ⚠️ `clipToBounds()` 必须在 graphicsLayer **外层**（写在前面）：橡皮筋的位移是绘制量，
+    // 不裁的话内容会被画到自己槽位外面去 —— 典型症状是"往上拖到头，内容盖住上面的 Tab 栏"
+    // （2026-11-25 用户在角色卡详情页报的：日志里同一时间窗 `rubber 回弹 start raw=-444
+    // visual=-224`，即内容被画高了 81dp，而 Tab 栏只有 48dp 高）。
+    // 裁在自己槽位上不会削弱橡皮筋观感：拉出来的仍是"槽位内露出空隙"，只是不再溢出到邻居身上。
     return this
+        .clipToBounds()
         .nestedScroll(connection)
         .graphicsLayer { translationY = state.visual }
 }
