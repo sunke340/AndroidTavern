@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 墨紫深色的 background；见 values/colors.xml 的说明 -->
+    <color name="boot_background">#FF100E15</color>
+</resources>

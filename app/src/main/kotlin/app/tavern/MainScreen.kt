@@ -85,6 +85,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -297,7 +299,15 @@ private fun StartupCurtain(booted: Boolean) {
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { this.alpha = alpha }
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                // 遮罩期间下面的界面已经在树里了：把触摸全吃掉，别点到看不见的控件
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                        }
+                    }
+                },
         )
     }
 }

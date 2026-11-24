@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色 + Android 12+：windowBackground 与 splash 底色同一份 -->
+    <style name="Theme.AndroidTavern" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/boot_background</item>
+        <item name="android:windowSplashScreenBackground">@color/boot_background</item>
+    </style>
+</resources>

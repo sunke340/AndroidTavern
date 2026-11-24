@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      启动底色：系统画第一帧（Android 12+ 还有 splash）时用的就是它。
+      必须和 Compose 里主题的 background 对上，否则会"白一下再变淡紫"
+      （2026-11-24 用户报：先白色铺满 → 淡紫 → 主页渐入）。
+      取默认主题（墨紫浅色）的 background。
+    -->
+    <color name="boot_background">#FFF8F6FC</color>
+</resources>

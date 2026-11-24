@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ 的 splash 有自己的底色（默认取 windowBackground，但明写更稳）：
+      不写的话先看到的是系统给的浅色，再变淡紫 —— 就是"白一下"。
+    -->
+    <style name="Theme.AndroidTavern" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/boot_background</item>
+        <item name="android:windowSplashScreenBackground">@color/boot_background</item>
+    </style>
+</resources>

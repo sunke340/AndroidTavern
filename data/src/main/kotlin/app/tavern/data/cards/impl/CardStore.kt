@@ -2,11 +2,13 @@ package app.tavern.data.cards.impl
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
 import app.tavern.data.cards.CardRef
 import app.tavern.data.cards.CardRepository
 import app.tavern.data.cards.ImportResult
+import app.tavern.data.log.AppLog
 import java.io.File
 
 /**
@@ -49,23 +51,54 @@ class CardStore(context: Context) : CardRepository {
 
     private val seededIds: Set<String> get() = prefs.getStringSet(KEY_SEEDED, emptySet()).orEmpty()
 
-    /** 全部可选的卡，随包的排在前面。 */
+    /**
+     * 全部可选的卡，随包的排在前面。
+     *
+     * 名字/简介/内嵌书条数**按"字节数 + 最后修改时间"缓存**：列表页只要这三个字段，
+     * 而 `PngCard.read()` 要把整张 PNG 读进来解析（真机日志：3 张卡 419ms），
+     * 卡一改（或重新导入）字节数/mtime 就变，缓存自然失效。
+     */
     override fun list(): List<CardRef> {
         val seeded = seededIds
-        return dir.listFiles().orEmpty()
+        val files = dir.listFiles().orEmpty()
             .filter { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
             .sortedWith(compareBy({ it.name !in seeded }, { it.name }))
-            .map { file ->
+        val meta = readMeta()
+        var dirty = false
+
+        val cards = files.map { file ->
+            val cached = meta[file.name]
+            val info = if (cached != null && cached.length == file.length() && cached.modified == file.lastModified()) {
+                cached
+            } else {
                 val parsed = runCatching { PngCard.read(file.readBytes()) }.getOrNull()
-                val cardName = parsed?.name?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
-                CardRef(
-                    id = file.name,
-                    name = cardName,
-                    imported = file.name !in seeded,
+                CardInfo(
+                    length = file.length(),
+                    modified = file.lastModified(),
+                    name = parsed?.name.orEmpty(),
                     description = parsed?.description.orEmpty(),
-                    bookEntryCount = parsed?.bookEntries()?.size ?: 0,
-                )
+                    bookCount = parsed?.bookEntries()?.size ?: 0,
+                ).also {
+                    meta[file.name] = it
+                    dirty = true
+                }
             }
+            CardRef(
+                id = file.name,
+                name = info.name.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension,
+                imported = file.name !in seeded,
+                description = info.description,
+                bookEntryCount = info.bookCount,
+            )
+        }
+
+        // 删掉的卡不再留缓存行
+        if (meta.keys.retainAll(files.mapTo(mutableSetOf()) { it.name })) dirty = true
+        if (dirty) {
+            writeMeta(meta)
+            AppLog.i("card", "卡面信息缓存更新：${meta.size} 张")
+        }
+        return cards
     }
 
     override fun load(id: String): ByteArray? = fileFor(id)?.takeIf { it.isFile }?.readBytes()
@@ -103,8 +136,22 @@ class CardStore(context: Context) : CardRepository {
             suffix++
         }
 
-        val written = runCatching { File(dir, id).writeBytes(bytes) }.isSuccess
+        val target = File(dir, id)
+        val written = runCatching { target.writeBytes(bytes) }.isSuccess
         if (!written) return ImportResult.Failed("写入应用私有目录失败")
+
+        // 手头已经解析过了，顺手把列表缓存写好：导入后马上刷新列表就不用再解析一遍
+        runCatching {
+            val meta = readMeta()
+            meta[id] = CardInfo(
+                length = target.length(),
+                modified = target.lastModified(),
+                name = card.name.orEmpty(),
+                description = card.description.orEmpty(),
+                bookCount = card.bookEntries().size,
+            )
+            writeMeta(meta)
+        }
 
         return ImportResult.Ok(
             CardRef(
@@ -127,6 +174,66 @@ class CardStore(context: Context) : CardRepository {
         id.takeIf { it.isNotBlank() && !it.contains('/') && !it.contains('\\') && !it.contains("..") }
             ?.let { File(dir, it) }
 
+    /** 列表页需要的三个字段（缓存值）。 */
+    private class CardInfo(
+        val length: Long,
+        val modified: Long,
+        val name: String,
+        val description: String,
+        val bookCount: Int,
+    )
+
+    /**
+     * 缓存文件：一行一张卡，`文件名 \t 字节数 \t mtime \t 名字b64 \t 简介b64 \t 条数`。
+     *
+     * 为什么用 Base64：简介里可能有制表符/换行/任意 Unicode，转义只会更麻烦。
+     * 放卡目录里（`.meta`）不进 `list()`（那里只认 `.png`）。
+     */
+    private fun readMeta(): MutableMap<String, CardInfo> {
+        val map = mutableMapOf<String, CardInfo>()
+        val file = File(dir, META_FILE)
+        if (!file.isFile) return map
+        runCatching {
+            file.readLines(Charsets.UTF_8).forEach { line ->
+                val parts = line.split('\t')
+                if (parts.size != 6) return@forEach
+                val length = parts[1].toLongOrNull() ?: return@forEach
+                val modified = parts[2].toLongOrNull() ?: return@forEach
+                val count = parts[5].toIntOrNull() ?: return@forEach
+                map[parts[0]] = CardInfo(
+                    length = length,
+                    modified = modified,
+                    name = decodeText(parts[3]),
+                    description = decodeText(parts[4]),
+                    bookCount = count,
+                )
+            }
+        }
+        return map
+    }
+
+    private fun writeMeta(map: Map<String, CardInfo>) {
+        runCatching {
+            val text = map.entries.joinToString("\n") { (file, info) ->
+                listOf(
+                    file,
+                    info.length.toString(),
+                    info.modified.toString(),
+                    encodeText(info.name),
+                    encodeText(info.description),
+                    info.bookCount.toString(),
+                ).joinToString("\t")
+            }
+            File(dir, META_FILE).writeText(text, Charsets.UTF_8)
+        }
+    }
+
+    private fun encodeText(raw: String): String =
+        Base64.encodeToString(raw.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+    private fun decodeText(raw: String): String =
+        runCatching { String(Base64.decode(raw, Base64.NO_WRAP), Charsets.UTF_8) }.getOrDefault("")
+
     private fun sanitize(raw: String): String {
         val cleaned = raw.trim()
             .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
@@ -137,6 +244,7 @@ class CardStore(context: Context) : CardRepository {
 
     private companion object {
         const val CARDS_DIR = "cards"
+        const val META_FILE = ".meta"
         const val PREFS = "tavern.cards"
         const val KEY_SEEDED = "seeded"
         const val KEY_SELECTED = "selected"
