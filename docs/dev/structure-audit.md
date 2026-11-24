@@ -7,6 +7,23 @@
 > 有一处不一致（`feature/` 是空目录）、一处过度集中（`ChatViewModel` 1305 行）；
 > 注释总量 16.1%，主体是"决策与踩坑"，**该留**，只有三类需要收。
 
+> ## 修订（2026-11-24 下午，已执行）
+>
+> 用户要求先评估计划再动手，评完重排了三件事的优先级。**下面第一到第八节是评估时的原文，
+> 判定以本节为准**：
+>
+> 1. **`app/AGENTS.md` 不是 21 KB，是 42.4 KB**（`wc -c` = 43,425 字节）—— 第五节的数写错了。
+>    整条 AGENTS 链 = 5.7K + 42.4K + 2.1K + 0.9K = **52.3 KB / 64 KB 上限，已用 82%**，
+>    而且它**每次会话都进上下文**。瘦身从"可做可不做"变成**收益最高**的一件事。
+> 2. **包分层暂缓，不做。** 同一 Gradle 模块内 `internal` 本来就全局可见，包名**拦不住任何依赖**；
+>    而本机编不了 `:app`，30 个文件搬包后漏的每个 `import` 都要等 4 分钟 CI 才暴露。
+>    完整理由见第二节新增的「为什么不搬」。**将来真要拆，只搬引用面小的叶子包**。
+> 3. **`ChatViewModel` 不拆 controller**（1304 行、0 个 composable、`UiState` 是 40 字段的单一
+>    状态机）。拆四个 `StateFlow` + `combine` 会撞上本文第 186 行自己点出的"同帧两次 update"
+>    风险，而 `PageStack` 每帧都给 `UiState` 打快照。改为**只抽纯逻辑**，见第六节。
+> 4. **新增 P0：先验上一批的真机清单，再改代码** —— 否则"UI 本身没做对"和"重构弄坏了"
+>    混在同一次装机里，归因成本翻倍。
+
 ---
 
 ## 一、资源库现状
@@ -48,9 +65,24 @@
 
 ---
 
-## 二、目录分层方案（第 1 轮）
+## 二、目录分层方案（**暂缓 —— 不执行**）
 
-**原则**：不新增 Gradle 模块（这台机器 CI 编译很脆），只做**包分层 + 文件移动**。
+**为什么不搬**（2026-11-24 评估结论）：
+
+- 它**不产生任何约束**。`internal` / `private` 在同模块内全局可见，包名挡不住谁引用谁；
+  "页面之间不许互依"这条现在由 `app/AGENTS.md` 的文字守着，换个目录既不更多也不更少。
+  真正能约束的模块边界，第七节已经决定不建。
+- **成本被低估了**：搬走的每个符号，引用它的文件都要补 `import`（`Style.kt` 的 `Space`/`Radius`/
+  `ListRow` 几乎是全部 24 个页面文件），保守 200+ 行 import。而**本机编不了 `:app`**，
+  漏一条就要等 4 分钟 CI 才报 `Unresolved reference`，一次一条符号。
+- **免费的替代**：**同一包内拆文件不花任何 import 代价**。所以"`Style.kt` 638 行只留 token、
+  行系统搬进 `ListRow.kt`"可以照做（见第九节 P4），收益接近、成本为零。先拆文件，别拆包。
+- **反方向的收益为零**：包分层对运行时、编译时间、可读性（文件名已经都是 `*Screen.kt`）都没影响。
+
+下面的目标结构与迁移清单**保留**，等真出现"要开第二个 app / 要给别人复用"时照此执行，
+且**只搬引用面小的叶子包**（`ui.glass`、`ui.nav`），`ui.theme`（`Space`/`Radius` 到处用）最后搬。
+
+**原方案（存档）**：不新增 Gradle 模块（这台机器 CI 编译很脆），只做**包分层 + 文件移动**。
 `internal` / `private` 的可见性在同模块内不受影响，所以移动是机械操作。
 
 目标结构（`app/src/main/kotlin/app/tavern/` 下）：
@@ -62,7 +94,8 @@ app.tavern
 ├── ui.glass      Glass.kt  LiquidGlass.kt
 ├── ui.component  ActionSheet.kt  ListRow/ListGroup（Style 里的部分）  PageHeader.kt
 │                 ConfirmDeleteDialog.kt（新）  CardAvatar.kt（卡片磨砂条 CardFrost 也在这）
-├── ui.nav        PageStack.kt  SessionTime.kt（列表时间标签）
+├── ui.nav        PageStack.kt  Screen.kt（Destination）
+├── ui.text       SessionTime.kt（时间分级与副行，和导航无关 —— 评估时归错到 ui.nav）
 ├── screen        SessionsScreen · CharactersScreen · SettingsScreen · SettingsPages
 │                 ChatScreen · CharacterDetailScreen · DetailPage · ProfileEditScreen
 │                 CardConfigPageScreen · WorldBookEntriesScreen · CardPickerSheet · CardDetail
@@ -76,7 +109,8 @@ app.tavern
 | `Theme.kt` `Style.kt` `Motion.kt` `ReducedMotion.kt` | `ui.theme` |
 | `Glass.kt` `LiquidGlass.kt` | `ui.glass` |
 | `ActionSheet.kt` `PageHeader.kt` `CardAvatar.kt` | `ui.component` |
-| `PageStack.kt` `Screen.kt` `SessionTime.kt` | `ui.nav` |
+| `PageStack.kt` `Screen.kt` | `ui.nav` |
+| `SessionTime.kt` | `ui.text`（**不是 `ui.nav`**：它是格式化工具，和导航无关） |
 | 12 个 `*Screen.kt` / `SettingsPages.kt` / `DetailPage.kt` / `CardPickerSheet.kt` / `CardDetail.kt` | `screen` |
 | `ChatViewModel.kt` | `vm` |
 | `MainActivity` `TavernApp` `AppGraph` | 留 `app.tavern` |
@@ -88,7 +122,7 @@ app.tavern
 
 ---
 
-## 三、重复清单（第 1 轮顺手做）
+## 三、重复清单（**第 1 轮已做，2026-11-24**）
 
 实测（2026-11-24）：
 
@@ -117,6 +151,11 @@ fun statusBarTop(): Dp
 ```
 
 收益：约 70 行重复消失，且以后改"删除的措辞/颜色"只改一处。
+
+**已做的（2026-11-24）**：`ConfirmDeleteDialog.kt` + `PageHeader.kt` 里的 `statusBarTop()`，
+7 处 `AlertDialog` → 7 处 6 行调用，7 处 `WindowInsets.statusBars…` → 7 处一个函数调用。
+顺手统一了三处不一致（原来只有 `ProfileEditScreen` 的确认钮是红色、两处没写"不能撤销"、
+同一动作两处措辞不同）：确认钮一律 `colorScheme.error`，删会话/删卡各只有**一句**措辞。
 
 ---
 
@@ -156,8 +195,10 @@ fun statusBarTop(): Dp
 1. **复述代码的**（`// 遍历所有项`、`// 设置颜色`）—— 少量，直接删。
 2. **表述与实现漂移的** —— 比 `ListGroup` 注释写"懒加载与非懒加载共用"，实际会话页是直用
    `GroupPiece`。改成"两者共用同一套片（`GroupPiece`）"。
-3. **三处重复的同一结论** —— `app/AGENTS.md`(21KB) + `docs/dev/status.md` + `docs/design/motion.md`
-   都在讲同一批坑。建议：
+3. **三处重复的同一结论** —— `app/AGENTS.md`(**实测 42.4 KB，不是 21 KB**) +
+   `docs/dev/status.md`(22 KB) + `docs/design/motion.md`(8 KB) 都在讲同一批坑。
+   注意 `app/AGENTS.md` 是**每次会话都要进上下文**的文件，整条 AGENTS 链已经
+   52.3 KB / 64 KB 上限（**82%**），再长就会被截断 —— 截断的正好是它。建议：
    - 新建 `docs/dev/pitfalls.md`，把"历史踩坑"按主题归档（玻璃 / 列表 / 转场 / 手势 / 构建）；
    - `app/AGENTS.md` 只留**必须遵守的规则 + 一行理由 + 链接**，目标 **≤12KB**；
    - `status.md` 只留"当前基线 + 待确认项 + 下一步"，历史细节指向 pitfalls。
@@ -167,7 +208,27 @@ fun statusBarTop(): Dp
 
 ---
 
-## 六、`ChatViewModel` 拆分（第 3 轮，中风险）
+## 六、`ChatViewModel`：**不拆 controller，只抽纯逻辑**（2026-11-24 修订）
+
+实测：1304 行、**0 个 `@Composable`**、`UiState` 是**一个 40 字段的扁平 data class**。
+它不是"五件事糊在一起"，它是这个 App 的**单一状态机**。
+
+**为什么不拆**（推翻原文的建议）：
+
+- 拆四个 controller + `combine` 会撞上本文第 186 行自己点出的风险："同一帧两次 `update` 丢字段"；
+- `PageStack` 每帧给 `UiState` 打快照（`snapshots[dest]`），状态源一拆，**同帧内的合并语义就变了**，
+  而这个 VM 是全仓最热路径；
+- 收益是"可读性"，但"AI 每次整文件读 + 1304 行、0 个 composable"这种规模并不难读。
+
+**要动就动这里**（零状态风险）：
+
+- `worldInfoStates` / `globalBookEntries` 两本缓存（世界书扫描状态）→ 抽成独立类，还能进 `:core` 带单测；
+- 流式拼接与落库的那段（`stop()` 附近）→ 抽成纯函数，输入输出都明确；
+- 真要拆文件时**同包内拆**（`ChatViewModel.kt` + `ChatViewModel.WorldBooks.kt`），import 代价为零。
+
+原文存档如下。
+
+---
 
 现在 1305 行，承担五件事：消息与流式、会话列表、主题/采样/外观、模型档案、卡导入。
 建议拆成组合关系（对外仍是一个 `UiState`）：
@@ -216,19 +277,27 @@ ChatViewModel
 
 ---
 
-## 九、分轮计划与验收
+## 九、分轮计划与验收（**2026-11-24 下午修订版**）
 
-| 轮 | 内容 | 风险 | 验收 |
-|---|---|---|---|
-| **第 1 轮** | 包分层（第二节） + `ConfirmDeleteDialog` / `statusBarTop`（第三节） + 修 2~3 处漂移注释 | 低（纯移动 + 抽取，逻辑不变） | 三项本机检查 + CI 编译 + 真机"能进能返回" |
-| **第 2 轮** | `GalleryScreen`（debug 可见）+ `docs/dev/pitfalls.md` + `app/AGENTS.md` 瘦到 ≤12KB | 低（新页不进发布包；文档只搬不改） | CI 编译 + 真机在 debug 包里打开预览页；`app/AGENTS.md` 字节数达标 |
-| **第 3 轮** | 拆 `ChatViewModel`（第六节） | **中高**（最热状态机） | 三项本机检查 + `tools/test-core.sh` + 真机全流程点检 |
-| 之后 | 功能线：P1-5 预设导入 → D 批三级继承 → P0-6 消息操作 → 世界书剩余 | — | 见 `compat-matrix.md` |
+| 顺序 | 内容 | 出包 | 风险 | 验收 |
+|---|---|---|---|---|
+| **P0** | **先在真机走一遍上一批的 10 项**（`status.md` 的「待真机逐项确认」） | — | — | 清单点完；不对的先记下来 |
+| **P1** | `ConfirmDeleteDialog` + `statusBarTop()` + 三处措辞/颜色统一（第三节） | ✅ | 低（纯抽取；**唯一视觉变化**：确认钮统一成红色） | 三项本机检查 + CI 编译 + 真机长按删一条会话、删一张卡 |
+| **P2** | `app/AGENTS.md` 42.4 KB → ≤12 KB + 新建 `docs/dev/pitfalls.md`（第五节） | — | 低（文档只搬不改） | 字节数达标；**规则留在 AGENTS、细节去 pitfalls**（反过来就等于没写） |
+| **P3** | `GalleryScreen`（debug only，材质三根滑杆）（第四节） | ✅ | 低（不进发布包） | debug 包里能打开、扫参数不用重新出包 |
+| **P4** | `Style.kt` 只留 token，行系统搬进**同包**的 `ListRow.kt` | ✅ | 低（同包拆文件 = 零 import） | 本机检查 + CI + 真机三处列表外观不变 |
+| **不做** | 包分层（第二节）、拆 `ChatViewModel` 的 controller（第六节） | — | — | — |
+| 之后 | 功能线：P1-5 预设导入 → D 批三级继承 → P0-6 消息操作 → 世界书剩余 | — | — | 见 `compat-matrix.md` |
+
+**原文存档（2026-11-24 上午）**：第 1 轮 = 包分层 + 抽取；第 2 轮 = GalleryScreen + pitfalls +
+瘦身；第 3 轮 = 拆 ChatViewModel。前两项已按上文重排，第 3 轮取消。
 
 ---
 
 ## 十、每轮开工前的固定动作
 
+0. **上一批还有没真机验过的东西时，不叠重构**（混在一次装机里就分不清是谁坏的）；
+   一次只改一件事 —— 一轮 CI 4 分钟，两件事混在一个提交里，失败原因要翻两遍。
 1. 读 `docs/dev/status.md` 的「接手先看」+ 本文件的「分轮计划」；
 2. 动页面/材质 → 先读 `app/AGENTS.md` 对应那一节（玻璃 / 列表 / 弹层 / 动效）；
 3. 改完跑：`tools/check-core-purity.sh`、`tools/check-kotlin-comments.sh`、
