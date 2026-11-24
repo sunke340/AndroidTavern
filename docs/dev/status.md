@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `ced673d`（tag `apk-m128`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v98-ced673d.apk`（签名固定，可覆盖安装） |
+| 代码 | `75d9062`（tag `apk-m129`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v99-75d9062.apk`（签名固定，可覆盖安装） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块） |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
