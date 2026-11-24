@@ -120,11 +120,17 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
   - 二级/三级页：`GlassDetailScaffold` 里的同一个 host（用该页自己的 `frost`）。
   两处都在**录图层之外**，所以弹层能真的糊住背后内容。
 - **不要在页面里直接 composed 弹层**：它会画在录图层里面，玻璃采样会采到自己这一帧。
-- 弹层参数：上两角 24dp 圆角、`shadow = false`、走液态玻璃默认参数；遮罩黑 32%、
-  180ms 淡入、点遮罩关闭、`BackHandler` 关闭；滑入 `Motion.Slow/Standard`，减动效时改淡入。
+- 弹层参数：上两角 24dp 圆角、`shadow = false`、**`liquid = LiquidGlassSpec.Sheet`**
+  （faceWhite 0.14，比胶囊的 0.22 更透一档；**单独一份实例，调弹层不连带改胶囊**）；
+  遮罩黑 32%、180ms 淡入、点遮罩关闭、`BackHandler` 关闭；滑入 `Motion.Slow/Standard`，
+  减动效时改淡入。
+- **一级页弹层起来之前，底栏先向下滑走**（`TavernBottomBar(hidden=…)`，180ms；
+  弹层用 `enterDelayMillis = SheetEnterDelayMillis`（180）延后入场；收起时弹层先走、
+  底栏 200ms 后才回来）。两块浮层不叠在一起。
+- 选卡弹层（`CardPickerBody`）也走同一个 `GlassSheetScaffold`，宿主同样在 `TabsRoot`；
+  页面里不要再写 `ModalBottomSheet`。
 - 行内的「删除」只关弹层 + 交给调用方弹确认框，**不直接删**。
 - 目前**没有拖拽关闭**（只能点遮罩或返回键）；要做就照动效文档的两段式（跟手段 1:1 + 松手弹簧）。
-- 选卡弹层（`CardPickerSheet`）还是 `ModalBottomSheet`，想统一可以下一轮搬过来。
 
 ### 列表不要做"出现/消失"的淡入淡出（2026-11-23）
 
@@ -206,7 +212,9 @@ MainScreen（Destination + PageStack）
   标题的 `weight(1f)` 被挤成 0 宽 —— 真机上表现就是"标题消失、只剩一个图标贴在最左"（踩过）。
 - **没有副标题**：数量、空态这类信息交给内容区；
 - 一次性结果（导入成功/失败、删会话、删卡）走 `UiState.notice` → Snackbar，**不进页头**。
-- 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色）：
+- 底栏是自绘的 `TavernBottomBar`（56dp，图标 20dp + 11sp 标签，选中只靠主色 + 一块滑动的
+  14% 主色底块）；**每个 tab 不要自己画底块**（那会变成"消失 + 出现"），也**不要开涟漪**
+  （方形深色会压在滑动中的紫块上）：
   Material3 的 `NavigationBar` 固定 80dp、带胶囊指示器，压不矮。底栏与页头胶囊共用 `GlassSurface`。
 - 颜色/间距/圆角一律取自 `Theme.kt`（`ThemePreset`）与 `Style.kt`（`Space`/`Radius`），不要在页面里写死。
 - 多选项控件用 `SegmentedRow`（每项 `weight(1f)`）：**宽度均分铺满**，不要再用 FilterChip 拼一排。
