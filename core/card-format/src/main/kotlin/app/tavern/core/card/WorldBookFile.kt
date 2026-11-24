@@ -3,6 +3,7 @@ package app.tavern.core.card
 import app.tavern.core.lorebook.LorebookEntry
 import app.tavern.core.lorebook.LorebookPosition
 import app.tavern.core.lorebook.SelectiveLogic
+import app.tavern.core.lorebook.WorldBookDecorators
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -30,13 +31,15 @@ public fun parseWorldBook(name: String, json: String): WorldBookFile {
     val parsed = entries.entries.mapIndexedNotNull { rowIndex, (key, value) ->
         val obj = value as? JsonObject ?: return@mapIndexedNotNull null
         val uid = obj.int("uid") ?: key.toIntOrNull() ?: rowIndex
+        // 正文开头的 @@ 装饰器：原版在加载时就剥掉并单独记下来（world-info.js:4629）
+        val (decorators, content) = WorldBookDecorators.parse(obj.string("content"))
 
         LorebookEntry(
             world = name,
             uid = uid,
             keys = obj.stringList("key"),
             secondaryKeys = obj.stringList("keysecondary"),
-            content = obj.string("content"),
+            content = content,
             constant = obj.bool("constant") ?: false,
             selective = obj.bool("selective") ?: false,
             order = obj.int("order") ?: 100,
@@ -68,6 +71,7 @@ public fun parseWorldBook(name: String, json: String): WorldBookFile {
             matchCharacterDepthPrompt = obj.bool("matchCharacterDepthPrompt") ?: false,
             matchScenario = obj.bool("matchScenario") ?: false,
             matchCreatorNotes = obj.bool("matchCreatorNotes") ?: false,
+            decorators = decorators,
         )
     }
 

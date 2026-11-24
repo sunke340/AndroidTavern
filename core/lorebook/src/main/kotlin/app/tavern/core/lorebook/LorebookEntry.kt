@@ -125,6 +125,11 @@ public class LorebookEntry(
     public val matchCharacterDepthPrompt: Boolean = false,
     public val matchScenario: Boolean = false,
     public val matchCreatorNotes: Boolean = false,
+    /**
+     * 正文开头的 `@@` 装饰器（[WorldBookDecorators.parse] 的结果，含 `@@` 前缀）。
+     * 目前只认 `@@activate` / `@@dont_activate`；解析时这两行已经从 [content] 里剥掉了。
+     */
+    public val decorators: List<String> = emptyList(),
 ) {
     /** 唯一标识，格式与原版 `world.uid` 一致。 */
     public val id: String get() = "$world.$uid"
@@ -172,4 +177,5 @@ public fun LorebookEntry.withDisabled(disabled: Boolean): LorebookEntry = Lorebo
     matchCharacterDepthPrompt = matchCharacterDepthPrompt,
     matchScenario = matchScenario,
     matchCreatorNotes = matchCreatorNotes,
+    decorators = decorators,
 )

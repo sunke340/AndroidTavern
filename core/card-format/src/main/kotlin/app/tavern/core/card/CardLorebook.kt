@@ -1,6 +1,7 @@
 package app.tavern.core.card
 
 import app.tavern.core.lorebook.LorebookEntry
+import app.tavern.core.lorebook.WorldBookDecorators
 import app.tavern.core.lorebook.LorebookPosition
 import app.tavern.core.lorebook.SelectiveLogic
 import kotlinx.serialization.json.JsonArray
@@ -36,12 +37,15 @@ public fun CharacterCard.lorebookEntries(): List<LorebookEntry> {
             else -> 0
         }
 
+        // 卡内嵌书的正文同样可能有 @@ 装饰器（原版加载时统一 parseDecorators）
+        val (decorators, content) = WorldBookDecorators.parse(entry.string("content"))
+
         LorebookEntry(
             world = world,
             uid = entry.int("id") ?: index,
             keys = entry.stringList("keys"),
             secondaryKeys = entry.stringList("secondary_keys"),
-            content = entry.string("content"),
+            content = content,
             constant = entry.bool("constant") ?: false,
             selective = entry.bool("selective") ?: false,
             order = entry.int("insertion_order") ?: 100,
@@ -74,6 +78,7 @@ public fun CharacterCard.lorebookEntries(): List<LorebookEntry> {
             matchCharacterDepthPrompt = extensions.bool("match_character_depth_prompt") ?: false,
             matchScenario = extensions.bool("match_scenario") ?: false,
             matchCreatorNotes = extensions.bool("match_creator_notes") ?: false,
+            decorators = decorators,
         )
     }
 }

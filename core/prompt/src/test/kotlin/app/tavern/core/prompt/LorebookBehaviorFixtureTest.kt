@@ -3,6 +3,8 @@ package app.tavern.core.prompt
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.lorebookEntries
+import app.tavern.core.card.parseWorldBook
+import app.tavern.core.lorebook.LorebookEntry
 import app.tavern.core.lorebook.LorebookGlobalScanData
 import app.tavern.core.lorebook.LorebookScanResult
 import app.tavern.core.lorebook.LorebookScanner
@@ -59,6 +61,10 @@ class LorebookBehaviorFixtureTest {
     fun `P1-3 delay 到期后激活`() = assertFixture("P1-3-delay-passed")
 
     @Test
+    fun `P1-3 装饰器 activate 不看关键字、dont_activate 命中也不激活`() =
+        assertFixture("P1-3-decorators")
+
+    @Test
     fun `P1-4 token 预算把超出的条目挡在外面`() = assertFixture("P1-4-budget")
 
     private fun assertFixture(id: String) {
@@ -113,7 +119,8 @@ class LorebookBehaviorFixtureTest {
         )
 
         val scanner = LorebookScanner()
-        val entries = card.lorebookEntries()
+        // 夹具挂了全局世界书时（`_meta.world`），条目 = 卡内嵌书 + 全局书（原版 character_first 顺序）
+        val entries = card.lorebookEntries() + worldEntries(id, meta["world"]?.jsonPrimitive?.content)
         var state = app.tavern.core.lorebook.LorebookScanState()
         var result: LorebookScanResult? = null
 
@@ -128,6 +135,17 @@ class LorebookBehaviorFixtureTest {
         if (actual != expected) {
             throw AssertionError(diffReport(id, actual, expected))
         }
+    }
+
+    /**
+     * 全局世界书条目：优先按夹具 id 找 `fixtures/worldinfo/<id>-world.json`
+     * （原版自己转换出来的文件形态），找不到就返回空 —— 卡内嵌书的夹具不需要它。
+     */
+    private fun worldEntries(id: String, world: String?): List<LorebookEntry> {
+        if (world.isNullOrBlank()) return emptyList()
+        val file = repoRoot.resolve("fixtures/worldinfo/$id-world.json")
+        if (!Files.exists(file)) return emptyList()
+        return parseWorldBook(world, Files.readString(file)).entries
     }
 
     private fun diffReport(id: String, actual: List<ChatMessage>, expected: List<ChatMessage>): String =
@@ -156,6 +174,7 @@ class LorebookBehaviorFixtureTest {
             "P1-3-sticky" to "P1-3-timed",
             "P1-3-cooldown" to "P1-3-timed",
             "P1-3-delay-passed" to "P1-3-delay",
+            "P1-3-decorators" to "P0-5-synthetic",
         )
     }
 

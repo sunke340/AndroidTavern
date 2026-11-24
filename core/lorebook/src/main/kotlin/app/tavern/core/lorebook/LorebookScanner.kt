@@ -12,7 +12,7 @@ import kotlin.random.Random
  * - 计时效果（sticky/cooldown/delay）：`WorldInfoTimedEffects`（479–793）
  *
  * 刻意没做的（都在矩阵里记着，不假装做了）：
- * - `@@` 装饰器（原版 `parseDecorators`，4652）还没解析，带装饰器的条目会原样带出去；
+ * - `@@` 装饰器（原版 `parseDecorators`，4652）已解析：[WorldBookDecorators]，只认 activate/dont_activate；
  * - 条目内容在注入前的正则改写（原版 `getRegexedString`，属正则脚本特性，P1-11）；
  * - outlet 位置只记录、不注入；
  * - token 计数默认是 4 字符≈1 token 的估值，接上 `:core:tokenizer` 之前预算只能算近似。
@@ -91,6 +91,14 @@ public class LorebookScanner(private val random: Random = Random.Default) {
                 if (scanState != ScanState.Recursion && entry.delayUntilRecursion > 0 && !isSticky) continue
                 if (scanState == ScanState.Recursion && entry.delayUntilRecursion > currentDelayLevel && !isSticky) continue
                 if (scanState == ScanState.Recursion && settings.recursive && entry.excludeRecursion && !isSticky) continue
+
+                // @@ 装饰器（原版 world-info.js:4875）：@activate 不看关键字、@dont_activate 一律不激活。
+                // 位置照抄原版 —— 在 constant / sticky / 关键字判断**之前**，所以它会盖过 constant。
+                if (entry.decorators.contains(WorldBookDecorators.ACTIVATE)) {
+                    activatedNow += entry
+                    continue
+                }
+                if (entry.decorators.contains(WorldBookDecorators.DONT_ACTIVATE)) continue
 
                 if (entry.constant) {
                     activatedNow += entry
