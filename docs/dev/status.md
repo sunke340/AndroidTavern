@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `3c6f750`（tag `apk-m134`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v104-3c6f750.apk`（签名固定，覆盖安装已验证多次） |
+| 代码 | `4cdf759`（tag `apk-m135`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v105-4cdf759.apk`（签名固定，覆盖安装已验证多次） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -47,8 +47,9 @@
 | 设置里的导入在右上圆钮 | 预设 / 世界书 / 正则 三页：右上「+」，页面里不再有底部导入条 | `SettingsPages.kt` |
 | 世界书条目页改用通用行 | 设置→世界书→点一本书：分组面板 + 行尾开关 + 两行预览 | `WorldBookEntriesScreen.kt` |
 | 内嵌世界书与全局同形状 | 角色详情→配置→内嵌世界书：正文两行预览 + 行尾开关，页头带「N 条」（原来左侧复选框、一行关键字） | `WorldBookEntryRow.kt` |
-| 世界书三态开关 + 批量菜单 | 两个条目页右上「⋮」→ 全部开启 / 全部关闭 / 恢复默认；卡里关着的条目打开后整行淡红、开关变红、副行写「强制开启」 | `WorldBookEntryRow.kt` / `ChatViewModel` 的 `setAll*` |
-| 卡里没写 `enabled` 的条目现在显示为关 | 以前显示开着但从不生效；现在副行写「卡里默认关闭」，打开即强制开启 | `CardBookEntriesTest` |
+| 世界书三态开关 + 批量菜单 | 两个条目页右上「⋮」→ 全部开启 / 全部关闭 / 恢复默认；卡里关着的条目打开后整行淡红、开关变红、开关下面写「强制开启」 | `WorldBookEntryRow.kt` / `ChatViewModel` 的 `setAll*` |
+| 卡里没写 `enabled` 的条目现在显示为关 | 以前显示开着但从不生效；现在开关下面写「默认关闭」，打开即强制开启 | `CardBookEntriesTest` |
+| 世界书条目页页头不再透出列表 | 两页的页头现在一样是实心色罩，行从页头下面才开始（原来全局书那页能透出 6%） | `WorldBookEntriesScreen.kt` |
 
 ## 下一步
 
