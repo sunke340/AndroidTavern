@@ -94,18 +94,18 @@ object RowToken {
     val dividerInset: Dp = 12.dp
 }
 
-/** 行标题 15sp / 600：比 titleSmall（14sp/500）重一档，扫列表时先看到名字。 */
-private val RowTitleStyle = TextStyle(
+/** 行标题 15sp / 600：比 titleSmall（14sp/500）重一档，扫列表时先看到名字。角色卡名字同档。 */
+internal val RowTitleStyle = TextStyle(
     fontSize = 15.sp,
     lineHeight = 21.sp,
     fontWeight = FontWeight.SemiBold,
 )
 
 /** 行副行 12sp / 17sp：原来是 labelSmall（11sp），在 3.5 倍密度上偏小。 */
-private val RowSubtitleStyle = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
+internal val RowSubtitleStyle = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
 
 /** 行尾时间 11sp / 500 + 等宽数字（`tnum`）：时间刷新时右对齐的那一列不会左右抖。 */
-private val RowMetaStyle = TextStyle(
+internal val RowMetaStyle = TextStyle(
     fontSize = 11.sp,
     lineHeight = 16.sp,
     fontWeight = FontWeight.Medium,
@@ -183,6 +183,30 @@ fun CapsuleIcon(
             modifier = Modifier.size(20.dp),
         )
     }
+}
+
+/**
+ * 按压强度 0..1：**按下当帧满色**，松开再淡回去。
+ *
+ * 之前按下和松开都走 120ms 的 tween —— 一次点按只有 80~120ms，抬手时底色还没长到能看见，
+ * 人已经到二级页了（用户 2026-11-24："还没出现就进去了"）。
+ * 反馈属于"必须跟手"的那一类，不该有进入时长；退出时长只为不留一块硬色。
+ *
+ * 行（白面板上盖 7% 主色）与角色卡（图上压 8% 黑）共用这一套手感。
+ */
+@Composable
+fun rememberPressTint(source: MutableInteractionSource): Float {
+    val pressed by source.collectIsPressedAsState()
+    val tint by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = if (pressed) {
+            snap()
+        } else {
+            tween(Motion.Fast + 40, easing = Motion.Decelerate)
+        },
+        label = "press-tint",
+    )
+    return tint
 }
 
 /**
@@ -378,20 +402,7 @@ fun ListRow(
     onLongClick: (() -> Unit)? = null,
 ) {
     val press = remember { MutableInteractionSource() }
-    val pressed by press.collectIsPressedAsState()
-    // 按下**立即**满色，松开才淡回去。
-    // 之前两侧都是 120ms 的 tween：点一下通常 80~120ms 就抬手并跳页，底色还没长到能看见
-    // 就已经进二级页了（用户 2026-11-24："还没出现就进去了"）。
-    // 反馈属于"必须跟手"的那一类，不该有进入时长；退出时长只为不留一块硬色。
-    val tint by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = if (pressed) {
-            snap()
-        } else {
-            tween(Motion.Fast + 40, easing = Motion.Decelerate)
-        },
-        label = "row-tint",
-    )
+    val tint = rememberPressTint(press)
     val tintColor = MaterialTheme.colorScheme.primary
 
     Row(

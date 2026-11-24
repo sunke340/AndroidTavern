@@ -1,39 +1,58 @@
 package app.tavern
 
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.tavern.data.cards.CardRef
 
 /**
- * 角色卡网格：两列，每格是卡图（3:4）+ 名字 + 简介。
+ * 角色卡网格：两列，每格是一张满幅卡图（3:4），名字与元信息压在图底部的一条磨砂条上。
  *
- * 视觉按 C 方向：白底卡片 + 1px 描边，不用阴影（"线感"而不是"浮起感"）。
- * 点卡片 → 角色详情；开会话是详情页里的显式动作。
+ * 为什么不再写角色描述：多数卡这里写的是人设正文，截两行读不出意思，还把卡片撑高
+ * （有描述的卡比没描述的高一截）。副信息换成**会话数 / 内嵌书**——它回答的是
+ * "我聊过这张吗"，而这些数字本来就已经在内存里（会话列表 + 卡的 bookEntryCount）。
+ *
+ * 磨砂条为什么不用 `GlassSurface`：角色卡在内容录图层里，玻璃采的是那一层，
+ * 会采到自己这一帧（页头胶囊"无限套娃"就是这么来的）。这里用预先解出的 ~32px 小图
+ * 放大画回去 —— 真糊、便宜（5KB/张）、不碰图层时序。详见 [CardFrost]。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CharactersScreen(
     state: ChatViewModel.UiState,
@@ -43,66 +62,175 @@ fun CharactersScreen(
     // 悬浮底栏压在内容上，网格底部要让出它的高度。
     bottomPadding: Dp = 0.dp,
 ) {
-    val palette = LocalTavernPalette.current
     // 页头一直铺到状态栏后面，网格要让出"状态栏 + 页头"的高度
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val overscroll = rememberRubberOverscroll()
 
-    LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
-            state = gridState,
-            contentPadding = PaddingValues(
-                start = Space.l,
-                end = Space.l,
-                top = PageHeaderHeight + Space.s + statusBar,
-                bottom = Space.l + bottomPadding,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
-            verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
+    // 长按出的抽屉与删除确认：与会话、世界书、模型档案同一个手势
+    var actionTarget by remember { mutableStateOf<CardRef?>(null) }
+    var pendingDelete by remember { mutableStateOf<CardRef?>(null) }
+    // 每张卡有几个会话：直接数已经加载的会话列表，不再多查一次库
+    val sessionCounts = remember(state.sessions) {
+        state.sessions.groupingBy { it.cardId }.eachCount()
+    }
+
+    if (state.cards.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = Space.l)
+                .padding(top = PageHeaderHeight + Space.l + statusBar),
         ) {
-            items(state.cards, key = { it.id }) { card ->
-                val shape = RoundedCornerShape(Radius.card)
-                Column(
-                    modifier = Modifier
-                        // 只做"位置变化"动画，**不要出现/消失的淡入淡出**（2026-11-23 用户报：
-                        // 从二级页返回时卡片"颜色由浅到深"再显出来）。换页时这棵子树是重建的，
-                        // 新的 LazyGrid 会被测两遍，第二遍里所有 item 对动画器都是"第一次见"
-                        // → fadeInSpec 把它们整体从 alpha 0 淡上来。传 null 就只留 placement。
-                        .animateItem(
-                            fadeInSpec = null,
-                            placementSpec = tween(Motion.Slow, easing = Motion.Standard),
-                            fadeOutSpec = null,
-                        )
-                        .fillMaxWidth()
-                        .clip(shape)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, palette.cardBorder, shape)
-                        .clickable { viewModel.openDetail(card.id) },
-                ) {
-                    CardAvatar(
-                        cardId = card.id,
-                        fallbackText = card.name,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+            EmptyHint("还没有角色卡。点右上「＋」导入一张 ST 的 PNG 卡。")
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize().rubberOverscroll(overscroll),
+        state = gridState,
+        contentPadding = PaddingValues(
+            start = Space.l,
+            end = Space.l,
+            top = PageHeaderHeight + Space.s + statusBar,
+            bottom = Space.l + bottomPadding,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
+    ) {
+        items(state.cards, key = { it.id }) { card ->
+            val press = remember { MutableInteractionSource() }
+            val tint = rememberPressTint(press)
+            val count = sessionCounts[card.id] ?: 0
+
+            Box(
+                modifier = Modifier
+                    // 只做"位置变化"动画，**不要出现/消失的淡入淡出**（2026-11-23 用户报：
+                    // 从二级页返回时卡片"颜色由浅到深"再显出来）。换页时这棵子树是重建的，
+                    // 新的 LazyGrid 会被测两遍，第二遍里所有 item 对动画器都是"第一次见"
+                    // → fadeInSpec 把它们整体从 alpha 0 淡上来。传 null 就只留 placement。
+                    .animateItem(
+                        fadeInSpec = null,
+                        placementSpec = tween(Motion.Slow, easing = Motion.Standard),
+                        fadeOutSpec = null,
                     )
-                    Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = Space.s)) {
-                        Text(
-                            card.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                        )
-                        // 没有描述就不画这一行：之前用"（这张卡没有描述）"占位，
-                        // 满屏都是同一句假话，还读起来像卡坏了（2026-11-24 列表改版）
-                        if (card.description.isNotBlank()) {
-                            Text(
-                                card.description,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                            )
-                        }
-                    }
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.group))
+                    .combinedClickable(
+                        interactionSource = press,
+                        indication = null,
+                        onClick = { viewModel.openDetail(card.id) },
+                        onLongClick = { actionTarget = card },
+                    ),
+            ) {
+                CardAvatar(
+                    cardId = card.id,
+                    fallbackText = card.name,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                )
+                CardBand(
+                    cardId = card.id,
+                    name = card.name,
+                    meta = buildString {
+                        append(if (count == 0) "未开始" else "$count 个会话")
+                        if (card.bookEntryCount > 0) append(" · 内嵌书 ${card.bookEntryCount} 条")
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+                // 按压：图上压 8% 黑（白面板才用主色底，图上盖紫会染色）
+                if (tint > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(Color.Black.copy(alpha = 0.08f * tint)),
+                    )
                 }
             }
+        }
+    }
+
+    actionTarget?.let { card ->
+        ActionSheet(
+            title = card.name,
+            onDismiss = { actionTarget = null },
+            actions = listOf(
+                SheetAction("开始新会话") { viewModel.startSessionForCard(card.id) },
+                SheetAction("查看详情") { viewModel.openDetail(card.id) },
+                SheetAction("删除角色卡", destructive = true) { pendingDelete = card },
+            ),
+        )
+    }
+
+    pendingDelete?.let { card ->
+        val count = sessionCounts[card.id] ?: 0
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除角色卡？") },
+            text = {
+                Text("「${card.name}」和它的 $count 个会话会一起从应用里删掉，不能撤销。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        viewModel.deleteCard(card.id)
+                    },
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+/** 卡图底部那条磨砂条的高度：名字一行 + 元信息一行 + 上下留白。 */
+private val CardBandHeight: Dp = 56.dp
+
+/**
+ * 卡图底部的磨砂条：糊图 + 跟主题的半透明面 + 一条上沿亮线 + 名字与元信息。
+ *
+ * 层次是固定的：糊图 → 面 → 亮线 → 文字。亮线是这个材质"玻璃边缘"的唯一暗示，
+ * 别加投影（卡片本身不浮起，见 C 方向"线感不浮起"）。
+ */
+@Composable
+private fun CardBand(
+    cardId: String,
+    name: String,
+    meta: String,
+    modifier: Modifier = Modifier,
+) {
+    val surface = MaterialTheme.colorScheme.surface
+    Box(modifier = modifier.fillMaxWidth().height(CardBandHeight)) {
+        CardFrost(cardId = cardId, modifier = Modifier.matchParentSize())
+        Box(Modifier.matchParentSize().background(surface.copy(alpha = 0.72f)))
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.28f)),
+        )
+        Column(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 11.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = name,
+                style = RowTitleStyle,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = meta,
+                style = RowMetaStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }

@@ -27,6 +27,9 @@ import kotlinx.coroutines.withContext
 /** 头像缓存：卡 PNG 的缩略图。16 张足够撑满一屏两列网格。 */
 private val avatarCache = LruCache<String, ImageBitmap>(16)
 
+/** 磨砂素材缓存：极小的缩略图（宽 ~32px）。放大画回去就是"糊"，不依赖 RenderEffect。 */
+private val frostCache = LruCache<String, ImageBitmap>(16)
+
 /**
  * 角色卡头像——就是卡本身那张 PNG，解码缩到 ~320px。
  *
@@ -72,6 +75,41 @@ fun CardAvatar(cardId: String, fallbackText: String, modifier: Modifier = Modifi
         ) {
             Text(fallbackText.take(1), style = MaterialTheme.typography.titleLarge)
         }
+    }
+}
+
+/**
+ * 磨砂底片：把同一张卡解成 ~32px 的小图，放大画回去就是糊的。
+ *
+ * 为什么不用 `GlassSurface`（全 App 的磨砂都走它）：角色卡在**内容录图层**里面，
+ * 玻璃采样的是那一层 —— 会采到自己这一帧（页头胶囊"无限套娃"就是这么来的）。
+ * 预先解一次小图是这里唯一既真糊、又便宜（5KB/张）、又不碰图层时序的办法。
+ */
+@Composable
+fun CardFrost(cardId: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val repository = remember(context) { AppGraph.cards(context) }
+
+    val bitmap by produceState(initialValue = frostCache.get(cardId), cardId) {
+        if (value != null) return@produceState
+        val decoded = withContext(Dispatchers.IO) {
+            frostCache.get(cardId) ?: run {
+                val bytes = repository.load(cardId) ?: return@run null
+                decodeSampled(bytes, target = 24)?.asImageBitmap()?.also { frostCache.put(cardId, it) }
+            }
+        }
+        if (decoded != null) value = decoded
+    }
+
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+            // 卡片底部那条磨砂要的是"这张图的下半截"，所以对齐到底部再裁
+            alignment = Alignment.BottomCenter,
+        )
     }
 }
 
