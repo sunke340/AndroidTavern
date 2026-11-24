@@ -1,15 +1,25 @@
 package app.tavern
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -24,28 +34,41 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-/** 顺序列表里一行的高度。拖动库自己按测量结果算，不再需要我们按行高推位次。 */
-private val OrderRowHeight = 56.dp
+/** 一行的高度。拖动库自己按测量结果定位，不再需要我们按行高推位次。 */
+private val PromptRowHeight = 60.dp
 
 /**
  * 编辑预设（二级页）：一行一段提示词，行尾开关控制发不发，**长按整行拖动换位**。
  *
- * **列表就是这一页本身**，不套在任何固定高度的框里：整页只有这一个滚动区，
- * 内容会从玻璃页头下面滚过去。之前那版把 `LazyColumn` 塞进 `heightIn(max = 480.dp)` 的框里，
- * 底下还垫着一个不滚动的 `Column` —— 看起来像开了个"小窗口"，滚动手感也变成两层。
- * 所以现在用 `contentTopInset = 0.dp` + `contentPadding` 让位（聊天页也是这个套路）。
+ * ## 这里**不用**分组面板（`GroupPiece`）
  *
- * 拖动用 [ReorderableItem]（`sh.calvin.reorderable`）：位次、边缘自动滚、换位动画都是它做。
- * 两个约束：
- * 1. `onMove` 里**同步**改完列表（我们的 `movePrompt` 直接改 `MutableStateFlow`），
- *    否则被拎起来的那行会闪一帧；
- * 2. **松手才落盘**（`commitPromptOrder`）—— 拖动中每次换位都写 SharedPreferences 太浪费。
+ * 会话 / 设置那种列表是"同一个实体的多行"，分组面板对：一整个圆角容器、内部用分隔线，
+ * 首尾两片带圆角、中间两片是直角。但**可拖动排序的列表是"一叠独立对象"**：
+ * 一拎起来，那片的形状就会从"直角"变成"带头尾圆角"，看着像被人从整块里裁了一条出来；
+ * 而其余行又原地不动，更像裁剪而不是"挪走一个东西"。所以这一页改成**每行一张独立卡片**：
+ *
+ * - 每行自己就是完整的圆角矩形（`Radius.card`）+ 1dp 描边，行与行之间 8dp 间距；
+ * - 拖动时那张卡**抬起来**：投影 0 → 10dp、缩放 1.00 → 1.03（都用 `Motion.Fast`），
+ *   画在同层最上面（`zIndex`），于是它在视觉上离开纸面、盖住邻居；
+ * - 松手落回：投影与缩放同时收回去，卡片在原位。
+ *
+ * 形状、圆角、间距在拖动前后**完全一样**，所以不会有"跳变"。
+ *
+ * ## 其它约束
+ *
+ * - `onMove` 里**同步**改完列表（`movePrompt` 直接改 `MutableStateFlow`），否则被拎起来那行会闪；
+ * - **松手才落盘**（`commitPromptOrder`），拖动中每次换位都写 SharedPreferences 太浪费；
+ * - 恢复默认在页头右上角的圆钮菜单里（列表既然是整页，底部不再挂按钮）。
  */
 @Composable
 fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
@@ -54,7 +77,6 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
         viewModel.movePrompt(from.index, to.index)
     }
-    // 恢复默认放在右上角：这一页的主体是列表，底部再挂一个按钮会把"列表就是页面"又切一刀
     var menuOpen by remember { mutableStateOf(false) }
 
     GlassDetailScaffold(
@@ -86,45 +108,108 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = padding.calculateTopPadding() + DetailHeaderHeight + Space.s,
+                top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
                 bottom = padding.calculateBottomPadding() + Space.xl,
             ),
+            // 卡片之间留缝：有了缝，"每行是一张卡"才看得出来
+            verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            itemsIndexed(state.promptOrder, key = { _, entry -> entry.identifier }) { index, entry ->
+            itemsIndexed(state.promptOrder, key = { _, entry -> entry.identifier }) { _, entry ->
                 ReorderableItem(reorderState, key = entry.identifier) { isDragging ->
-                    GroupPiece(
-                        piece = rowPieceAt(index, state.promptOrder.size),
+                    val lift by animateDpAsState(
+                        targetValue = if (isDragging) 10.dp else 0.dp,
+                        animationSpec = tween(Motion.Fast),
+                        label = "prompt-lift",
+                    )
+                    val scale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.03f else 1f,
+                        animationSpec = tween(Motion.Fast),
+                        label = "prompt-scale",
+                    )
+                    PromptOrderCard(
+                        label = promptLabel(entry.identifier),
+                        enabled = entry.enabled,
+                        dragging = isDragging,
+                        lift = lift,
+                        scale = scale,
+                        onToggle = { viewModel.setPromptEnabled(entry.identifier, it) },
                         modifier = Modifier.zIndex(if (isDragging) 1f else 0f),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(OrderRowHeight)
-                                // 拖动中铺一层不透明底，否则被拎起来的那行会透出下面的分隔线
-                                .background(
-                                    if (isDragging) {
-                                        MaterialTheme.colorScheme.surface
-                                    } else {
-                                        Color.Transparent
-                                    },
-                                )
-                                .longPressDraggableHandle(onDragStopped = viewModel::commitPromptOrder)
-                                .padding(horizontal = RowToken.padH),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = promptLabel(entry.identifier),
-                                style = RowTitleStyle,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Switch(
-                                checked = entry.enabled,
-                                onCheckedChange = { viewModel.setPromptEnabled(entry.identifier, it) },
-                            )
-                        }
-                    }
+                        onCommit = viewModel::commitPromptOrder,
+                        // 长压拖拽的 modifier 只在这个 scope 里可见，得把它一起传下去
+                        scope = this,
+                    )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 一张提示词卡：名字 + 开关 + 右侧抓握纹。
+ *
+ * 长压整张卡就能拖（见 [PresetEditScreen] 的注释）。右下角那三道横线只是**暗示**：
+ * 它不可点、不接管手势，纯视觉 —— 没有它的话"这行能拖"完全没有线索。
+ */
+@Composable
+private fun PromptOrderCard(
+    label: String,
+    enabled: Boolean,
+    dragging: Boolean,
+    lift: Dp,
+    scale: Float,
+    onToggle: (Boolean) -> Unit,
+    onCommit: () -> Unit,
+    scope: ReorderableCollectionItemScope,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(Radius.card)
+    val borderColor = LocalTavernPalette.current.cardBorder
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(PromptRowHeight)
+            // 投影与缩放都走 graphicsLayer：拖动时这张卡要"浮"在同层之上
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.shape = shape
+                shadowElevation = lift.toPx()
+            }
+            .background(MaterialTheme.colorScheme.surface, shape)
+            .border(1.dp, borderColor, shape)
+            .then(with(scope) { Modifier.longPressDraggableHandle(onDragStopped = onCommit) })
+            .padding(start = Space.m, end = Space.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = RowTitleStyle,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(checked = enabled, onCheckedChange = onToggle)
+        Spacer(Modifier.width(Space.xs))
+        DragGrip(highlighted = dragging)
+    }
+}
+
+/** 抓握纹：三道横线。只是"这里能拖"的暗示，不接管任何手势。 */
+@Composable
+private fun DragGrip(highlighted: Boolean) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+        alpha = if (highlighted) 0.9f else 0.45f,
+    )
+    Canvas(modifier = Modifier.size(width = 16.dp, height = 18.dp)) {
+        val stroke = 1.5.dp.toPx()
+        val gap = size.height / 3f
+        for (i in 0..2) {
+            val y = gap * i + gap / 2f
+            drawLine(
+                color = color,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
