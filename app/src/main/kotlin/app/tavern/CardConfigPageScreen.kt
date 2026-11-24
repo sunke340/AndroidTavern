@@ -1,6 +1,5 @@
 package app.tavern
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,14 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,7 +23,6 @@ import androidx.compose.ui.unit.dp
  * 结构照全局设置：一级「配置」只是入口行，控件放这里。
  * 以后接三级继承（会话 > 卡 > 全局）时，这里的"跟随全局"就是继承入口。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val page = state.cardConfigPage ?: return
@@ -64,33 +56,30 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
     val entries = detail?.bookEntries.orEmpty()
     val disabled = detail?.disabledEntries.orEmpty()
 
-    SectionLabel("这张卡的内嵌世界书（${entries.size} 条）")
     if (entries.isEmpty()) {
         EmptyHint("这张卡没有内嵌世界书。")
         return
     }
 
-    entries.forEach { entry ->
-        val enabled = entry.index !in disabled
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { viewModel.setBookEntryEnabled(cardId, entry.index, !enabled) },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(
-                checked = enabled,
-                onCheckedChange = { viewModel.setBookEntryEnabled(cardId, entry.index, it) },
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(entry.comment, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    entry.keys.joinToString("、").ifBlank { "（没有关键字）" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    // 页面标题本来就是「内嵌世界书」，开头不再放一遍小标题；
+    // 行用通用行系统，和设置里的世界书列表同一套形状与按下反馈。
+    ListGroup(
+        count = entries.size,
+        modifier = Modifier.padding(top = Space.l),
+    ) { index, _ ->
+        val entry = entries[index]
+        ListRow(
+            title = entry.comment,
+            subtitle = entry.keys.joinToString("、").ifBlank { "（没有关键字）" },
+            trailing = {
+                Switch(
+                    checked = entry.index !in disabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.setBookEntryEnabled(cardId, entry.index, enabled)
+                    },
                 )
-            }
-        }
+            },
+        )
     }
 }
 

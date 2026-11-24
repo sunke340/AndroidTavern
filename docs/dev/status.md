@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| 代码 | `b8f04fc`（tag `apk-m131`；结构整理收尾版是 `apk-m118`） |
+| 代码 | `93703e7`（tag `apk-m131`；结构整理收尾版是 `apk-m118`） |
 | 已交付 APK | `artifacts/app-v101-93703e7.apk`（签名固定，可覆盖安装） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |

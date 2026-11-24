@@ -17,21 +17,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import app.tavern.core.model.ModelProfile
@@ -63,14 +56,41 @@ import app.tavern.data.log.AppLog
 fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val page = state.settingsPage ?: return
 
+    // 「导入」统一放右上角胶囊（和模型页「新建」同一个位置）：列表本身就占整页，
+    // 底部再挂一条通栏按钮会把页面又切一刀 —— 预设编辑页是同一个理由。
+    val jsonMime = arrayOf("application/json", "*/*")
+    val worldBookImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importWorldBook(uri)
+    }
+    val regexImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importRegexScripts(uri)
+    }
+    val presetImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importPreset(uri)
+    }
+
     GlassDetailScaffold(
         title = page.title,
         onBack = viewModel::closeSettingsPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        actions = if (page == SettingsPage.Model) {
-            { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建档案") { viewModel.openProfileEditor(null) } }
-        } else {
-            null
+        actions = when (page) {
+            SettingsPage.Model -> {
+                { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建档案") { viewModel.openProfileEditor(null) } }
+            }
+
+            SettingsPage.WorldBook -> {
+                { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "导入世界书") { worldBookImport.launch(jsonMime) } }
+            }
+
+            SettingsPage.Regex -> {
+                { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "导入正则脚本") { regexImport.launch(jsonMime) } }
+            }
+
+            SettingsPage.Preset -> {
+                { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "导入预设") { presetImport.launch(jsonMime) } }
+            }
+
+            else -> null
         },
     ) { padding ->
         val overscroll = rememberRubberOverscroll()
@@ -317,18 +337,18 @@ private fun ThemeSwatch(preset: ThemePreset, selected: Boolean, onClick: () -> U
  */
 @Composable
 private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importWorldBook(uri)
-    }
     // 删除走长按：行尾只留开关，不再塞一个删除图标（那会让每行都很挤，也容易误触）
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     val sheet = LocalSheetController.current
 
-    SectionLabel("全局世界书（${state.worldBooks.size} 本）")
     if (state.worldBooks.isEmpty()) {
-        EmptyHint("还没有全局世界书。导入 PC 版的世界书 .json，打开开关后它对所有会话生效。")
+        EmptyHint("还没有全局世界书。点右上「+」导入 PC 版的世界书 .json，打开开关后它对所有会话生效。")
     } else {
-        ListGroup(count = state.worldBooks.size) { index, _ ->
+        ListGroup(
+            count = state.worldBooks.size,
+            // 页头下面直接顶列表会显得挤，留一点呼吸（和模型页一致）
+            modifier = Modifier.padding(top = Space.l),
+        ) { index, _ ->
             val book = state.worldBooks[index]
             ListRow(
                 title = book.name,
@@ -359,13 +379,6 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
         }
     }
 
-    Spacer(Modifier.height(Space.m))
-    OutlinedButton(
-        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("导入世界书（.json）")
-    }
     pendingDelete?.let { name ->
         ConfirmDeleteDialog(
             title = "删除世界书？",
@@ -388,15 +401,13 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
  */
 @Composable
 private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importRegexScripts(uri)
-    }
-
-    SectionLabel("正则脚本（${state.regexScripts.size} 条）")
     if (state.regexScripts.isEmpty()) {
-        EmptyHint("还没有正则脚本。可以导入 ST 导出的脚本 JSON，或 settings.json 里的 regex 数组。")
+        EmptyHint("还没有正则脚本。点右上「+」导入 ST 导出的脚本 JSON，或 settings.json 里的 regex 数组。")
     } else {
-        ListGroup(count = state.regexScripts.size) { index, _ ->
+        ListGroup(
+            count = state.regexScripts.size,
+            modifier = Modifier.padding(top = Space.l),
+        ) { index, _ ->
             val script = state.regexScripts[index]
             ListRow(
                 title = script.name.ifBlank { script.findRegex },
@@ -412,14 +423,6 @@ private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 },
             )
         }
-    }
-
-    Spacer(Modifier.height(Space.m))
-    OutlinedButton(
-        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("导入正则脚本（.json）")
     }
 }
 
@@ -528,16 +531,13 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  */
 @Composable
 private fun PresetPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importPreset(uri)
-    }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     val sheet = LocalSheetController.current
 
-    SectionLabel("预设")
     // 勾选放左侧（和模型页一致）：分隔线要让出"行内边距 + 圆圈 + 间距"，从标题左缘起
     ListGroup(
         count = state.presets.size + 1,
+        modifier = Modifier.padding(top = Space.l),
         dividerInset = RowToken.padH + 20.dp + Space.m,
     ) { index, _ ->
         if (index == 0) {
@@ -571,14 +571,6 @@ private fun PresetPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 },
             )
         }
-    }
-
-    Spacer(Modifier.height(Space.m))
-    OutlinedButton(
-        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("导入预设（.json）")
     }
 
     if (state.activePreset == null) {
