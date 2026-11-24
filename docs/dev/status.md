@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `f9916ae`（tag `apk-m132`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v102-f9916ae.apk`（签名固定，可覆盖安装） |
+| 代码 | `e9d2349`（tag `apk-m133`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v103-e9d2349.apk`（签名固定，可覆盖安装） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -46,7 +46,7 @@
 | 组件预览页 | 设置→关于→组件预览；拖滑杆松手才变 | `GalleryScreen.kt` |
 | 设置里的导入在右上圆钮 | 预设 / 世界书 / 正则 三页：右上「+」，页面里不再有底部导入条 | `SettingsPages.kt` |
 | 世界书条目页改用通用行 | 设置→世界书→点一本书：分组面板 + 行尾开关 + 两行预览 | `WorldBookEntriesScreen.kt` |
-| 卡片内嵌世界书同形状 | 角色详情→配置→内嵌世界书：行尾开关（原来左侧复选框） | `CardConfigPageScreen.kt` |
+| 内嵌世界书与全局同形状 | 角色详情→配置→内嵌世界书：正文两行预览 + 行尾开关，页头带「N 条」（原来左侧复选框、一行关键字） | `WorldBookEntryRow.kt` |
 
 ## 下一步
 
@@ -61,6 +61,9 @@
 
 ## 已知问题 / 风险（当前）
 
+- **卡内嵌书在"卡里没写 `enabled`"时自相矛盾**：界面按开启显示（`CardBookEntry.enabled` 缺省 true），
+  而扫描器 `lorebookEntries()` 把 `enabled != true` 当关闭 → 那些条目从不会被注入，开关看着没效果。
+  要修得先定"应用内覆盖能不能反向打开卡里关掉的条目"（见卡配置页注释）。
 - **玻璃帧率从未量过**。发黏就给最贵的那块（底栏）单独传 `liquid = null`。
 - **橡皮筋 `flingEaten` 修复未真机验**：拉到底 → 猛甩向上，撞顶后应立即回弹；
   日志 tag `rubber` 里 `回弹 start` 只该出现一次。
