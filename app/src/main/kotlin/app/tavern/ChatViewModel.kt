@@ -239,6 +239,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionConfigOpen: Boolean = false,
         /** 当前这张卡的全部开场白（第一条是 first_mes，其后是备选）。换开场白只读它。 */
         val greetings: List<String> = emptyList(),
+        /**
+         * 最后一条助手消息的 swipe 备选（对齐原版 `swipes[]`：**当前显示的那条也在里面**）。
+         * 只有最后一条能翻 —— 原版 `isMessageSwipeable` 也是这么判的。
+         */
+        val lastSwipes: List<String> = emptyList(),
+        /** 当前显示的是 `lastSwipes` 里的哪一条。 */
+        val lastSwipeId: Int = 0,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -821,6 +828,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             configOverrides.load(ConfigOverrideRepository.card(session.cardId))
         }
 
+        // 最后一条助手消息的 swipe 备选（老库里没有这张表时按"只有当前这一条"处理）
+        val lastAssistant = stored.lastOrNull()?.takeIf { !it.isUser }
+        val savedSwipes = if (lastAssistant != null) {
+            withContext(Dispatchers.IO) { chatRepository.swipes(lastAssistant.id) }
+        } else {
+            emptyList()
+        }
+        val swipes = when {
+            lastAssistant == null -> emptyList()
+            savedSwipes.isEmpty() -> listOf(lastAssistant.content)
+            else -> savedSwipes
+        }
+        val swipeId = lastAssistant
+            ?.let { last -> swipes.indexOf(last.content) }
+            ?.coerceAtLeast(0)
+            ?: 0
+
         _state.update {
             it.copy(
                 sessionId = id,
@@ -841,6 +865,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 sessionOverride = sessionConfig,
                 cardOverride = cardConfig,
                 greetings = loadedCard?.let { greetingsOf(it) }.orEmpty(),
+                lastSwipes = swipes,
+                lastSwipeId = swipeId,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
@@ -1943,7 +1969,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * 唯一区别是**要不要把一条用户消息写进库**（[userText] 为 null 表示不写）。
      * 各抄一份两百行会立刻分叉 —— 世界书、正则、思考强度改一处忘一处。
      */
-    private fun beginCompletion(history: List<ChatMessage>, userText: String?) {
+    private class ReplaceTarget(
+        val rowId: Long,
+        /** 已有的 swipe 备选（新的那条会接在它后面）。 */
+        val base: List<String>,
+        /** 失败时要还原到界面上那条（重新生成把旧的那条先撤下来了）。 */
+        val restore: ChatMessage,
+    )
+
+    private fun beginCompletion(
+        history: List<ChatMessage>,
+        userText: String?,
+        replacing: ReplaceTarget? = null,
+    ) {
         val snapshot = _state.value
         val characterCard = card ?: return
         val sessionId = snapshot.sessionId ?: return
@@ -2016,6 +2054,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             var userMessageId: Long? = null
 
             suspend fun finish(text: String, status: String) {
+                if (replacing != null) {
+                    // 重新生成：不新增一行，改写原来那一行，并把新的一条接进 swipe 备选
+                    if (text.isNotEmpty()) {
+                        val next = replacing.base + text
+                        withContext(Dispatchers.IO) {
+                            chatRepository.updateMessage(replacing.rowId, text)
+                            chatRepository.setSwipes(replacing.rowId, next)
+                        }
+                        refreshSessions()
+                        _state.update { current ->
+                            if (current.sessionId != sessionId) {
+                                current.copy(streamingText = "", isStreaming = false, status = status)
+                            } else {
+                                current.copy(
+                                    transcript = current.transcript +
+                                        ChatMessage(ChatRole.Assistant, text),
+                                    lastSwipes = next,
+                                    lastSwipeId = next.lastIndex,
+                                    streamingText = "",
+                                    isStreaming = false,
+                                    status = status,
+                                )
+                            }
+                        }
+                    } else {
+                        // 一个字都没收到：把撤下去的那条放回来
+                        _state.update { current ->
+                            if (current.sessionId != sessionId) {
+                                current.copy(streamingText = "", isStreaming = false, status = status)
+                            } else {
+                                current.copy(
+                                    transcript = current.transcript + replacing.restore,
+                                    streamingText = "",
+                                    isStreaming = false,
+                                    status = status,
+                                )
+                            }
+                        }
+                        refreshSessions()
+                    }
+                    return
+                }
                 if (text.isNotEmpty()) {
                     withContext(Dispatchers.IO) {
                         chatRepository.append(sessionId, isUser = false, content = text)
@@ -2042,6 +2122,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             suspend fun fail(message: String) {
+                if (replacing != null) {
+                    // 重新生成失败：把撤下去的那条原样放回界面（库里那一行根本没动过）
+                    _state.update { current ->
+                        if (current.sessionId != sessionId) {
+                            current.copy(streamingText = "", isStreaming = false, status = message)
+                        } else {
+                            current.copy(
+                                transcript = current.transcript + replacing.restore,
+                                streamingText = "",
+                                isStreaming = false,
+                                status = message,
+                            )
+                        }
+                    }
+                    refreshSessions()
+                    return
+                }
                 // 刚写进库的用户消息撤回，输入框还原：否则用户重试一次就多一条
                 withContext(Dispatchers.IO) {
                     userMessageId?.let { runCatching { chatRepository.deleteMessage(it) } }
@@ -2162,15 +2259,59 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            val lastStored = stored.lastOrNull()
-            if (lastStored != null && !lastStored.isUser) {
-                withContext(Dispatchers.IO) { chatRepository.deleteMessage(lastStored.id) }
+            val row = stored.lastOrNull()?.takeIf { !it.isUser } ?: run {
+                notify("库里没有可重新生成的那一条")
+                return@launch
             }
-            val trimmed = _state.value.transcript.dropLast(1)
-            _state.update { it.copy(transcript = trimmed, streamingText = "", status = "重新生成中…") }
-            refreshSessions()
-            AppLog.i("chat", "重新生成：撤掉最后一条，历史 ${trimmed.size} 条")
-            beginCompletion(trimmed, userText = null)
+            // 老数据可能还没有 swipe 备选：先把"现在显示的这条"写进去，翻回去才有东西可翻
+            val base = snapshot.lastSwipes.ifEmpty { listOf(row.content) }
+            withContext(Dispatchers.IO) { chatRepository.setSwipes(row.id, base) }
+            val trimmed = snapshot.transcript.dropLast(1)
+            _state.update {
+                it.copy(
+                    transcript = trimmed,
+                    streamingText = "",
+                    status = "重新生成中…",
+                    lastSwipes = base,
+                    lastSwipeId = base.lastIndex,
+                )
+            }
+            AppLog.i("chat", "重新生成：已有 ${base.size} 条备选，生成第 ${base.size + 1} 条")
+            beginCompletion(
+                history = trimmed,
+                userText = null,
+                replacing = ReplaceTarget(row.id, base, last),
+            )
+        }
+    }
+
+    /**
+     * 翻到第 [index] 条 swipe（原版对最后一条消息做 swipe 的语义）。
+     *
+     * 只改这一条消息的正文与 `swipe_id`，不动时间线：备选列表里存的就是全部版本。
+     */
+    fun selectSwipe(index: Int) {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) return
+        val text = snapshot.lastSwipes.getOrNull(index) ?: return
+        if (index == snapshot.lastSwipeId) return
+        val lastIndex = snapshot.transcript.lastIndex
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            stored.lastOrNull()?.let { row ->
+                withContext(Dispatchers.IO) { chatRepository.updateMessage(row.id, text) }
+            }
+            _state.update { current ->
+                if (current.sessionId != sessionId) current
+                else current.copy(
+                    transcript = current.transcript.mapIndexed { i, message ->
+                        if (i == lastIndex) message.copy(content = text) else message
+                    },
+                    lastSwipeId = index,
+                )
+            }
+            AppLog.i("chat", "swipe 切到 ${index + 1}/${snapshot.lastSwipes.size}")
         }
     }
 
@@ -2192,6 +2333,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 if (current.sessionId != sessionId) current
                 else current.copy(
                     transcript = current.transcript.filterIndexed { i, _ -> i != index },
+                    // 删掉最后一条 = swipe 备选也一起没了（库里是 ON DELETE CASCADE）
+                    lastSwipes = if (index == current.transcript.lastIndex) emptyList()
+                    else current.lastSwipes,
+                    lastSwipeId = 0,
                 )
             }
             refreshSessions()
@@ -2221,6 +2366,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 else current.copy(
                     transcript = current.transcript.mapIndexed { i, message ->
                         if (i == index) message.copy(content = text) else message
+                    },
+                    // 改的如果正好是最后一条，swipe 里那一份也要跟着改，否则翻一次就回退成旧文
+                    lastSwipes = if (index == current.transcript.lastIndex &&
+                        current.lastSwipes.isNotEmpty()
+                    ) {
+                        current.lastSwipes.toMutableList().also { it[current.lastSwipeId] = text }
+                    } else {
+                        current.lastSwipes
                     },
                 )
             }

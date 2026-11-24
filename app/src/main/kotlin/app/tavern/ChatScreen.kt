@@ -423,6 +423,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             )
                         }
                     val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
+                    // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
+                    val showSwipeBar = !isGreetingSlot &&
+                        realIndex == state.transcript.lastIndex &&
+                        message.role == ChatRole.Assistant &&
+                        state.lastSwipes.size > 1
                     if (isGreetingSlot) {
                         Column(modifier = itemAnim) {
                             GreetingSwitchBar(
@@ -435,6 +440,20 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 message = message,
                                 style = state.effectiveMessageStyle,
                                 displayText = displayText,
+                            )
+                        }
+                    } else if (showSwipeBar) {
+                        Column(modifier = itemAnim) {
+                            MessageRow(
+                                message = message,
+                                style = state.effectiveMessageStyle,
+                                displayText = displayText,
+                            )
+                            Spacer(Modifier.height(Space.xs))
+                            GreetingSwitchBar(
+                                current = state.lastSwipeId,
+                                total = state.lastSwipes.size,
+                                onSelect = viewModel::selectSwipe,
                             )
                         }
                     } else {

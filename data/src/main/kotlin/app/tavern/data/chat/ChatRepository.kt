@@ -58,6 +58,17 @@ interface ChatRepository {
      */
     fun updateMessage(id: Long, content: String)
 
+    /**
+     * 一条消息的全部 swipe 备选（按顺序）。
+     *
+     * 对齐原版 jsonl 的 `swipes[]`：**当前显示的那一条也在里面**，`swipe_id` 只是下标。
+     * 只有最后一条助手消息会有多个。
+     */
+    fun swipes(messageId: Long): List<String>
+
+    /** 覆盖一条消息的 swipe 备选（不动 `messages.content` 与时间）。 */
+    fun setSwipes(messageId: Long, swipes: List<String>)
+
     /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
     fun deleteSessionsForCard(cardId: String): Int
 }

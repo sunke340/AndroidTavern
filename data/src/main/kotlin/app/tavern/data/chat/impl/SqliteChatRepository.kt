@@ -124,6 +124,39 @@ class SqliteChatRepository(context: Context) : ChatRepository {
         helper.writableDatabase.delete(TavernDatabase.TABLE_MESSAGES, "id = ?", arrayOf(id.toString()))
     }
 
+    override fun swipes(messageId: Long): List<String> {
+        val sql = "SELECT content FROM ${TavernDatabase.TABLE_MESSAGE_SWIPES}" +
+            " WHERE message_id = ? ORDER BY seq ASC"
+        return helper.readableDatabase.rawQuery(sql, arrayOf(messageId.toString())).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+    }
+
+    override fun setSwipes(messageId: Long, swipes: List<String>) {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(
+                TavernDatabase.TABLE_MESSAGE_SWIPES,
+                "message_id = ?",
+                arrayOf(messageId.toString()),
+            )
+            swipes.forEachIndexed { seq, text ->
+                val values = ContentValues().apply {
+                    put("message_id", messageId)
+                    put("seq", seq)
+                    put("content", text)
+                }
+                db.insertOrThrow(TavernDatabase.TABLE_MESSAGE_SWIPES, null, values)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     override fun updateMessage(id: Long, content: String) {
         val values = ContentValues().apply { put("content", content) }
         helper.writableDatabase.update(
