@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `7235d7f`（tag `apk-m138`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v108-7235d7f.apk`（签名固定，覆盖安装已验证多次） |
+| 代码 | `d0155e4`（tag `apk-m139`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v109-d0155e4.apk`（签名固定，覆盖安装已验证多次） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -53,6 +53,7 @@
 | 启动不再"先轻量后玻璃" | 冷启动第一帧就应该是玻璃（外观同步预读）；导出日志看 `tag=startup` 第一行的 ms | `ChatViewModel.applyAppearanceSync` |
 | 启动时列表不再"空白半秒" | 会话/卡列表就绪前不显示"还没有会话/卡"；日志里「会话就绪」应早于「配置解密」 | `SessionsScreen` / `CharactersScreen` |
 | 条目多的内嵌书进页不再卡 | 日志 `tag=nav` 的帧数应从 2–5 回到 30±、最长帧 ≤60ms；开书不再是 448ms 一帧 | `CardConfigPageScreen.CardWorldBookPage` |
+| 启动时头像不再闪 | 会话行头像出现即成品（不闪空白帧）；日志 `tag=startup` 多一行「头像预热 N 张 Xms」 | `CardAvatar.kt` / `ChatViewModel` 会话分支 |
 
 ## 下一步
 
