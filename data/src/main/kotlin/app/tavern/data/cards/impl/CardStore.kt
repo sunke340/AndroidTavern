@@ -79,6 +79,7 @@ class CardStore(context: Context) : CardRepository {
                     name = parsed?.name.orEmpty(),
                     description = parsed?.description.orEmpty(),
                     bookCount = parsed?.bookEntries()?.size ?: 0,
+                    tags = parsed?.tags.orEmpty(),
                 ).also {
                     meta[file.name] = it
                     dirty = true
@@ -90,6 +91,7 @@ class CardStore(context: Context) : CardRepository {
                 imported = file.name !in seeded,
                 description = info.description,
                 bookEntryCount = info.bookCount,
+                tags = info.tags,
             )
         }
 
@@ -195,17 +197,20 @@ class CardStore(context: Context) : CardRepository {
         id.takeIf { it.isNotBlank() && !it.contains('/') && !it.contains('\\') && !it.contains("..") }
             ?.let { File(dir, it) }
 
-    /** 列表页需要的三个字段（缓存值）。 */
+    /** 列表页需要的字段（缓存值）。 */
     private class CardInfo(
         val length: Long,
         val modified: Long,
         val name: String,
         val description: String,
         val bookCount: Int,
+        val tags: List<String> = emptyList(),
     )
 
     /**
-     * 缓存文件：一行一张卡，`文件名 \t 字节数 \t mtime \t 名字b64 \t 简介b64 \t 条数`。
+     * 缓存文件：一行一张卡，`文件名 \t 字节数 \t mtime \t 名字b64 \t 简介b64 \t 条数 \t 标签`。
+     * 标签用 `\u001F` 分隔（标签里可能有空格与逗号，控制字符不会出现）。
+     * 旧格式（6 列）的行走 `size != 7` 被跳过 → 这些卡会重新解析一次，缓存自然升级。
      *
      * 为什么用 Base64：简介里可能有制表符/换行/任意 Unicode，转义只会更麻烦。
      * 放卡目录里（`.meta`）不进 `list()`（那里只认 `.png`）。
@@ -217,7 +222,7 @@ class CardStore(context: Context) : CardRepository {
         runCatching {
             file.readLines(Charsets.UTF_8).forEach { line ->
                 val parts = line.split('\t')
-                if (parts.size != 6) return@forEach
+                if (parts.size != 7) return@forEach
                 val length = parts[1].toLongOrNull() ?: return@forEach
                 val modified = parts[2].toLongOrNull() ?: return@forEach
                 val count = parts[5].toIntOrNull() ?: return@forEach
@@ -227,6 +232,7 @@ class CardStore(context: Context) : CardRepository {
                     name = decodeText(parts[3]),
                     description = decodeText(parts[4]),
                     bookCount = count,
+                    tags = parts[6].split('\u001F').filter { it.isNotBlank() },
                 )
             }
         }
@@ -243,6 +249,7 @@ class CardStore(context: Context) : CardRepository {
                     encodeText(info.name),
                     encodeText(info.description),
                     info.bookCount.toString(),
+                    info.tags.joinToString("\u001F"),
                 ).joinToString("\t")
             }
             File(dir, META_FILE).writeText(text, Charsets.UTF_8)

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -79,13 +81,23 @@ fun CharactersScreen(
         state.sessions.groupingBy { it.cardId }.eachCount()
     }
 
-    // 搜索（P0-8）：只按名字与简介过滤，不碰卡文件（标签要解 PNG，几十张时太贵）
+    // 搜索 + 标签筛选（P0-8）。标签来自卡列表缓存（`CardStore` 在第一次解析时存下来的），
+    // 所以这里不再解 PNG。
     var query by remember { mutableStateOf("") }
-    val filtered = remember(state.cards, query) {
+    var selectedTag by remember { mutableStateOf<String?>(null) }
+    val allTags = remember(state.cards) {
+        state.cards.flatMap { it.tags }.map { it.trim() }.filter { it.isNotEmpty() }
+            .distinct().sorted().take(24)
+    }
+    val filtered = remember(state.cards, query, selectedTag) {
         val text = query.trim()
-        if (text.isEmpty()) state.cards
-        else state.cards.filter {
-            it.name.contains(text, ignoreCase = true) || it.description.contains(text, ignoreCase = true)
+        state.cards.filter { card ->
+            val tagOk = selectedTag == null || selectedTag in card.tags
+            val textOk = text.isEmpty() ||
+                card.name.contains(text, ignoreCase = true) ||
+                card.description.contains(text, ignoreCase = true) ||
+                card.tags.any { it.contains(text, ignoreCase = true) }
+            tagOk && textOk
         }
     }
 
@@ -118,14 +130,24 @@ fun CharactersScreen(
         horizontalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
         verticalArrangement = Arrangement.spacedBy(Space.m - 2.dp),
     ) {
-        // 搜索框占满一整行（两列网格里要 span 整行）
+        // 搜索框与标签行各占满一整行（两列网格里要 span 整行）
         item(span = { GridItemSpan(maxLineSpan) }) {
-            CardSearchField(query = query, onQueryChange = { query = it })
+            Column {
+                CardSearchField(query = query, onQueryChange = { query = it })
+                if (allTags.isNotEmpty()) {
+                    TagFilterRow(
+                        tags = allTags,
+                        selected = selectedTag,
+                        onSelect = { selectedTag = if (selectedTag == it) null else it },
+                    )
+                }
+            }
         }
 
         if (filtered.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                EmptyHint("没有匹配「${query.trim()}」的卡。")
+                val hint = query.trim().ifBlank { selectedTag.orEmpty() }
+                EmptyHint(if (hint.isBlank()) "没有匹配的卡。" else "没有匹配「$hint」的卡。")
             }
         }
 
@@ -308,6 +330,40 @@ private fun CardSearchField(query: String, onQueryChange: (String) -> Unit) {
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) { onQueryChange("") },
+            )
+        }
+    }
+}
+
+/** 标签筛选：一排可横向滑动的胶囊，点一下选中、再点取消。 */
+@Composable
+private fun TagFilterRow(tags: List<String>, selected: String?, onSelect: (String) -> Unit) {
+    val palette = LocalTavernPalette.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = Space.s),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        contentPadding = PaddingValues(end = Space.s),
+    ) {
+        items(tags) { tag ->
+            val on = tag == selected
+            val shape = RoundedCornerShape(Radius.pill)
+            Text(
+                text = tag,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (on) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(shape)
+                    .background(
+                        if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.surface,
+                    )
+                    .border(1.dp, if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else palette.cardBorder, shape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onSelect(tag) }
+                    .padding(horizontal = Space.m, vertical = 6.dp),
             )
         }
     }

@@ -8,8 +8,10 @@ data class CardRef(
     val imported: Boolean,
     /** 角色描述，列表里当简介用。空描述是合法的（有些卡只写人格）。 */
     val description: String,
-    /** 卡内嵌世界书的条目数（0 = 没有内嵌书）。世界书引擎未实现，这里只用于展示。 */
+    /** 卡内嵌世界书的条目数（0 = 没有内嵌书）。 */
     val bookEntryCount: Int,
+    /** 卡上的标签（`tags`）。搜索与筛选读它 —— 卡列表缓存里一并存了，不用再解 PNG。 */
+    val tags: List<String> = emptyList(),
 )
 
 sealed interface ImportResult {
