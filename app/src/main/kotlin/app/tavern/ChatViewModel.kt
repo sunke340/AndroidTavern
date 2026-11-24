@@ -144,6 +144,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val settingsPage: SettingsPage? = null,
         /** 新建会话前先选卡：true 时显示角色卡选择弹层。 */
         val showCardPicker: Boolean = false,
+        /** 组件预览页（**只在 debug 包里能进**，入口在 设置 → 关于）。 */
+        val galleryOpen: Boolean = false,
         /** 角色卡配置的二级页（作用域：当前详情页那张卡）。 */
         val cardConfigPage: CardConfigPage? = null,
         /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
@@ -611,6 +613,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun openCardPicker() = _state.update { it.copy(showCardPicker = true) }
 
     fun closeCardPicker() = _state.update { it.copy(showCardPicker = false) }
+
+    fun openGallery() = _state.update { it.copy(galleryOpen = true) }
+
+    fun closeGallery() = _state.update { it.copy(galleryOpen = false) }
 
     /** 选卡弹层里点了某张卡：关弹层 + 用它开新会话。 */
     fun pickCardAndStart(cardId: String) {

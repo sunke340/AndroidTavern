@@ -508,4 +508,11 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         ) { Text("清空") }
     }
 
+    // 只有 debug 包里有这一块：材质样张 + 参数滑杆。发布包里连入口都不存在。
+    if (BuildConfig.DEBUG) {
+        SectionLabel("开发")
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+            OutlinedButton(onClick = viewModel::openGallery) { Text("组件预览") }
+        }
+    }
 }

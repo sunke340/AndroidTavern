@@ -113,6 +113,8 @@ internal sealed interface Destination {
     data object ProfileEdit : Destination
     /** 设置 → 世界书 → 某一本（三级）。 */
     data class WorldBookEntries(val name: String) : Destination
+    /** 组件预览（debug only，从 设置 → 关于 进）。 */
+    data object Gallery : Destination
 }
 
 private fun depthOf(destination: Destination): Int = when (destination) {
@@ -123,6 +125,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     is Destination.CardConfig -> 2
     Destination.ProfileEdit -> 2
     is Destination.WorldBookEntries -> 2
+    Destination.Gallery -> 2
 }
 
 /** 日志里的目标名：带页面枚举名，不带卡 id（id 排障没用，还占版面）。 */
@@ -134,6 +137,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     is Destination.CardConfig -> "card-config/${destination.page.name}"
     Destination.ProfileEdit -> "profile-edit"
     is Destination.WorldBookEntries -> "worldbook"
+    Destination.Gallery -> "gallery"
 }
 
 @Composable
@@ -160,6 +164,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 detailId != null -> Destination.Detail(detailId)
                 // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
                 editingProfile -> Destination.ProfileEdit
+                // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
+                state.galleryOpen -> Destination.Gallery
                 // 世界书条目页叠在"设置→世界书"之上：返回落在书单
                 worldBook != null -> Destination.WorldBookEntries(worldBook.name)
                 settingsPage != null -> Destination.Settings(settingsPage)
@@ -244,6 +250,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     Destination.ProfileEdit -> {
                         if (live) BackHandler { viewModel.closeProfileEditor() }
                         ProfileEditScreen(state = snap, viewModel = viewModel)
+                    }
+
+                    Destination.Gallery -> {
+                        if (live) BackHandler { viewModel.closeGallery() }
+                        GalleryScreen(state = snap, viewModel = viewModel)
                     }
                 }
             }
