@@ -103,6 +103,8 @@ fun GlassDetailScaffold(
     val layer = rememberGraphicsLayer()
     // 动作单宿主：二级页自己的录图层（frost）喂给弹层，弹的才是这一页的内容
     val sheet = remember { SheetController() }
+    // 确认框宿主：同一个理由（AlertDialog 是独立窗口，采不到内容层，做不成玻璃）
+    val confirm = remember { ConfirmController() }
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -138,7 +140,10 @@ fun GlassDetailScaffold(
                         }
                     },
             ) {
-                CompositionLocalProvider(LocalSheetController provides sheet) {
+                CompositionLocalProvider(
+                    LocalSheetController provides sheet,
+                    LocalConfirmController provides confirm,
+                ) {
                     content(
                         PaddingValues(
                             top = contentTopInset + statusBar,
@@ -149,34 +154,55 @@ fun GlassDetailScaffold(
             }
 
             if (bottomOverlay != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(
-                            WindowInsets.systemBars
-                                .only(WindowInsetsSides.Bottom)
-                                .union(WindowInsets.ime),
-                        ),
+                // 也要拿到同一份控制器：输入区的模型抽屉、动作单都从这里弹（以前这里在
+                // 控制器作用域之外 —— 在那里 show() 只会落到"没有宿主"的默认实例上，静悄悄不弹）
+                CompositionLocalProvider(
+                    LocalSheetController provides sheet,
+                    LocalConfirmController provides confirm,
                 ) {
-                    bottomOverlay(GlassBackdrop(frost, { origin.value }))
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(
+                                WindowInsets.systemBars
+                                    .only(WindowInsetsSides.Bottom)
+                                    .union(WindowInsets.ime),
+                            ),
+                    ) {
+                        bottomOverlay(GlassBackdrop(frost, { origin.value }))
+                    }
                 }
             }
 
-            DetailHeader(
-                title = title,
-                subtitle = subtitle,
-                onBack = onBack,
-                glass = glass,
-                frosted = frostedHeader,
-                frost = frost,
-                contentOrigin = { origin.value },
-                actions = actions,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
+            // 页头的动作（⋮ 菜单）同样要点得开抽屉/确认框
+            CompositionLocalProvider(
+                LocalSheetController provides sheet,
+                LocalConfirmController provides confirm,
+            ) {
+                DetailHeader(
+                    title = title,
+                    subtitle = subtitle,
+                    onBack = onBack,
+                    glass = glass,
+                    frosted = frostedHeader,
+                    frost = frost,
+                    contentOrigin = { origin.value },
+                    actions = actions,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
 
             // 压在页头与输入区之上
             GlassActionSheetHost(
                 controller = sheet,
+                frost = frost,
+                contentOrigin = { origin.value },
+                glass = glass,
+            )
+
+            // 确认框压在最上面一档（它通常从动作单里发起，弹层刚收就出现）
+            GlassConfirmHost(
+                controller = confirm,
                 frost = frost,
                 contentOrigin = { origin.value },
                 glass = glass,

@@ -1,6 +1,7 @@
 package app.tavern
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -49,7 +50,12 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
@@ -112,6 +118,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
     val overscroll = rememberRubberOverscroll()
+
+    // 输入区的实测高度（像素）：列表底部让位跟着它走 —— 聚焦时输入区会向上翻倍
+    var inputBarHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
@@ -274,17 +284,31 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
         contentTopInset = 0.dp,
         // 输入区画在录制之外：可以采磨砂，消息从胶囊后面滚过去
-        bottomOverlay = { backdrop -> ChatInputBar(state, viewModel, glassOn, backdrop) },
+        bottomOverlay = { backdrop ->
+            ChatInputBar(
+                state = state,
+                viewModel = viewModel,
+                glass = glassOn,
+                backdrop = backdrop,
+                onHeightChanged = { inputBarHeightPx = it },
+            )
+        },
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
-            val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
+            val sheet = LocalSheetController.current
+            val activeProfile = state.profiles.firstOrNull {
+                it.id == (state.sessionProfileId ?: state.activeProfileId)
+            }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                // 只是"看清现在用的哪套连接"，点击应该去哪儿（编辑档案）留到 D 批
+                // 原来是个**不可点的占位**，现在就是"会话配置"的入口（用户 2026-11-25 第 2 条）。
+                // 这一批先只到模型 / 思考强度，世界书、正则、预设的会话级选择下一批补。
                 DropdownMenuItem(
                     text = { Text("模型档案：${activeProfile?.name ?: "未配置"}") },
-                    enabled = false,
-                    onClick = {},
+                    onClick = {
+                        menuOpen = false
+                        sheet.show(title = "模型", actions = modelSheetActions(state, viewModel))
+                    },
                 )
                 DropdownMenuItem(
                     text = { Text("查看本次请求") },
@@ -325,7 +349,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     Space.l,
                 // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
                 // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
-                bottom = padding.calculateBottomPadding() + ChatInputAreaHeight,
+                bottom = padding.calculateBottomPadding() +
+                    if (inputBarHeightPx > 0) {
+                        with(density) { inputBarHeightPx.toDp() }
+                    } else {
+                        ChatInputAreaHeight
+                    },
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
@@ -370,14 +399,23 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 }
 
-/** 输入区总高（含上下留白）：列表底部让位，让最后一条消息停在胶囊上方。 */
+/** 输入区总高：**首帧的兜底值**，实测到真实高度之后就用实测的（聚焦会翻倍）。 */
 private val ChatInputAreaHeight: Dp = 80.dp
 
+/** 输入区里圆钮的直径：发送与模型两个钮同尺寸、同材质，才是"对称"。 */
+private val ChatBarButtonSize: Dp = 40.dp
+
 /**
- * 聊天输入区：玻璃输入胶囊 + 玻璃发送/停止圆钮。
+ * 聊天输入区：一个玻璃输入胶囊，发送钮**装在胶囊里**（用户 2026-11-25 第 5 条）。
  *
- * 由 [GlassDetailScaffold] 的 `bottomOverlay` 画在**录制之外**，所以能拿 [GlassBackdrop] 做真玻璃：
- * 磨砂采样的是页面内容，消息从胶囊后面滚过去时会被糊掉。
+ * 结构（同一天第 6–8 条定的）：
+ * - **收起 = 单行**：文字 + 右侧发送钮，同一个胶囊；发送钮不再独立挂在胶囊外面；
+ * - **聚焦 = 向上加一行**：上行只放输入，下行左模型、右发送 —— 相当于高度翻倍，
+ *   真正写字的那一行永远在最上面，不会被下面的按钮压住；
+ * - 文字超过一行继续长高（最多 5 行），发送后收起。
+ *
+ * 为什么不把模型钮也放在收起态：收起态只有一行，两个钮挤在右边会把手写区压窄；
+ * 而且用户明确要的是"展开后左下角出现模型按钮，与发送按钮对称"。
  */
 @Composable
 private fun ChatInputBar(
@@ -385,13 +423,27 @@ private fun ChatInputBar(
     viewModel: ChatViewModel,
     glass: Boolean,
     backdrop: GlassBackdrop,
+    onHeightChanged: (Int) -> Unit,
 ) {
-    // 系统「移除动画」：发送↔停止只淡化，不做缩放
-    val reduceMotion = rememberReduceMotion()
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val sheet = LocalSheetController.current
+    var focused by remember { mutableStateOf(false) }
+    val currentProfile = state.profiles.firstOrNull {
+        it.id == (state.sessionProfileId ?: state.activeProfileId)
+    }
+
+    val openModelSheet = {
+        sheet.show(title = "模型", actions = modelSheetActions(state, viewModel))
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Space.m, vertical = Space.s)
+            // 列表底部让位跟着**实测高度**走：聚焦翻倍后若还用常量 80dp，最后一条会被盖住
+            .onSizeChanged { onHeightChanged(it.height) },
+        verticalAlignment = Alignment.Bottom,
     ) {
         GlassSurface(
             backdrop = backdrop,
@@ -399,99 +451,268 @@ private fun ChatInputBar(
             shape = RoundedCornerShape(Radius.pill),
             // 输入区压在消息正文上，投影用半强度（用户 2026-11-24：阴影存在感有点强）
             shadowScale = 0.5f,
-            modifier = Modifier.weight(1f).height(44.dp),
+            modifier = Modifier.weight(1f),
         ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                BasicTextField(
-                    value = state.input,
-                    onValueChange = viewModel::onInputChange,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l),
-                    decorationBox = { inner ->
-                        if (state.input.isEmpty()) {
-                            Text(
-                                "说点什么",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        inner()
-                    },
-                )
-            }
-        }
-
-        // 发送 ↔ 停止：同一个按钮位只换形态，不换位置
-        val sendPress = remember { MutableInteractionSource() }
-        AnimatedContent(
-            targetState = state.isStreaming,
-            transitionSpec = {
-                if (reduceMotion) {
-                    fadeIn(tween(Motion.Fast)) togetherWith fadeOut(tween(Motion.Fast))
-                } else {
-                    (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
-                        (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
-                }
-            },
-            label = "send-stop",
-        ) { streaming ->
-            GlassSurface(
-                backdrop = backdrop,
-                glass = glass,
-                shape = CircleShape,
-                modifier = Modifier.size(44.dp),
-                // 与输入胶囊同一个强度，否则一行里两个影子深浅不一
-                shadowScale = 0.5f,
-                interactionSource = sendPress,
-                // 液态玻璃：整颗钮就是一块小透镜，背后的消息会在边缘被弯进来
-                liquid = LiquidGlassSpec.Default,
-                // 发送：淡紫磨砂。浓度是**高光能不能被看见**的决定因素，不是审美：
-                // 页面底色是 (250)；内部 16% 时亮到 (232,229,244)、22% 时 (214,208,234) ——
-                // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。
-                // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
-                // 停止态仍是原来的浅色面。
-                fillColor = if (streaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                // 高光环走**纯白**（默认值）。用户指出得对：这颗钮外面包着一圈投影，
-                // 边缘的"环境色"是被压暗的灰蓝(≈240)，不是页面底色(250) —— 纯白细线在那里就是亮的。
-                // 之前"白高光压不过底色"的判断错在拿页面底色当了背景。
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 点胶囊空白处也是"点输入框"（不然只有文字那一小条能点）
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { focusRequester.requestFocus() },
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = sendPress,
-                            indication = null,
-                            onClick = if (streaming) viewModel::stop else viewModel::send,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(
+                        value = state.input,
+                        onValueChange = viewModel::onInputChange,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
                         ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (streaming) {
-                        // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                                    RoundedCornerShape(2.dp),
-                                ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        // 最多 5 行：再多就让文字在自己那一行里滚（输入区不能无限长）
+                        maxLines = 5,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(
+                                start = Space.l,
+                                end = Space.s,
+                                top = 14.dp,
+                                bottom = 14.dp,
+                            )
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { focused = it.isFocused },
+                        decorationBox = { inner ->
+                            if (state.input.isEmpty()) {
+                                Text(
+                                    "说点什么",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                    // 收起态：发送/停止就在文字右边，同一个胶囊里
+                    if (!focused) {
+                        SendStopButton(
+                            streaming = state.isStreaming,
+                            glass = glass,
+                            backdrop = backdrop,
+                            onSend = {
+                                viewModel.send()
+                                focusManager.clearFocus()
+                            },
+                            onStop = viewModel::stop,
+                            modifier = Modifier.padding(end = 6.dp),
                         )
-                    } else {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "发送",
-                            // 图标也是玻璃：半透明，让钮里那层磨砂透上来（纯色会像印上去的）
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
-                            // 纸飞机是三角形，几何居中会显得偏左；往右挪一点才是视觉居中
-                            modifier = Modifier.size(24.dp).offset(x = 1.dp),
+                    }
+                }
+
+                // 聚焦后展开的按钮行：左模型、右发送（和收起那一行同高 → 看着就是"翻倍"）
+                AnimatedVisibility(
+                    visible = focused,
+                    enter = fadeIn(tween(Motion.Fast)),
+                    exit = fadeOut(tween(Motion.Fast)),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ModelButton(
+                            badge = modelBadge(currentProfile?.name),
+                            glass = glass,
+                            backdrop = backdrop,
+                            onClick = openModelSheet,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        SendStopButton(
+                            streaming = state.isStreaming,
+                            glass = glass,
+                            backdrop = backdrop,
+                            onSend = {
+                                viewModel.send()
+                                focusManager.clearFocus()
+                            },
+                            onStop = viewModel::stop,
                         )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * 发送 ↔ 停止：同一个按钮位只换形态，不换位置。
+ *
+ * 从"独立挂在胶囊右边"搬进胶囊以后，尺寸跟着 [ChatBarButtonSize]（40dp）：
+ * 44dp 的钮塞进一行 44dp 的胶囊会顶满，边缘就没有玻璃厚度了。
+ */
+@Composable
+private fun SendStopButton(
+    streaming: Boolean,
+    glass: Boolean,
+    backdrop: GlassBackdrop,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 系统「移除动画」：发送↔停止只淡化，不做缩放
+    val reduceMotion = rememberReduceMotion()
+    val press = remember { MutableInteractionSource() }
+    AnimatedContent(
+        targetState = streaming,
+        modifier = modifier.size(ChatBarButtonSize),
+        transitionSpec = {
+            if (reduceMotion) {
+                fadeIn(tween(Motion.Fast)) togetherWith fadeOut(tween(Motion.Fast))
+            } else {
+                (fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.8f)) togetherWith
+                    (fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.8f))
+            }
+        },
+        label = "send-stop",
+    ) { isStreaming ->
+        GlassSurface(
+            backdrop = backdrop,
+            glass = glass,
+            shape = CircleShape,
+            modifier = Modifier.fillMaxSize(),
+            // 与输入胶囊同一个强度，否则一行里两个影子深浅不一
+            shadowScale = 0.5f,
+            interactionSource = press,
+            // 液态玻璃：整颗钮就是一块小透镜，背后的消息会在边缘被弯进来
+            liquid = LiquidGlassSpec.Default,
+            // 发送：淡紫磨砂。浓度是**高光能不能被看见**的决定因素，不是审美：
+            // 页面底色是 (250)；内部 16% 时亮到 (232,229,244)、22% 时 (214,208,234) ——
+            // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。
+            // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
+            // 停止态仍是原来的浅色面。
+            fillColor = if (isStreaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+            // 高光环走**纯白**（默认值）。用户指出得对：这颗钮外面包着一圈投影，
+            // 边缘的"环境色"是被压暗的灰蓝(≈240)，不是页面底色(250) —— 纯白细线在那里就是亮的。
+            // 之前"白高光压不过底色"的判断错在拿页面底色当了背景。
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = press,
+                        indication = null,
+                        onClick = if (isStreaming) onStop else onSend,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isStreaming) {
+                    // 停止用一小块方角，和"发送"的形状区分开，不依赖额外图标
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                RoundedCornerShape(2.dp),
+                            ),
+                    )
+                } else {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "发送",
+                        // 图标也是玻璃：半透明，让钮里那层磨砂透上来（纯色会像印上去的）
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+                        // 纸飞机是三角形，几何居中会显得偏左；往右挪一点才是视觉居中
+                        modifier = Modifier.size(20.dp).offset(x = 1.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 左下角的模型钮（与发送钮对称）：显示当前档案的首字，点开"模型"抽屉。
+ *
+ * 为什么用首字而不是图标：图标库里没有"模型"这种语义的图标（`material-icons-core` 只有
+ * 齿轮/星星这类），而且**当前用的是哪个模型**这件事本身就该看得见 —— 首字比一个抽象图标多带信息。
+ */
+@Composable
+private fun ModelButton(
+    badge: String,
+    glass: Boolean,
+    backdrop: GlassBackdrop,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val press = remember { MutableInteractionSource() }
+    GlassSurface(
+        backdrop = backdrop,
+        glass = glass,
+        shape = CircleShape,
+        modifier = modifier.size(ChatBarButtonSize),
+        shadowScale = 0.5f,
+        interactionSource = press,
+        liquid = LiquidGlassSpec.Default,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(interactionSource = press, indication = null, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = badge,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+            )
+        }
+    }
+}
+
+/** 档案名的首字（ASCII 取大写字母，中文取第一个字）；没有档案时给一个"模"。 */
+private fun modelBadge(name: String?): String {
+    val text = name?.trim().orEmpty()
+    if (text.isEmpty()) return "模"
+    val first = text.first()
+    return if (first.code < 128) first.uppercase() else first.toString()
+}
+
+/**
+ * 「模型」抽屉的动作表：**会话级**换模型 + 会话级思考强度。
+ *
+ * 都只写本会话的覆盖，不动全局默认档案 —— 抽屉是从聊天页里点开的，改的应该是"这一段对话"。
+ */
+private fun modelSheetActions(state: ChatViewModel.UiState, viewModel: ChatViewModel): List<SheetAction> {
+    val currentId = state.sessionProfileId ?: state.activeProfileId
+    val defaultName = state.profiles.firstOrNull { it.isDefault }?.name ?: "未配置"
+    val actions = mutableListOf<SheetAction>()
+    if (state.profiles.isEmpty()) {
+        actions += SheetAction("还没有模型档案（设置 → 模型）") { }
+    } else {
+        state.profiles.forEach { profile ->
+            val mark = if (profile.id == currentId) "✓ " else ""
+            actions += SheetAction("$mark${profile.name} · ${profile.model}") {
+                viewModel.useSessionProfile(profile.id)
+            }
+        }
+        if (state.sessionProfileId != null) {
+            actions += SheetAction("跟随默认档案（$defaultName）") { viewModel.clearSessionProfile() }
+        }
+    }
+    // null = 跟随档案；off = 明确关掉（不发 reasoning_effort）
+    val effortRows: List<Pair<String, String?>> = listOf(
+        "跟随档案" to null,
+        "关" to "off",
+        "低" to "low",
+        "中" to "medium",
+        "高" to "high",
+    )
+    effortRows.forEach { (label, value) ->
+        val mark = if (state.sessionReasoningEffort == value) "✓ " else ""
+        actions += SheetAction("思考强度：$mark$label") { viewModel.useSessionReasoning(value) }
+    }
+    return actions
 }
 
 /**

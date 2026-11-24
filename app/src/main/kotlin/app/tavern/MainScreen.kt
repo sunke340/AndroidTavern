@@ -352,6 +352,8 @@ private fun TabsRoot(
     val glassOn = state.visualEffects.effective() == VisualEffects.Glass
     // 动作单的宿主状态：页面通过 CompositionLocal 请求，这里渲染（在录图层之外，能采真磨砂）
     val sheet = remember { SheetController() }
+    // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
+    val confirm = remember { ConfirmController() }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -417,7 +419,10 @@ private fun TabsRoot(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalSheetController provides sheet) {
+            CompositionLocalProvider(
+                LocalSheetController provides sheet,
+                LocalConfirmController provides confirm,
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -505,7 +510,7 @@ private fun TabsRoot(
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
                 // 抽屉要弹出来时，底栏先滑走 —— 两块浮层不叠在一起（用户 2026-11-24）
-                hidden = sheet.spec != null || state.showCardPicker,
+                hidden = sheet.spec != null || confirm.spec != null || state.showCardPicker,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
@@ -529,6 +534,14 @@ private fun TabsRoot(
                 contentOrigin = { contentOrigin.value },
                 glass = glassOn,
                 enterDelayMillis = SheetEnterDelayMillis,
+            )
+
+            // 确认框压在最上面一档
+            GlassConfirmHost(
+                controller = confirm,
+                frost = frostLayer,
+                contentOrigin = { contentOrigin.value },
+                glass = glassOn,
             )
             }
         }

@@ -11,6 +11,8 @@ import app.tavern.data.profiles.ProfileRepository
 import app.tavern.data.profiles.impl.SqliteProfileRepository
 import app.tavern.data.regex.RegexRepository
 import app.tavern.data.regex.impl.PreferencesRegexRepository
+import app.tavern.data.sessionconfig.SessionConfigRepository
+import app.tavern.data.sessionconfig.impl.PreferencesSessionConfigRepository
 import app.tavern.data.settings.SettingsRepository
 import app.tavern.data.settings.impl.PreferencesSettingsRepository
 import app.tavern.data.worldinfo.WorldBookRepository
@@ -45,6 +47,9 @@ object AppGraph {
     @Volatile
     private var presetStore: PresetRepository? = null
 
+    @Volatile
+    private var sessionConfigStore: SessionConfigRepository? = null
+
     fun cards(context: Context): CardRepository =
         cardStore ?: synchronized(this) {
             cardStore ?: CardStore(context.applicationContext).also { cardStore = it }
@@ -78,6 +83,13 @@ object AppGraph {
     fun presets(context: Context): PresetRepository =
         presetStore ?: synchronized(this) {
             presetStore ?: FilePresetRepository(context.applicationContext).also { presetStore = it }
+        }
+
+    /** 会话级配置覆盖（三级继承的最内层）：按会话 id 存在偏好里。 */
+    fun sessionConfigs(context: Context): SessionConfigRepository =
+        sessionConfigStore ?: synchronized(this) {
+            sessionConfigStore ?: PreferencesSessionConfigRepository(context.applicationContext)
+                .also { sessionConfigStore = it }
         }
 
     /** 模型档案（多套连接配置）。Key 仍由它自己的 SecretStore 管，别在这里碰明文。 */

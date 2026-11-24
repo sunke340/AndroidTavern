@@ -1,19 +1,188 @@
 package app.tavern
 
-import androidx.compose.material3.AlertDialog
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.unit.dp
+
+/**
+ * 一次确认请求。用**控制器 + 骨架宿主**而不是 `AlertDialog`：
+ * `AlertDialog` 是独立的系统窗口，采不到页面内容层，做不成液态玻璃（2026-11-25 用户要求
+ * 删除确认也要玻璃）。这和动作单是同一个约束、同一个解法。
+ */
+class ConfirmSpec(
+    val title: String,
+    val message: String,
+    val confirmLabel: String,
+    val onConfirm: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
+/** 确认框的"请求"入口：页面只 ask，由页面骨架渲染（[LocalConfirmController]）。 */
+class ConfirmController {
+    internal var spec by mutableStateOf<ConfirmSpec?>(null)
+        private set
+
+    fun ask(spec: ConfirmSpec) {
+        this.spec = spec
+    }
+
+    /** 取消：清掉自己再回调，避免回调里又 ask 时被覆盖。 */
+    fun dismiss() {
+        val current = spec ?: return
+        spec = null
+        current.onDismiss()
+    }
+
+    /** 确认：先摘掉弹层（它会播退出动画），再执行动作。 */
+    internal fun confirm() {
+        val current = spec ?: return
+        spec = null
+        current.onConfirm()
+    }
+}
+
+/** 页面骨架提供给内容区的控制器；没有宿主时 `ask()` 只是不会画出来。 */
+val LocalConfirmController = staticCompositionLocalOf { ConfirmController() }
+
+/**
+ * 骨架里渲染确认框的地方（遮罩 + 居中玻璃板）。
+ *
+ * 必须放在**录图层之外**（和页头、动作单同级），否则玻璃会采到自己这一帧。
+ * 放进骨架最后一个孩子 = 压在页头、底栏、动作单之上。
+ */
+@Composable
+fun GlassConfirmHost(
+    controller: ConfirmController,
+    frost: GraphicsLayer,
+    contentOrigin: () -> Offset,
+    glass: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val spec = controller.spec
+    // 退出动画期间 spec 已经清空，留一份最后一次的内容，动画才画得出来
+    var lastSpec by remember { mutableStateOf<ConfirmSpec?>(null) }
+    LaunchedEffect(spec) {
+        if (spec != null) lastSpec = spec
+    }
+    val content = spec ?: lastSpec
+    val visible = spec != null
+    val reduceMotion = rememberReduceMotion()
+
+    BackHandler(enabled = visible) { controller.dismiss() }
+
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(Motion.Base)),
+            exit = fadeOut(tween(Motion.Fast)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { controller.dismiss() },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = visible && content != null,
+            enter = if (reduceMotion) {
+                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+            } else {
+                fadeIn(tween(Motion.Base, easing = Motion.Decelerate)) +
+                    scaleIn(tween(Motion.Base, easing = Motion.Decelerate), initialScale = 0.92f)
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(Motion.Fast))
+            } else {
+                fadeOut(tween(Motion.Fast)) + scaleOut(tween(Motion.Fast), targetScale = 0.94f)
+            },
+        ) {
+            val shown = content ?: return@AnimatedVisibility
+            GlassSurface(
+                frost = frost,
+                contentOrigin = contentOrigin,
+                glass = glass,
+                shape = RoundedCornerShape(Radius.pill),
+                // 确认框是浮起来的小件，投影与面都不该太抢：和弹层同一档材质
+                liquid = LiquidGlassSpec.Sheet,
+                modifier = Modifier
+                    .padding(horizontal = Space.xl)
+                    .widthIn(max = 380.dp)
+                    // 吃掉点按：不然点框里也会穿给遮罩，框自己就没了
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { },
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(Space.xl)) {
+                    Text(shown.title, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(Space.m))
+                    Text(
+                        text = shown.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(Space.l))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { controller.dismiss() }) { Text("取消") }
+                        // 不可逆操作里，这是唯一需要眼睛停一下的地方
+                        TextButton(onClick = { controller.confirm() }) {
+                            Text(shown.confirmLabel, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * 不可逆删除的统一确认框：标题 + 一句后果 + 红色确认。
  *
- * 为什么抽出来：全 App 有 7 处删除（会话×2、角色卡×2、世界书、模型档案×2），原来每处手写一段
- * `AlertDialog`，于是同一个动作出现两种措辞，而且只有档案编辑那处的确认钮是红的。现在改措辞、
- * 改颜色都只改这里。
- *
- * 确认钮一律 `colorScheme.error`：不可逆操作里，这是唯一需要眼睛停一下的地方。
+ * **签名故意保持不变**（8 处调用点不用改）：它现在只是把请求交给 [LocalConfirmController]，
+ * 真正的界面由页面骨架的 [GlassConfirmHost] 画在录图层之外，所以是液态玻璃。
  *
  * 调用时**参数全部写名字**：`onConfirm` 与 `onDismiss` 都是 lambda，位置写反了编译器不报。
  */
@@ -25,17 +194,19 @@ fun ConfirmDeleteDialog(
     onDismiss: () -> Unit,
     confirmLabel: String = "删除",
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(confirmLabel, color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+    val controller = LocalConfirmController.current
+    // 回调可能随重组换新实例，用 rememberUpdatedState 保证弹层里调的是最新那个
+    val latestConfirm by rememberUpdatedState(onConfirm)
+    val latestDismiss by rememberUpdatedState(onDismiss)
+    LaunchedEffect(title, message, confirmLabel) {
+        controller.ask(
+            ConfirmSpec(
+                title = title,
+                message = message,
+                confirmLabel = confirmLabel,
+                onConfirm = { latestConfirm() },
+                onDismiss = { latestDismiss() },
+            ),
+        )
+    }
 }

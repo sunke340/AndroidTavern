@@ -39,6 +39,8 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
 import app.tavern.data.presets.PresetRef
+import app.tavern.data.sessionconfig.SessionConfig
+import app.tavern.data.sessionconfig.SessionConfigRepository
 import app.tavern.data.settings.CardBookOverride
 import app.tavern.data.presets.PresetRepository
 import app.tavern.data.profiles.ProfileRepository
@@ -227,6 +229,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val profiles: List<ModelProfile> = emptyList(),
         /** 当前生效的档案 id；null = 一条都没有（老版本首次启动的瞬间）。 */
         val activeProfileId: String? = null,
+        /** 本会话指定的档案 id；null = 跟随全局默认档案（会话级配置的最内层）。 */
+        val sessionProfileId: String? = null,
+        /**
+         * 本会话的思考强度覆盖：null = 跟随档案；`"off"` = 关掉；其余（low/medium/high）原样发。
+         */
+        val sessionReasoningEffort: String? = null,
         /** 非 null 时显示「档案编辑」页（三级）；null = 不在编辑。 */
         val profileDraft: ProfileDraft? = null,
         val notice: Notice? = null,
@@ -243,6 +251,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val worldBookRepository = AppGraph.worldBooks(application)
     private val regexRepository = AppGraph.regex(application)
     private val presetRepository: PresetRepository = AppGraph.presets(application)
+    private val sessionConfigRepository: SessionConfigRepository = AppGraph.sessionConfigs(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -339,6 +348,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     visualEffects = runCatching { VisualEffects.valueOf(saved.visualEffects) }
                         .getOrDefault(VisualEffects.Off),
                 )
+            }
+
+            // 首屏会话是先于档案打开的（会话列表不等 Key 解密），那一趟拿不到档案表，
+            // 会话级"指定模型"会被跳过。档案摆好之后补一次，别让用户看到"切了模型没生效"。
+            _state.value.sessionId?.let { openedId ->
+                val wanted = withContext(Dispatchers.IO) { sessionConfigRepository.load(openedId).profileId }
+                if (wanted != null) applySessionProfileOverride(wanted)
             }
 
             val cardsAt = SystemClock.elapsedRealtime()
@@ -678,7 +694,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteSession(id: String) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { chatRepository.deleteSession(id) }
+            withContext(Dispatchers.IO) {
+                chatRepository.deleteSession(id)
+                // 会话没了，它的配置覆盖也不该留着（按 sessionId 存，不清就是垃圾数据）
+                runCatching { sessionConfigRepository.clear(id) }
+            }
             val sessions = withContext(Dispatchers.IO) { chatRepository.sessions() }
             _state.update { it.copy(sessions = sessions) }
             AppLog.i("chat", "删除会话 id=$id")
@@ -742,6 +762,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val bookOverride = withContext(Dispatchers.IO) {
             bookOverrideOf(session.cardId, loadedCard?.bookEntries().orEmpty())
         }
+        // 会话级覆盖（现在只放了模型与思考强度；三级继承的其余项在这一层接着加）
+        val sessionConfig = withContext(Dispatchers.IO) { sessionConfigRepository.load(id) }
 
         _state.update {
             it.copy(
@@ -760,11 +782,98 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
                 bookForced = bookOverride.forcedOn,
+                sessionProfileId = sessionConfig.profileId,
+                sessionReasoningEffort = sessionConfig.reasoningEffort,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
                 },
             )
+        }
+        // 连接参数跟着会话走：指定了档案就用它，没指定就退回默认档案
+        applySessionProfileOverride(sessionConfig.profileId)
+    }
+
+    /**
+     * 把"本会话指定的档案"落到实际连接参数上（发送时读的是 baseUrl / model / apiKey 这三个）。
+     *
+     * 为什么不是发送时再解析：Key 在仓储里、解密有成本，整套设计是"选档案时就把连接参数镜像进状态"。
+     * 换会话时按覆盖重放一次，切换才不串。
+     */
+    private suspend fun applySessionProfileOverride(overrideId: String?) {
+        val snapshot = _state.value
+        // 指定的档案被删了：退回默认，别让会话停在"选了一个不存在的档案"上
+        val target = overrideId?.let { wanted -> snapshot.profiles.firstOrNull { it.id == wanted } }
+        val fallback = snapshot.profiles.firstOrNull { it.isDefault }
+        val profile = target ?: fallback ?: return
+        val key = if (profile.id == snapshot.activeProfileId && snapshot.apiKey.isNotBlank()) {
+            snapshot.apiKey
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { profileRepository.apiKey(profile.id) }.getOrDefault("")
+            }
+        }
+        _state.update {
+            it.copy(
+                sessionProfileId = if (target != null) profile.id else null,
+                baseUrl = profile.baseUrl,
+                model = profile.model,
+                apiKey = key,
+            )
+        }
+    }
+
+    // ---- 会话级配置（三级继承的最内层） -------------------------------------
+
+    /** 会话级换模型：只影响这一条会话。 */
+    fun useSessionProfile(profileId: String) {
+        val sessionId = _state.value.sessionId ?: return
+        val profile = _state.value.profiles.firstOrNull { it.id == profileId } ?: return
+        viewModelScope.launch {
+            val key = withContext(Dispatchers.IO) {
+                runCatching { profileRepository.apiKey(profileId) }.getOrDefault("")
+            }
+            persistSessionConfig(sessionId) { it.copy(profileId = profileId) }
+            _state.update {
+                it.copy(
+                    sessionProfileId = profileId,
+                    baseUrl = profile.baseUrl,
+                    model = profile.model,
+                    apiKey = key,
+                )
+            }
+            AppLog.i("config", "会话模型 id=$profileId model=${profile.model}")
+            notify("本会话用「${profile.name}」")
+        }
+    }
+
+    /** 回到"跟随默认档案"。 */
+    fun clearSessionProfile() {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(profileId = null) }
+            applySessionProfileOverride(null)
+            AppLog.i("config", "会话模型回到跟随默认")
+            notify("模型跟随默认档案")
+        }
+    }
+
+    /** 会话级思考强度：null = 跟随档案，`"off"` = 关掉，其余原样发。 */
+    fun useSessionReasoning(effort: String?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(reasoningEffort = effort) }
+            _state.update { it.copy(sessionReasoningEffort = effort) }
+            AppLog.i("config", "会话思考强度=${effort ?: "跟随"}")
+        }
+    }
+
+    private suspend fun persistSessionConfig(sessionId: String, edit: (SessionConfig) -> SessionConfig) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val current = sessionConfigRepository.load(sessionId)
+                sessionConfigRepository.save(sessionId, edit(current))
+            }.onFailure { AppLog.w("config", "会话配置写入失败：${it.message}") }
         }
     }
 
@@ -1626,7 +1735,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             frequencyPenalty = snapshot.presetSampling?.frequencyPenalty,
             presencePenalty = snapshot.presetSampling?.presencePenalty,
             stream = true,
-            extraBody = activeProfile?.reasoningEffort
+            // 思考强度：会话级覆盖优先（"off" = 明确关掉，不发这个字段），否则跟随档案
+            extraBody = when (val effort = snapshot.sessionReasoningEffort) {
+                null -> activeProfile?.reasoningEffort
+                "off" -> null
+                else -> effort
+            }
                 ?.takeIf { it.isNotBlank() }
                 ?.let { mapOf("reasoning_effort" to JsonPrimitive(it)) }
                 .orEmpty(),
