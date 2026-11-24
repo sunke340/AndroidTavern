@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-25 02:00）
+# 项目状态快照（2026-11-25 03:40）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -10,10 +10,10 @@
 
 | | |
 |---|---|
-| 代码 | `866c60f`（tag `apk-m153`）+ 之后的「继续」提交 |
-| 已交付 APK | `artifacts/` 里 v118–v122（v122 = `866c60f`，签名/`BUILD_ID` 已核） |
+| 代码 | `25112b2`（tag `apk-m165`） |
+| 已交付 APK | `artifacts/` 里 v118–v134（每个都核过签名与 dex `BUILD_ID`） |
 | CI | 三个 job 全绿（铁律 / 纯 JVM 单测 / debug APK） |
-| 本机测试 | `tools/test-core.sh` 全绿 + 三个 `check-*.sh` |
+| 本机测试 | `tools/test-core.sh` 全绿（9 个模块，89 条）+ 三个 `check-*.sh` |
 | 规模 | `app` 约 40 个 kt 文件 / 约 10.5k 行；`data` 新增 config + message_swipes（DB v3） |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
 
@@ -39,7 +39,8 @@
 | 角色卡库**搜索**（名字 / 简介） | ✅ 已出包，**待真机** |
 | 聊天记录**导出**（原版 .jsonl，含 swipe 备选） | ✅ 已出包，**待真机** |
 | 聊天记录**导入**（角色详情 ⋮ → 导入聊天记录） | ✅ 已出包，**待真机** |
-| **编辑角色卡并写回 PNG**（备份 + 原子替换） | ✅ 已出包，**待真机** |
+| **编辑角色卡并写回 PNG**（备份 + 原子替换；含备选开场白增删改） | ✅ 已出包，**待真机** |
+| 卡级 `system_prompt` / `post_history_instructions` 顶替预设的 main / jailbreak | ✅ fixture:P0-5-sysprompt 逐字相等 |
 
 ## 现在能用的（沿用上一轮，均已真机验过）
 

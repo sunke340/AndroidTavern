@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 02:10）
+# 接手卡（2026-11-25 03:35）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,10 +8,12 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `5926993`（tag `apk-m154`）/ 交付包 `artifacts/app-v123-5926993.apk`；
-  这一夜的包 v118–v122 都在 `artifacts/`（每个都验过签名与 dex `BUILD_ID`）。
-- **没有悬着的事**：用户 2026-11-25 列出的 10 条需求 + P0-6 消息操作**全部落码并出包**。
+- **基线**：代码 `25112b2`（tag `apk-m165`）/ 交付包 `artifacts/app-v134-25112b2.apk`；
+  这一夜的包 v118–v134 都在 `artifacts/`（每个都验过签名与 dex `BUILD_ID`）。
+- **没有悬着的事**：用户 2026-11-25 列出的 10 条需求 + P0-6 消息操作 + 后半夜的
+  `@@` 装饰器 / 搜索与标签 / 聊天导入导出 / 卡编辑 / system_prompt 顶替，**全部落码并出包**。
   **但全部还没有真机验收** —— 上一轮（串流跟随/转场/橡皮筋）才是验过的。
+  21 条待验清单在 [device-verification.md](device-verification.md) 的 M3 一节。
 - **下一件事**：按 [status.md](status.md)「待真机验」那张表从上到下点一遍；再往后是世界书剩余、
   卡编辑（写回 PNG）。P0-6 的余项：`继续` 的裸拼在真实模型上是否粘字（夹具里是 `ok ok`）。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**。
@@ -28,6 +30,12 @@
 | 4 详情页 | 保留 TabRow，卡头改 200dp 大图 + 底部渐变压名字/元信息 | 用户明确"只重做卡头与信息" |
 | 10 玻璃确认框 | `AlertDialog`（独立窗口采不到内容层）→ 控制器 + 骨架宿主 + `LiquidGlassSpec.Sheet` | 8 处调用点签名不变，内部换实现 |
 | P0-6 | 长按气泡：复制/编辑/删除；最后一条助手消息还有重新生成、继续；swipe `‹ N/M ›` 翻页 | 重新生成=新增 swipe 备选；继续=末尾加原版那条 system 提示；备选存 `message_swipes`（DB v3） |
+| 世界书 `@@` 装饰器 | `@@activate` 不看关键字、`@@dont_activate` 一律不激活；解析照抄原版（未知装饰器行也剥掉、`@@@` 转义跳过） | fixture:P1-3-decorators 逐字相等 |
+| sticky / cooldown 落库 | 计时状态按会话存（`LorebookScanStateCodec`） | 原版存在 `chat_metadata.timedWorldInfo` |
+| 卡库搜索 + 标签筛选 | 名字/简介/标签过滤；标签进卡列表缓存，不再解 PNG | P0-8 |
+| 聊天导出/导入 | 原版 `.jsonl`：导出带 swipe 备选；导入单事务写库、日期原样保留 | P0-7 |
+| 卡编辑写回 PNG | 六个文本字段 + 备选开场白增删改；`.bak.png` 备份 + 临时文件原子替换 | P0-3 的写回单测 |
+| 卡级 `system_prompt` / `post_history_instructions` | 顶替预设的 main / jailbreak（位置不变） | fixture:P0-5-sysprompt |
 
 ## 二、三级配置（会话 > 角色卡 > 全局）
 
@@ -60,7 +68,11 @@
   `userText == null` = 不追加用户消息。**别再复制一份两百行的发送逻辑。**
 - 失败路径：`ReplaceTarget.append=false` 还原被撤下的那条；`append=true` 也是还原（继续不产生新行）。
 
-## 五、待真机验（这一夜全部新 UI，一组一组点）
+## 五、待真机验（21 条，见 [device-verification.md](device-verification.md) 的 M3）
+
+一句话版：抽屉拖拽 → 输入区双行 → 模型抽屉 → 会话配置 → 卡配置 → 开场白切换 → 详情卡头 →
+玻璃确认框 → 消息动作单（含重新生成/继续/swipe）→ 卡库搜索与标签 → 导出/导入 → 卡编辑。
+
 
 1. **抽屉**：长按行 → 拖把手跟手、过半收回、否则弹回。
 2. **输入区**：聚焦翻倍、多行长高、发送后收起、最后一条不被盖。
@@ -74,10 +86,13 @@
 
 ## 六、下一步优先级
 
-1. 上面九组真机验收（最可能有问题的是输入区让位与抽屉拖拽手感）。
-2. 世界书剩余：sticky 计时落库、`@@` 装饰器、outlet 位置。
-3. 卡编辑（写回 PNG，需要备份 + 校验）—— **明确没做**，别顺手改卡文件。
+1. 上面 21 条真机验收（最可能有问题的是输入区让位与抽屉拖拽手感）。
+2. 世界书 **outlet**：还没做，而且**缺夹具** —— 原版只有预设里出现 `{{outlet::名字}}` 宏才会展开，
+   现有默认预设里一个都没有；要做得先给 capture 加"选预设"并造一份带 outlet 宏的预设。
+3. 卡库**分组**（原版的文件夹）未做。
 4. C 批模型档案真机验收。
+5. `forbid_overrides`（预设段是否允许被卡覆盖）与"按角色禁用某段"这两个前置条件没做 ——
+   现在的顶替是无条件生效的（夹具里原版也是无条件）。
 
 ## 七、这台机器与出包（每次都要用）
 
@@ -115,6 +130,12 @@
 | 抽屉把手拖拽 | `ActionSheet.kt`（`GlassSheetPlate`） |
 | 玻璃确认框 | `ConfirmDeleteDialog.kt`（控制器 + `GlassConfirmHost`）、两个骨架里各挂一次 |
 | swipe 备选表 | `TavernDatabase.kt`（v3）、`SqliteChatRepository.kt`（`swipes` / `setSwipes`） |
+| 卡库搜索 / 标签 | `CharactersScreen.kt`（`CardSearchField` / `TagFilterRow`）、`CardStore` 的 `.meta` 缓存 |
+| 卡编辑（写回 PNG） | `CardEditScreen.kt`、`CardRepository.saveCard` / `CardStore.saveCard` |
+| 聊天导出 / 导入 | `ChatViewModel.exportChat` / `importChat`、`ChatRepository.importSession`、`:core:chat-format` |
+| 世界书装饰器 | `core/lorebook/WorldBookDecorators.kt`（解析）+ `LorebookScanner` 里的两条判断 |
+| system_prompt 顶替 | `core/prompt/PromptBuilder.kt` 的 MAIN / JAILBREAK 分支 |
+
 | 本质回归点 | `artifacts/app-v117-0631bff.apk`（串流跟随那一轮验收过的包） |
 
 ## 十、这一夜踩的坑（一句话）
@@ -125,3 +146,7 @@
 3. **Shell 里 `git commit -m "...\"继续\"..."`** 会被引号截断；消息里有引号就写文件 + `-F`。
 4. **玻璃着色器随节点尺寸重建**：别给玻璃表面加逐帧尺寸动画（输入区展开用"只淡入"）。
 5. **`AlertDialog` 永远做不成液态玻璃**（独立窗口采不到内容层）—— 用控制器 + 骨架宿主。
+6. **用了新的 core 模块，记得加进 `app/build.gradle.kts`**：本机不编 `:app`，只有 CI 报
+   `Unresolved reference`（导出聊天就这么栽过一次）。
+7. **提示（Snackbar）要挂在页面栈之上**：TabsRoot 会作为离场页留在组合树里，它那里的
+   SnackbarHost 会把二级页的提示"吃掉"（画在被盖住的层上）。
