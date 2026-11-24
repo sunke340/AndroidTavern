@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `518a518`（tag `apk-m142`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v111-518a518.apk`（签名固定，覆盖安装已验证多次） |
+| 代码 | `9916059`（tag `apk-m143`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v112-9916059.apk`（签名固定，覆盖安装已验证多次） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -59,6 +59,8 @@
 | 详情页标签"从哪进回哪" | 会话标签进聊天、配置标签进二级页，返回都停原来那个标签；换卡才回到「简介」 | `UiState.detailTab` |
 | 详情页新建会话后返回落主页会话 | 在卡详情点「新建会话」→ 返回直接到「会话」栏（不再回到卡详情） | `startSessionForCard(leaveDetail=true)` |
 | 详情页四个标签都有橡皮筋 | 拉到头能继续拖、松手回弹 | `CharacterDetailScreen.ScrollArea` |
+| 串流换行是"滑上去"不是"跳上去" | 贴底时新行出现，整屏柔和抬升（180ms）；来回滚动看是否还有硬跳 | `ChatScreen` 的 `lift` |
+| 翻看历史时画面不动 | 往上滚一点再让它继续生成：视口不能动，回到底部才继续跟随 | `ChatScreen` 的 `frozenStream` |
 
 ## 下一步
 
