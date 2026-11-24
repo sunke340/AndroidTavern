@@ -161,6 +161,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val settingsPage = state.settingsPage
             val worldBook = state.worldBookView
             val editingProfile = state.profileDraft != null
+            val presetEdit = state.presetEditName
 
             val destination: Destination = when {
                 state.chatOpen -> Destination.Chat
@@ -171,7 +172,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
                 state.galleryOpen -> Destination.Gallery
                 // 预设编辑叠在"设置→预设"之上：返回落在预设列表，所以 settingsPage 不清
-                state.presetEditName != null -> Destination.PresetEdit(state.presetEditName)
+                presetEdit != null -> Destination.PresetEdit(presetEdit)
                 // 世界书条目页叠在"设置→世界书"之上：返回落在书单
                 worldBook != null -> Destination.WorldBookEntries(worldBook.name)
                 settingsPage != null -> Destination.Settings(settingsPage)
