@@ -1,17 +1,18 @@
-# 项目状态快照（写于 2026-11-24 12:00）
+# 项目状态快照（写于 2026-11-24 12:30）
 
 **用途**：换会话/压缩上下文后，先读这一页就能接上。更细的规则在 [AGENTS.md](../../AGENTS.md)、
 [app/AGENTS.md](../../app/AGENTS.md)，进度唯一真相在 [compat-matrix.md](../compat-matrix.md)。
 
 ## 当前基线
 
-- 代码：`010c042`（tag `apk-m115`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
+- 代码：`59139f4`（tag `apk-m117`；兜底回退点：`apk-m48` 是玻璃版，`apk-m27` 是纯 C2 版；
   列表改版之前的最后一版是 `apk-m100` / `99ec1f5`）
 - 状态：CI 全绿；本机 `tools/test-core.sh` / `tools/check-*.sh` 全绿
-- 已交付 APK：`app-v92-010c042.apk`（签名固定，可覆盖安装；上一版 `app-v91-e70f4df.apk`）
+- 已交付 APK：`app-v93-59139f4.apk`（签名固定，可覆盖安装；上一版 `app-v92-010c042.apk`）
   - ⚠️ `apk-latest` 这个 release 永远跟**最后一次 `main` 提交**重建（含纯文档提交），
     所以它的 BUILD_ID 不一定等于交付包的 sha；**以 `artifacts/` 里的文件为准**
-- **结构整理已开工**：第 1 轮（P1）做完 = 抽两个工具件；包分层**按评估决定不做**，
+- **结构整理**：P1（抽两个工具件）、P2（AGENTS 42KB→8.9KB）、P3（组件预览页）都做完了；
+  下一个是 P4（`Style.kt` 拆同包 `ListRow.kt`）。包分层**按评估决定不做**，
   理由与修订后的计划在 [structure-audit.md](structure-audit.md) 顶部「修订」+ 第九节
 - 引擎/工具链：Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01 / minSdk 26 / targetSdk 35
 
@@ -85,6 +86,7 @@
 | `app-v90-449f69f.apk` | `449f69f` | 弹层 faceWhite 0.40 + 底栏点按轻 tint（**被 v91 取代**） |
 | `app-v91-e70f4df.apk` | `e70f4df` | 弹层 faceWhite 0.50；聊天页**页头下沿**投影 ×0.5；新增 `tag=glass 液态档 …` 诊断日志 |
 | `app-v92-010c042.apk` | `010c042` | 结构第 1 轮：`ConfirmDeleteDialog` + `statusBarTop()` 抽出来（7 处重复消失），删除确认钮统一成红色；**行为不变** |
+| `app-v93-59139f4.apk` | `59139f4` | P3：组件预览页（设置→关于→组件预览，debug only）：材质样张 + `faceWhite`/`refraction`/`rimAlpha` 三根滑杆 + 五种行样式 |
 
 ### 待真机逐项确认（都在这批里，没人点过）
 
@@ -101,6 +103,7 @@
 | 底栏让位再弹层 | 开弹层时底栏先向下滑走，弹层随后上来 | `SheetEnterDelayMillis`（180）/ 底栏 180·200 |
 | 选卡弹层新材质 | 右上「＋」：三列卡网格压在玻璃面上 | `CardPickerBody` |
 | 删除确认框（v92 新增） | 长按会话/角色卡 → 删除 → 确认框里「删除」两字应为**红色**（原来只有档案编辑那处是红的） | `ConfirmDeleteDialog.kt` |
+| 组件预览（v93 新增） | 设置→关于→「组件预览」：胶囊/发送钮/动作单面/页头带/卡片条都压在彩色带上；拖滑杆松手才变 | `GalleryScreen.kt` |
 
 ## 已经做完的（能装、能日常聊）
 
@@ -131,8 +134,9 @@
 2. ~~P2：`app/AGENTS.md` 瘦身~~ → **已完成**：42.4 KB → **8.9 KB**，旧文件逐字归档进
    [pitfalls.md](pitfalls.md)。整条 AGENTS 链 52.3 KB → **17.8 KB（28% of 64 KB）**。
    以后**新规则只往这份 8.9 KB 里加一行**，故事写进 pitfalls。
-3. **P3（下一个）**：debug-only 的 `GalleryScreen`（材质/动效/行样式预览 + 三根材质滑杆），调参不再每次出包。
-4. **P4**：`Style.kt` 638 行只留 token，行系统搬进**同包**的 `ListRow.kt`（同包拆文件零 import 代价）。
+3. ~~P3：debug-only 的 `GalleryScreen`~~ → **已完成**（`59139f4`）。调参数进这一页，松手就换 spec，
+   下面直接给一行能粘回 `LiquidGlassSpec` 的代码。**不含动效样张**（那些复制一份会跟真实实现漂移）。
+4. **P4（下一个）**：`Style.kt` 638 行只留 token，行系统搬进**同包**的 `ListRow.kt`（同包拆文件零 import 代价）。
 5. ~~拆 `ChatViewModel`~~ → **不做**（1304 行、0 个 composable、40 字段单一状态机）；要动只抽纯逻辑
    （世界书两本缓存、流式拼接），见 structure-audit 第六节。
 6. `:ui` 独立 Gradle 模块**暂时不做**。
@@ -222,6 +226,9 @@
 
 - 本机能跑：`tools/test-core.sh`、`tools/check-*.sh`、Playwright 录原版夹具、HTML 出设计样张
 - 本机不能跑：`assembleDebug`、模拟器、`:app` 编译
+- ⚠️ **`apk-latest` 出现新 sha ≠ CI 全绿**：轮询脚本只看那个 release。2026-11-24 之前
+  「铁律检查」这一 job 一直是红的（`docs/design/motion.md` 里三个相对链接少了两级 `../`），
+  但出包 job 照常成功，所以没人发现。看整体结果要查 run 的 jobs 列表，不只看出没出包。
 - CI 结果**每 40–45 秒轮询一次**（不要 sleep 300 干等）；失败日志从 `ci-log-jvm` / `ci-log-android`
   release 的 `build.log` 取，本地下载后 grep `^e: `
 - 发 APK：`git tag apk-mN && git push origin apk-mN` → 等 `apk-latest` 的 body 出现新 sha →

@@ -289,7 +289,7 @@ ChatViewModel
 | **P0** | **先在真机走一遍上一批的 10 项**（`status.md` 的「待真机逐项确认」） | — | — | 清单点完；不对的先记下来 |
 | **P1** | `ConfirmDeleteDialog` + `statusBarTop()` + 三处措辞/颜色统一（第三节） | ✅ | 低（纯抽取；**唯一视觉变化**：确认钮统一成红色） | 三项本机检查 + CI 编译 + 真机长按删一条会话、删一张卡 |
 | ~~**P2**~~ ✅ | `app/AGENTS.md` 42.4 KB → **8.9 KB** + 逐字归档建 `docs/dev/pitfalls.md`（第五节） | — | 低 | 已达标：链 52.3 → 17.8 KB |
-| **P3** | `GalleryScreen`（debug only，材质三根滑杆）（第四节） | ✅ | 低（不进发布包） | debug 包里能打开、扫参数不用重新出包 |
+| ~~**P3**~~ ✅ | `GalleryScreen`（debug only，材质三根滑杆）（第四节） | ✅ | 低 | 已做（`59139f4`）：入口 设置→关于，滑杆松手即应用并给出一行可粘贴的 `copy(...)` |
 | **P4** | `Style.kt` 只留 token，行系统搬进**同包**的 `ListRow.kt` | ✅ | 低（同包拆文件 = 零 import） | 本机检查 + CI + 真机三处列表外观不变 |
 | **不做** | 包分层（第二节）、拆 `ChatViewModel` 的 controller（第六节） | — | — | — |
 | 之后 | 功能线：P1-5 预设导入 → D 批三级继承 → P0-6 消息操作 → 世界书剩余 | — | — | 见 `compat-matrix.md` |
