@@ -9,8 +9,8 @@
 
 | | |
 |---|---|
-| 代码 | `b6169be`（tag `apk-m137`；结构整理收尾版是 `apk-m118`） |
-| 已交付 APK | `artifacts/app-v107-b6169be.apk`（签名固定，覆盖安装已验证多次） |
+| 代码 | `7235d7f`（tag `apk-m138`；结构整理收尾版是 `apk-m118`） |
+| 已交付 APK | `artifacts/app-v108-7235d7f.apk`（签名固定，覆盖安装已验证多次） |
 | CI | 三个 job 全绿：铁律检查 / 纯 JVM 单测 / 出 debug APK |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块，`:core:preset` 已含在内） |
 | 规模 | `app` 34 个 kt 文件 / 8590 行；AGENTS 指令链 21 KB / 64 KB |
@@ -52,6 +52,7 @@
 | 两个世界书条目页的页头都是半透明的 | 列表从页头底下滑过、6% 透出内容 —— **这是设计**，别当 bug 修（v105 误修过一次） | `WorldBookEntriesScreen.kt` / `CardConfigPageScreen.kt` |
 | 启动不再"先轻量后玻璃" | 冷启动第一帧就应该是玻璃（外观同步预读）；导出日志看 `tag=startup` 第一行的 ms | `ChatViewModel.applyAppearanceSync` |
 | 启动时列表不再"空白半秒" | 会话/卡列表就绪前不显示"还没有会话/卡"；日志里「会话就绪」应早于「配置解密」 | `SessionsScreen` / `CharactersScreen` |
+| 条目多的内嵌书进页不再卡 | 日志 `tag=nav` 的帧数应从 2–5 回到 30±、最长帧 ≤60ms；开书不再是 448ms 一帧 | `CardConfigPageScreen.CardWorldBookPage` |
 
 ## 下一步
 
@@ -70,8 +71,10 @@
 - **批量「全部开启」可能撑爆提示词**：一本几百条的书全开，预算裁剪（P1-4）会兜底，但注入内容会明显变长。
 - 卡内嵌书覆盖从**下标**换成了 **uid**，老版本那份覆盖在首次打开卡详情时一次性迁移，对不上的下标直接丢弃。
 - **玻璃帧率从未量过**。发黏就给最贵的那块（底栏）单独传 `liquid = null`。
-- **世界书条数多时开书卡顿的根因还没定**：v107 只加了测量（`tag=wi` 解析/建条目、
-  `tag=nav` 最长帧、`tag=glass` 着色器编译），等真机日志再改。
+- **卡列表启动 394ms**：`CardStore.list()` 逐张 PNG 全量解析（`卡就绪 +740ms`）。
+  下一轮按"字节数 + mtime 缓存名字/简介/条目数"处理。
+- **世界书开关会重解析**：`setWorldBookEntryEnabled` 会 `loadWorldBook` + `refreshWorldBooks`，
+  大书点一下要重读写两遍（改动前是常态；现在 `list()` 只数条目不算解析了）。
 - **橡皮筋 `flingEaten` 修复未真机验**：拉到底 → 猛甩向上，撞顶后应立即回弹；
   日志 tag `rubber` 里 `回弹 start` 只该出现一次。
 - 弹层**没有拖拽关闭**（只能点遮罩或返回键）。
