@@ -74,6 +74,36 @@ public class ChatMessage internal constructor(public val raw: JsonObject) {
         )
 
         /**
+         * 造一条**带多条备选**的角色消息（导出用）。`swipes` 里包含当前显示的那一条 ——
+         * 与原版落盘一致；`swipe_id` 指向它。
+         */
+        public fun assistantWithSwipes(
+            name: String,
+            swipes: List<String>,
+            swipeId: Int,
+            sendDate: String,
+        ): ChatMessage {
+            val all = swipes.ifEmpty { listOf("") }
+            val index = swipeId.coerceIn(0, all.lastIndex)
+            return ChatMessage(
+                JsonObject(
+                    linkedMapOf(
+                        "name" to JsonPrimitive(name),
+                        "is_user" to JsonPrimitive(false),
+                        "is_system" to JsonPrimitive(false),
+                        "send_date" to JsonPrimitive(sendDate),
+                        "mes" to JsonPrimitive(all[index]),
+                        "swipes" to JsonArray(all.map { JsonPrimitive(it) }),
+                        "swipe_id" to JsonPrimitive(index),
+                        "swipe_info" to JsonArray(
+                            all.map { JsonObject(linkedMapOf("send_date" to JsonPrimitive(sendDate))) },
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        /**
          * 造一条角色消息。带 `swipes` / `swipe_id` / `swipe_info`，这样原版打开导出的
          * 聊天文件也能正常「换一个」。
          */

@@ -11,6 +11,8 @@ import app.tavern.core.ai.OpenAiCompatibleClient
 import app.tavern.core.ai.StreamEvent
 import app.tavern.core.card.CardBookEntry
 import app.tavern.core.card.CharacterCard
+import app.tavern.core.chat.ChatFile
+import app.tavern.core.chat.ChatMessage as ChatFileMessage
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
 import app.tavern.core.card.lorebookEntries
@@ -917,6 +919,56 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 model = profile.model,
                 apiKey = key,
             )
+        }
+    }
+
+    // ---- 导出（P0-7 的导出侧） ---------------------------------------------
+
+    /**
+     * 把当前会话导成原版 `.jsonl`（写到用户选的文件里）。
+     *
+     * 格式由 `:core:chat-format` 负责（首行表头 + 逐行消息，写出不带结尾换行）；
+     * 这里只做"库里的行 → 原版消息"的映射：名字用卡名 / `User`，最后一条助手消息带上
+     * swipe 备选（这样 PC 版打开还能「换一个」）。
+     */
+    fun exportChat(uri: Uri) {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        val cardName = snapshot.cardName.ifBlank { "Character" }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val stored = chatRepository.messages(sessionId)
+                    val swipes = snapshot.lastSwipes
+                    val lastId = stored.lastOrNull()?.id
+                    val messages = stored.map { row ->
+                        when {
+                            row.isUser -> ChatFileMessage.user("User", row.content, row.sendDate)
+                            row.id == lastId && swipes.size > 1 -> ChatFileMessage.assistantWithSwipes(
+                                name = cardName,
+                                swipes = swipes,
+                                swipeId = snapshot.lastSwipeId,
+                                sendDate = row.sendDate,
+                            )
+
+                            else -> ChatFileMessage.assistant(cardName, row.content, row.sendDate)
+                        }
+                    }
+                    val text = ChatFile.of(messages).serialize()
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(text.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    } ?: error("拿不到写入流")
+                    messages.size
+                }
+            }
+            result.onSuccess { count ->
+                AppLog.i("chat", "导出聊天 $count 条")
+                notify("已导出 $count 条消息")
+            }.onFailure { error ->
+                AppLog.w("chat", "导出失败：${error.message}")
+                notify("导出失败：${error.message}")
+            }
         }
     }
 

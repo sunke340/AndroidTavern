@@ -1,5 +1,7 @@
 package app.tavern
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -326,6 +328,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
             val activeProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
+            // 导出用系统文件选择器（SAF）：不需要存储权限，用户自己挑位置
+            val exportLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/jsonl"),
+            ) { uri ->
+                if (uri != null) viewModel.exportChat(uri)
+            }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 // 原来是个**不可点的占位**，现在就是「会话配置」的入口（用户 2026-11-25 第 2 条）。
                 DropdownMenuItem(
@@ -340,6 +348,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     onClick = {
                         menuOpen = false
                         viewModel.toggleRequest()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("导出聊天记录") },
+                    onClick = {
+                        menuOpen = false
+                        // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
+                        exportLauncher.launch("${state.cardName.ifBlank { "chat" }}.jsonl")
                     },
                 )
             }

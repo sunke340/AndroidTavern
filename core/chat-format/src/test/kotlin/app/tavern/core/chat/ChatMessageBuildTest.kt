@@ -42,4 +42,21 @@ class ChatMessageBuildTest {
         assertEquals("""{"chat_metadata":{},"user_name":"unused","character_name":"unused"}""", header)
         Unit
     }
+
+    @Test
+    fun `多条 swipe 导出后原版还能换回其它版本`() {
+        val message = ChatMessage.assistantWithSwipes(
+            name = "Synthetic",
+            swipes = listOf("第一版", "第二版", "第三版"),
+            swipeId = 1,
+            sendDate = "2026-11-25T00:00:00.000Z",
+        )
+        val parsed = ChatFile.parse(ChatFile.of(listOf(message)).serialize()).messages.single()
+
+        assertEquals("第二版", parsed.text, "mes 应当是 swipe_id 指向的那条")
+        assertEquals(1, parsed.swipeId)
+        assertEquals(listOf("第一版", "第二版", "第三版"), parsed.swipes)
+        assertEquals("第一版", parsed.withSwipe(0).text, "原版换一个要能拿到第一版")
+        Unit
+    }
 }
