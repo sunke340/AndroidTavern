@@ -45,6 +45,9 @@ const PROMPT_ORDER = arg('prompt-order', null) ? JSON.parse(arg('prompt-order'))
 // 为什么要这一步：原版把"被换掉的那一条"存进 `swipes[]`、并把 `swipe_id` 指向当前这条；
 // 不看原版落盘的结构就实现 swipe 存储 = 猜。
 const SWIPES = Number(arg('swipes', '0'));
+// --continue：再调一次 Generate('continue')（P0-6）。原版"继续"不新增消息，是把文本接在
+// 最后一条后面；要确认的是"它发出去的请求与普通生成差在哪"，所以两份请求体都要留下来比。
+const DO_CONTINUE = process.argv.indexOf('--continue') !== -1;
 
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
@@ -96,7 +99,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -206,6 +209,9 @@ try {
             for (let i = 0; i < swipes; i++) {
                 await S.Generate('swipe', { skipWIAN: skipWorldInfo });
             }
+            if (doContinue) {
+                await S.Generate('continue', { skipWIAN: skipWorldInfo });
+            }
         } catch (e) {
             error = String(e?.message ?? e);
         } finally {
@@ -232,7 +238,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
@@ -254,6 +260,7 @@ try {
             how: 'playwright + window.fetch 拦截，调用原版 Generate("normal")' +
                 (SWIPES > 0 ? ` + Generate("swipe") x${SWIPES}` : ''),
             swipes: SWIPES,
+            continued: DO_CONTINUE,
             character: CHARACTER,
             world: SELECT_WORLD,
             wiSettings: WI_SETTINGS,

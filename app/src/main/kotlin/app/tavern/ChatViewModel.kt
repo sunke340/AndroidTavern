@@ -1973,14 +1973,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val rowId: Long,
         /** 已有的 swipe 备选（新的那条会接在它后面）。 */
         val base: List<String>,
-        /** 失败时要还原到界面上那条（重新生成把旧的那条先撤下来了）。 */
+        /** 失败时要还原到界面上那条（重新生成/继续把它从界面上先撤下来了）。 */
         val restore: ChatMessage,
+        /**
+         * true = **继续**（把新文本接在原来那条后面，改的是备选里的同一条）；
+         * false = 重新生成（换一条备选，旧的那条留在列表里可以翻回去）。
+         */
+        val append: Boolean = false,
+        /** 当前显示的是第几条备选（继续时要改这一条）。 */
+        val swipeId: Int = 0,
     )
+
+    /** 原版"继续"在请求末尾追加的那条 system 提示（证据：fixtures/expected/P0-6-continue.json）。 */
+    private val continueHint =
+        ChatMessage(ChatRole.System, "[Continue your last message without repeating its original content.]")
 
     private fun beginCompletion(
         history: List<ChatMessage>,
         userText: String?,
         replacing: ReplaceTarget? = null,
+        continuation: Boolean = false,
     ) {
         val snapshot = _state.value
         val characterCard = card ?: return
@@ -1991,7 +2003,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         // 世界书：卡内嵌书扫一遍再拼提示词。没有条目时是空结果，不会多出一条消息。
         val worldInfo = scanWorldInfo(characterCard, snapshot, history)
-        val messages = PromptBuilder().build(
+        val built = PromptBuilder().build(
             characterCard,
             userName = "User",
             history = history,
@@ -2000,10 +2012,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             order = snapshot.promptOrder.ifEmpty { PresetDefaults.ORDER },
             prompts = snapshot.presetPrompts,
         )
+        // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
+        val messages = if (continuation) built + continueHint else built
 
         _state.update {
             it.copy(
-                transcript = history,
+                // 继续：最后一条留在 history 里（提示词要用），界面上先撤下来，
+                // 免得"原来的气泡 + 正在写的流式气泡"同屏出现两条
+                transcript = if (replacing?.append == true) history.dropLast(1) else history,
                 streamingText = "",
                 isStreaming = true,
                 input = "",
@@ -2055,11 +2071,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             suspend fun finish(text: String, status: String) {
                 if (replacing != null) {
-                    // 重新生成：不新增一行，改写原来那一行，并把新的一条接进 swipe 备选
+                    // 重新生成/继续：都不新增一行，改写原来那一行。
+                    // 继续是把新文本接在后面（原版落盘结果就是 "ok ok" 这种拼接）
+                    val combined = if (replacing.append) replacing.restore.content + text else text
                     if (text.isNotEmpty()) {
-                        val next = replacing.base + text
+                        val next = if (replacing.append) {
+                            replacing.base.toMutableList().also { it[replacing.swipeId] = combined }
+                        } else {
+                            replacing.base + text
+                        }
                         withContext(Dispatchers.IO) {
-                            chatRepository.updateMessage(replacing.rowId, text)
+                            chatRepository.updateMessage(replacing.rowId, combined)
                             chatRepository.setSwipes(replacing.rowId, next)
                         }
                         refreshSessions()
@@ -2069,9 +2091,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             } else {
                                 current.copy(
                                     transcript = current.transcript +
-                                        ChatMessage(ChatRole.Assistant, text),
+                                        ChatMessage(ChatRole.Assistant, combined),
                                     lastSwipes = next,
-                                    lastSwipeId = next.lastIndex,
+                                    lastSwipeId = if (replacing.append) replacing.swipeId else next.lastIndex,
                                     streamingText = "",
                                     isStreaming = false,
                                     status = status,
@@ -2281,6 +2303,59 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 history = trimmed,
                 userText = null,
                 replacing = ReplaceTarget(row.id, base, last),
+            )
+        }
+    }
+
+    /**
+     * 继续：让角色顺着最后一条往下写（原版 `Generate('continue')`）。
+     *
+     * 与"重新生成"的区别（两者都不新增消息）：
+     * - 继续：请求末尾多一条 system 提示 `[Continue your last message without repeating its original content.]`，
+     *   结果**接在**最后一条后面；
+     * - 重新生成：不带这条提示，结果作为**新的 swipe 备选**（旧的那条留着可翻回）。
+     * 这两条都是从原版夹具里读出来的，不是我们猜的（fixtures/expected/P0-6-continue.json）。
+     */
+    fun continueLast() {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) return
+        val last = snapshot.transcript.lastOrNull()
+        if (last == null || last.role != ChatRole.Assistant) {
+            notify("最后一条不是角色的回复，没法继续")
+            return
+        }
+        if (snapshot.apiKey.isBlank()) {
+            _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
+            return
+        }
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            val row = stored.lastOrNull()?.takeIf { !it.isUser } ?: run {
+                notify("库里没有可继续的那一条")
+                return@launch
+            }
+            val base = snapshot.lastSwipes.ifEmpty { listOf(row.content) }
+            _state.update {
+                it.copy(
+                    transcript = it.transcript.dropLast(1),
+                    streamingText = "",
+                    status = "继续写…",
+                    lastSwipes = base,
+                )
+            }
+            AppLog.i("chat", "继续：历史 ${snapshot.transcript.size} 条（末尾带 continue 提示）")
+            beginCompletion(
+                history = snapshot.transcript,
+                userText = null,
+                replacing = ReplaceTarget(
+                    rowId = row.id,
+                    base = base,
+                    restore = last,
+                    append = true,
+                    swipeId = snapshot.lastSwipeId.coerceIn(0, base.lastIndex),
+                ),
+                continuation = true,
             )
         }
     }

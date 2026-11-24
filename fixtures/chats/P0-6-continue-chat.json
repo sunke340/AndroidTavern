@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Synthetic",
+    "is_user": false,
+    "is_system": false,
+    "send_date": "2026-11-24T17:34:01.360Z",
+    "mes": "FIRST-OMEGA",
+    "extra": {
+      "reasoning": ""
+    },
+    "swipes": [
+      "FIRST-OMEGA"
+    ],
+    "swipe_id": 0,
+    "swipe_info": [
+      {
+        "send_date": "2026-11-24T17:34:01.360Z",
+        "extra": {}
+      }
+    ]
+  },
+  {
+    "extra": {
+      "api": "openai",
+      "model": "gpt-4-turbo",
+      "reasoning": "",
+      "reasoning_duration": null,
+      "reasoning_signature": null,
+      "time_to_first_token": 7
+    },
+    "name": "Synthetic",
+    "is_user": false,
+    "send_date": "2026-11-24T17:34:03.063Z",
+    "mes": "ok ok",
+    "title": "",
+    "gen_started": "2026-11-24T17:34:02.260Z",
+    "gen_finished": "2026-11-24T17:34:03.069Z",
+    "swipes": [
+      "ok ok"
+    ],
+    "swipe_id": 0,
+    "swipe_info": [
+      {
+        "send_date": "2026-11-24T17:34:03.063Z",
+        "gen_started": "2026-11-24T17:34:02.260Z",
+        "gen_finished": "2026-11-24T17:34:03.069Z",
+        "extra": {
+          "api": "openai",
+          "model": "gpt-4-turbo",
+          "reasoning": "",
+          "reasoning_duration": null,
+          "reasoning_signature": null,
+          "time_to_first_token": 7
+        }
+      }
+    ]
+  }
+]

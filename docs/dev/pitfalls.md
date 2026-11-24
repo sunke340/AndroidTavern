@@ -777,3 +777,24 @@ v116 加了"起动画前先预热新页"（`PageStack` 的 `warming`）。真机
 （`clipScrollableContainer` 主轴向裁、交叉轴留 30dp 给阴影），管不到外面那层平移。
 
 **已真机确认**（2026-11-25 00:40，用户："确实正常了"）：Tab 栏不再被盖，橡皮筋观感没变。
+
+## 2026-11-25 · swipe / 继续 的夹具，以及 `poll-ci.sh` 的假 READY
+
+- **怎么录**（ST 已在 8000 跑着）：
+  ```bash
+  export LD_LIBRARY_PATH=$PWD/vendor/pw-libs/usr/lib/x86_64-linux-gnu
+  export PLAYWRIGHT_BROWSERS_PATH=$PWD/vendor/pw-browsers
+  node tools/fixture/capture.mjs --out fixtures/expected/P0-6-swipes.json \
+    --character Synthetic --no-wi --swipes 2 --dump-chat fixtures/chats/P0-6-swipes-chat.json
+  node tools/fixture/capture.mjs --out fixtures/expected/P0-6-continue.json \
+    --character Synthetic --no-wi --continue --dump-chat fixtures/chats/P0-6-continue-chat.json
+  ```
+- **原版结构**（`fixtures/chats/P0-6-*.json`）：消息带 `swipes[]` / `swipe_id` / `swipe_info[]`，
+  当前显示的那条**也在** `swipes` 里。我们的库用 `message_swipes(message_id, seq, content)` 表达同一件事
+  （一对多，存 JSON 要自己处理转义）。
+- **继续的请求**（`P0-6-continue`）= 普通生成的 messages **加一条末尾 system**：
+  `[Continue your last message without repeating its original content.]`；落盘是 `旧文 + 新文` 裸拼
+  （夹具里 `ok` → `ok ok`）。别自己编"请继续"这种措辞。
+- **`poll-ci.sh` 会假 READY**：workflow 先更新 `apk-latest` 的 body（带新 sha）再上传资产，
+  脚本只看 body。本次 v122 就出现过"READY 但资产还是上一次的 17:27 那份"。
+  **判据只有一个**：下载后查 dex 里的 40-hex `BUILD_ID` 等于本次 sha，再验签名。
