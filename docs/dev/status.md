@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-24 23:05）
+# 项目状态快照（2026-11-24 23:00）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -10,9 +10,9 @@
 
 | | |
 |---|---|
-| 代码 | 见下方「本轮基线」（v115 之后又动过 `ChatScreen`） |
-| 已交付 APK | `artifacts/app-v114-3c657c1.apk`（v114，已被 v115 取代） |
-| CI | v114：三个 job 全绿（main 45413325354 / tag 45413325216）。v115 见 status 末尾 |
+| 代码 | `8a88c0f`（tag `apk-m146`） |
+| 已交付 APK | `artifacts/app-v115-8a88c0f.apk`（签名/`BUILD_ID` 已核；v114 = `3c657c1`/`apk-m145` 留在 artifacts 里可回退） |
+| CI | 三个 job 全绿：铁律 / 单测 / 出 APK（v115：main 45418640812、tag 45418640456） |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个纯 JVM 模块）+ 三个 `check-*.sh` |
 | 规模 | `app` 35 个 kt 文件 / 约 9.0k 行；AGENTS 指令链约 23 KB / 64 KB |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
