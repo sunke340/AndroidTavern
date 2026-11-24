@@ -73,6 +73,28 @@ specOnEnter.targetContentZIndex, stateForContent)` → `place(0, 0, zIndex = …
 `'public' function exposes its 'private-in-file' parameter type`；现在 `Destination` 与
 `PageStack` 都是 `internal`。
 
+### 列表：一套行系统，别手写行（2026-11-24 改版）
+
+**所有列表行都走 `ListRow`，成组的列表用 `ListGroup` / `GroupPiece`**（都在 `Style.kt`），
+不要再手写 `Row` 拼一个"看起来差不多"的行 —— 之前世界书/正则是手写 Row，
+于是同一个设置里出现三套边距、三种行高。
+
+- 尺寸与字号都在 `Style.kt`：`RowToken`（行高 68dp、头像 40dp 方形圆角 10dp、
+  行内边距 12/11、时间列 44dp）、`RowTitleStyle` 15sp/600、`RowSubtitleStyle` 12sp、
+  `RowMetaStyle` 11sp + `fontFeatureSettings = "tnum"`（等宽数字，时间刷新时列不抖）。
+- **行本身不画背景与分隔线**：底色、圆角、边线、分隔线都归 `GroupPiece`。
+  这样 `LazyColumn` 里的会话列表与普通 `Column` 里的设置列表才能长得一模一样。
+- **边框只画在组的外轮廓上**（Top 画上/左/右，Middle 只画左/右，Bottom 画下/左/右）。
+  每片都画一圈 = 相邻两行之间出现 2px 双线。
+- **分隔线从文字左缘起**（`dividerInsetWithAvatar` 64dp / 无头像 12dp），**最后一行不画**：
+  老写法是每行一条通栏线，列表末尾还会多出一条悬空的直线。
+- **按压反馈"按下即亮"**：`7%` 主色底、`Motion.Fast`、`indication = null` 关涟漪
+  （涟漪在圆角面板里会画成一块方角深色）。这是 apple-design 的"反馈必须发生在手指落下时"，
+  属于反馈而不是装饰性动效，所以高频列表也可以有。
+- **行的出现/消失仍然不加动画**（见下一节），只保留 `placementSpec`。
+- 会话时间用 `SessionTime.kt`：今天给时刻、昨天、一周内周几、同年「月-日」、跨年给年份；
+  分组只有「今天 / 更早」—— 再细分（昨天/本周/本月）会让标题比内容还多。
+
 ### 列表不要做"出现/消失"的淡入淡出（2026-11-23）
 
 `Modifier.animateItem(fadeInSpec = …)` 会在换页时把**整格卡片从 alpha 0 淡上来**

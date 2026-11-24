@@ -249,22 +249,10 @@ fun GroupPiece(
             .fillMaxWidth()
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
-            .then(
-                if (piece == RowPiece.Middle) {
-                    Modifier.drawWithContent {
-                        drawContent()
-                        val line = 1.dp.toPx()
-                        drawRect(palette.cardBorder, size = Size(line, size.height))
-                        drawRect(
-                            color = palette.cardBorder,
-                            topLeft = Offset(size.width - line, 0f),
-                            size = Size(line, size.height),
-                        )
-                    }
-                } else {
-                    Modifier.border(1.dp, palette.cardBorder, shape)
-                },
-            ),
+            .drawWithContent {
+                drawContent()
+                drawGroupOutline(piece, palette.cardBorder, corner.toPx())
+            },
     ) {
         content()
         if (piece == RowPiece.Top || piece == RowPiece.Middle) {
@@ -277,6 +265,92 @@ fun GroupPiece(
             )
         }
     }
+}
+
+/**
+ * 分组的外轮廓：**只画这一段该有的边**（Top＝左/上/右，Middle＝左/右，Bottom＝左/下/右）。
+ *
+ * 为什么不用 `Modifier.border`：
+ * 1. 它画的是**整个轮廓**，中间行也会带上上下边 → 相邻两行各画一条 = 2px 双线；
+ * 2. 边框挂在 `clip` 里面时，描边有一半在边界外被裁掉，1dp 会变成 0.5dp。
+ * 所以自己按半线宽内缩画（`i = w / 2`），整条线完整落在面内、宽度不变。
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGroupOutline(
+    piece: RowPiece,
+    color: Color,
+    corner: Float,
+) {
+    val w = 1.dp.toPx()
+    val inset = w / 2f
+    val right = size.width - inset
+    val bottom = size.height - inset
+    val path = androidx.compose.ui.graphics.Path()
+    when (piece) {
+        RowPiece.Single -> path.addRoundRect(
+            androidx.compose.ui.geometry.RoundRect(
+                androidx.compose.ui.geometry.Rect(inset, inset, right, bottom),
+                androidx.compose.ui.geometry.CornerRadius(corner),
+            ),
+        )
+
+        RowPiece.Top -> {
+            path.moveTo(inset, bottom)
+            path.lineTo(inset, inset + corner)
+            path.arcTo(
+                androidx.compose.ui.geometry.Rect(
+                    inset, inset, inset + corner * 2, inset + corner * 2,
+                ),
+                180f,
+                90f,
+                false,
+            )
+            path.lineTo(right - corner, inset)
+            path.arcTo(
+                androidx.compose.ui.geometry.Rect(
+                    right - corner * 2, inset, right, inset + corner * 2,
+                ),
+                270f,
+                90f,
+                false,
+            )
+            path.lineTo(right, bottom)
+        }
+
+        RowPiece.Bottom -> {
+            path.moveTo(inset, inset)
+            path.lineTo(inset, bottom - corner)
+            path.arcTo(
+                androidx.compose.ui.geometry.Rect(
+                    inset, bottom - corner * 2, inset + corner * 2, bottom,
+                ),
+                180f,
+                -90f,
+                false,
+            )
+            path.lineTo(right - corner, bottom)
+            path.arcTo(
+                androidx.compose.ui.geometry.Rect(
+                    right - corner * 2, bottom - corner * 2, right, bottom,
+                ),
+                90f,
+                -90f,
+                false,
+            )
+            path.lineTo(right, inset)
+        }
+
+        RowPiece.Middle -> {
+            path.moveTo(inset, 0f)
+            path.lineTo(inset, size.height)
+            path.moveTo(right, 0f)
+            path.lineTo(right, size.height)
+        }
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = w),
+    )
 }
 
 /**
