@@ -304,7 +304,7 @@ ChatViewModel
 
 0. **上一批还有没真机验过的东西时，不叠重构**（混在一次装机里就分不清是谁坏的）；
    一次只改一件事 —— 一轮 CI 4 分钟，两件事混在一个提交里，失败原因要翻两遍。
-1. 读 `docs/dev/status.md` 的「接手先看」+ 本文件的「分轮计划」；
+1. 读 `docs/dev/status.md`（现状）+ 本文件的「分轮计划」；
 2. 动页面/材质 → 先读 `app/AGENTS.md` 对应那一节（玻璃 / 列表 / 弹层 / 动效）；
 3. 改完跑：`tools/check-core-purity.sh`、`tools/check-kotlin-comments.sh`、
    `tools/check-kotlin-imports.sh`、`tools/test-core.sh`；

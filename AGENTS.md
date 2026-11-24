@@ -16,6 +16,11 @@
 7. **本机不构建**。`assembleDebug` 会 OOM；出包走 CI。
 8. **密钥走 Keystore**，不落明文、不进日志、不进 fixture。
 9. **ADR 只增不改**。推翻旧决策就写新的并标注 supersedes。
+10. **能复用就先复用**：先看仓库里有没有现成的（组件 / 工具 / 数据 / 文档），
+    没有再查现成的库或上游实现，**都没有才自研**，并在 ADR 里写清「为什么不能复用」。
+    例：拖动排序用了 `sh.calvin.reorderable`（[ADR 0008](docs/adr/0008-reorderable-library.md)）；
+    玻璃材质两次真机失败后必须自研（[ADR 0005](docs/adr/0005-glass-without-haze.md)）——
+    这两个相反结论都出自这一条规则，不是谁的偏好。
 
 ## 仓库布局与依赖方向
 
@@ -63,6 +68,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 - [ ] 兼容行为改动 → fixture 已提交且单测断言它
 - [ ] [docs/compat-matrix.md](docs/compat-matrix.md) 状态列已更新
 - [ ] 新的架构决策 → 新 ADR
+- [ ] 没有重复造轮子：先查过仓库内已有的，再查过现成的库（铁律 #10）
 
 ## 提交
 
@@ -84,7 +90,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 夹具怎么录、长什么样 | [docs/dev/fixtures.md](docs/dev/fixtures.md) |
 | 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
 | 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
-| **当前状态与下一步（压缩上下文后先读这个）** | [docs/dev/status.md](docs/dev/status.md) |
+| **当前状态与下一步（压缩上下文后先读这个）** | [docs/dev/status.md](docs/dev/status.md)（**只写现状，每次整篇重写**；不是规则，别当硬性要求引用） |
 | 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
 | **历史踩坑与细节**（为什么是这个数字、试过哪几条路） | [docs/dev/pitfalls.md](docs/dev/pitfalls.md) |
 | 夜间那一轮的计划与结果（历史） | [docs/plan-overnight.md](docs/plan-overnight.md) |
@@ -93,4 +99,4 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 
 模块级规则在各自目录的 `AGENTS.md`（`core/` `data/` `feature/` `app/`），**进入该目录工作时自动加载**，就近优先。
 本文件与嵌套文件合计只有 64 KB 预算（DSH 的指令链上限），所以这里只放"每次都要遵守的"，其余链接出去。
-当前用了约 18 KB（`app/AGENTS.md` 在 2026-11-24 从 42 KB 瘦到 8.9 KB，历史细节搬去了 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)）—— 再加节之前先看还剩多少。
+当前用了约 20 KB（`app/AGENTS.md` 在 2026-11-24 从 42 KB 瘦到 9 KB，历史细节搬去了 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)）—— 再加节之前先看还剩多少。
