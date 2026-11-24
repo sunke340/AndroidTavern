@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 00:35）
+# 接手卡（2026-11-25 00:45）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -9,106 +9,102 @@
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
 - **基线**：代码 `0631bff` / tag `apk-m148` / 交付包 `artifacts/app-v117-0631bff.apk`。
-- **聊天跟随已收**：冻结撤掉 → 阅读锚点补偿（`dispatchRawDelta`），v115 用户真机验过"都正常了"；
-  A↔C 接缝 v116 已修、待验。
-- **转场丢帧已收（v116，真机验）**：`PageStack` 起动画前预热新页首帧（`warming`）→ 全部转场
-  `帧 35 / 最长帧 8–16ms`（改前 26 帧 / 74–83ms）。预热数字本身也变成了"页面成本"的度量
-  （9–107ms），要看的是它。
-- **v117 修的是橡皮筋**：`rubberOverscroll` 的拉伸位移之前没裁剪，会画到自己的槽位外面
-  （详情页 Tab 栏被内容盖住的真因）。现在最外层 `clipToBounds`。等真机确认观感没变差。
-- **下一件事**（新会话直接开工）：P0-6 消息操作，见第四节。
+  **用户 2026-11-25 00:40 真机确认："确实正常了"**（本轮三件事全部收口）。
+- **没有悬着的事**：聊天跟随（含 A↔C 接缝）、页面转场掉帧、橡皮筋溢出——三条都已修并被日志/真机确认。
+- **下一件事**（直接开工）：**P0-6 消息操作**，开工前先录 `P0-6-swipes` 夹具，见第五节。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**（第 10 条）。
 
-## 一、这一轮（2026-11-24 下午 → 晚上）做了什么
+## 一、最近三轮（v115 → v117）：结论 + 证据 + "别再回的方向"
 
-用户逐条提、逐条修的节奏，全部已出包：
+| 问题 | 结论 | 证据（真机日志） | 别再做什么 |
+|---|---|---|---|
+| 串流时读气泡被顶走 / 旧气泡闪 / 拖动不跟手 | 阅读锚点补偿：量到长高 `Δh` 就 `dispatchRawDelta(Δh)` 把内容让回去 | 74 笔补偿全部 `+N == drift`、47 笔带 `拖动中`、0 笔失败；非拖动期间「顶Y」恒定 | 冻结文本（用户否掉）；`requestScrollToItem`（会 `itemAnimator.reset()` → 旧气泡重播淡入；还会取消拖动）；"手势期间不补" |
+| A↔C 边界"收一下 / 沉一下" | 离开贴底把追高欠账折成滚动量；回到贴底对齐平滑高度 | `边界 离开贴底 欠账=33/117px 折成滚动=33/117px`、`回到贴底 欠账=53/12px 折成滚动=0` | 把 `平滑差` 当"没问题"（v114 我只凭 3px 样本就下过这个错结论） |
+| 二级页转场丢几帧动画 | 起动画**之前**先预热新页首帧（`PageStack.warming`） | `帧 26 / 最长帧 74–83ms` → **`帧 35 / 最长帧 8–16ms`**；新页首帧 9–107ms | 为"点下去立刻动"去掉预热（那只是把成本挪回动画里） |
+| 详情页各 tab 内容盖住 Tab 栏 | 橡皮筋的绘位移从来没裁剪；裁在滚动容器自己的槽位 | 同时间窗 `rubber 回弹 start raw=-444 visual=-224`（画高 81dp，Tab 栏 48dp） | 只给详情页打补丁 —— 根因在共享组件 `RubberOverscroll` |
 
-1. **预设 P1-5 收尾**（当天早先的用户验收）：导入/选择/编辑页拖动换位、恢复默认、顺序列表三版形状定稿。
-2. **设置页整理**：预设 / 世界书 / 正则三页的「导入」收进右上圆钮，去掉与页头重名的小标题，
-   列表自己用 16dp 顶距；空状态文案改成"点右上「+」"。
-3. **世界书条目**：全局书与卡内嵌书共用 `WorldBookEntryRow`（两行正文预览 + 行尾开关）；
-   开关做**三态**（跟随 / 强关 / **强制开启**），强制开启整行 6% 红底 + 红开关 + 列表顶部一行小字说明；
-   页头右上「⋮」批量菜单（全部开启 / 全部关闭 / 恢复默认）；卡里 `enabled` 缺省语义改成与原版一致（没写=关）；
-   覆盖键从**下标**迁到 **uid**（老覆盖一次性迁移）；卡内嵌书页改成 `LazyColumn`（原来 `ListGroup`
-   会在进页第一帧组合全部条目，真机 448ms/帧，转场动画被吃掉）。
-4. **启动三连修**（都是用户真机反馈 + 日志定位）：
-   - 外观（主题/视觉/转场）改成**同步预读**，不再排在 Keystore 解密后面 → 不再"先轻量后玻璃"；
-   - 会话列表单独先发、与配置链并行；`sessionsLoaded` / `cardsLoaded` 没读完不显示空状态；
-   - 首屏头像**预热** + 占位块垫在图片下面（不再闪一帧空白）；
-   - 卡面信息按"字节数+mtime"缓存（`cards/.meta`），`list()` 不再逐张解析 PNG；
-   - 新增 `StartupCurtain`：就绪前整屏主题底色（并吃掉触摸），就绪后 180ms 整块淡出；
-   - 系统窗口/Android 12+ splash 底色改成主题底色（原来是 `#FFFBFE` 的白色）+
-     `MainActivity` 运行时按真实主题再对齐一次。
-5. **详情页导航**：标签页存进 `UiState.detailTab`（页面被压栈后会移出组合树，局部 `remember` 会丢）；
-   详情页「新建会话」后返回直接落「会话」栏；四个标签补 `rubberOverscroll`。
-6. **聊天串流跟随**：贴底时"动画追高度差"的柔和抬升（v112 的"累积+收回"会抽搐，已废弃）；
-   不在底部时不动视口。
-7. **聊天跟随（v114 → v115，已真机验）**：用户点名不要"冻结"。撤掉冻结，改成**阅读锚点补偿**：
-   贴底照旧追高度；看更早的消息本来不动；停在气泡自己身上时把这一笔长高滚回去。
-   - v114 用 `requestScrollToItem` 补偏移 → 真机报两条：**旧气泡一直闪**（它内部
-     `itemAnimator.reset()`，挂 `animateItem` 的气泡每补一次重播淡入）、**拖动时文字往上顶**
-     （它取消进行中的拖动，只能"手势期间不补"）。
-   - v115 改成 **`dispatchRawDelta(Δ)`**（不动动画器、不抢 mutex、不打断手势）→ 手势期间也照补。
-     用户复验："都正常了"；日志 74 笔补偿全部 `+N == drift`、47 笔带 `拖动中`、0 笔 `补偿失败`。
-   诊断走 `tag=scroll`（模式 A/B/C、每笔补偿、失败、每轮总量）。
+## 二、聊天跟随（最终形态，别再改结构）
 
-日志定位的两条硬事实（以后还用得上）：`tag=nav` 的 **帧数只有 2–5 = 一次长帧**；
-`tag=wi` / `tag=startup` 的数字能直接指认是解析、GC 还是首帧。读法见 [runbook](runbook.md) 6.5.1。
+- **三场景**（`reverseLayout` 下）：贴底 `idx==0 && off==0`；读气泡自己 `idx==0 && off>0`；
+  看更早的消息 `idx>0`（气泡**根本没被布局**，结构上就不动）。
+- **贴底**：一个 Animatable 追实测高度差，`translationY` 平滑抬升（`Motion.Base`）。
+- **读气泡**：文本照常长；每笔真实高度变化就滚回去同一笔量；**手势期间照补**（只抵掉长高那一笔，
+  手指位移照常）；布局与滚动两趟，差量那一帧由 `translationY` 桥接。
+- **边界**：离开贴底折成滚动量、回到贴底 snap 平滑高度。
+- 诊断 `tag=scroll`：`模式=A/B/C`、`补偿 +Npx(drift=N)`、`拖动中`、`补偿失败`、`边界 …`、每轮总量。
+- 细节与源码依据（`y_top = H + o - h`）在 [pitfalls](pitfalls.md) 最后三节。
 
-## 二、聊天跟随（已收，留两处小接缝）
+## 三、转场与"首帧成本"
 
-**结论**：v115 起，流式文本在三种状态下都**持续实时更新、不冻结**；读气泡自己时滚动偏移会跟着长高补，
-读到的那一段留在原处；拖动/惯性期间也照补（只抵掉文字顶上去那一笔，手指位移照常）。
+- `PageStack` 现在起动画前会 `warming` 两帧：新页已入栈但只画旧页（新页停在 p=0 的起跑位），
+  等新页自己的第一帧跑完再 `running = true`。
+- 日志 `tag=nav` 每次两行：`转场预热 … 新页首帧 Xms（等 Yms）` + `转场 … 帧 N，最长帧 Mms`。
+  **X 是页面成本**（About 9–33 / 详情 41–91 / 内嵌世界书 83–107 / 聊天 90），**M 应 ≤20ms**。
+- 减首帧的既有手段：能用列表里已有的字段先渲染就先渲染（详情页描述）、数据驱动的列表一律
+  `LazyColumn`（详情页会话 tab 已改）。
 
-- 三场景判据（`reverseLayout`）：贴底 `idx==0 && off==0`；读气泡 `idx==0 && off>0`；
-  看更早的消息 `idx>0`（气泡根本没被布局，结构上就不动）。
-- **留下的**：A→C 向上收 8–70px、C→A 向下沉 41–151px（贴底"追高欠账"是绘制量，跨边界丢/补），
-  量级 ≤1 行、用户没感觉到。修法写在 [pitfalls](pitfalls.md) 最后一节，
-  **不要单独为它占一轮**，下次顺手做。
-- 别再往回的三个方向：冻结文本（用户明确否掉）、`requestScrollToItem`（闪 + 取消拖动）、
-  "手势期间不补"（拖动不跟手）。
+## 四、待真机验（已出包，但没人逐项点过）
 
+[status.md](status.md) 的「待真机验」三组：**启动与性能 / 世界书与设置 / 详情页与导航**。
+新会话要做验收就照那张表从上到下点一遍。**聊天跟随 / 转场 / 橡皮筋不在其中**（已验）。
 
-## 三、待真机验
+## 五、下一步优先级
 
-聊天跟随已由用户在 v115 验过（见 [status.md](status.md)）。其余三组仍未逐项点：
-启动与性能 / 世界书与设置 / 详情页与导航 —— 照 [status.md](status.md) 那张表从上到下点一遍即可。
+1. **P0-6 消息操作**：swipe / 重新生成 / 继续 / 编辑 / 删除单条。原版**只有最后一条助手消息能
+   swipe**（`script.js:9183 isMessageSwipeable`），`Generate('swipe')` 会把被换掉那条 `coreChat.pop()`；
+   存储是 `swipes[] + swipe_id + swipe_info[]`（P0-7 的 jsonl 夹具里能看到）。
+   **开工前先用 `capture.mjs` 录 `P0-6-swipes` 夹具**，会动 `ChatViewModel` 这条最热的状态机。
+2. 世界书剩余：sticky 计时落库、`@@` 装饰器、outlet 位置。
+3. **C 批模型档案**真机验收；**D 批三级继承**（会话 > 卡 > 全局，每项可跟随）。
+4. 可选零活：橡皮筋"猛甩一次不碰屏"单测；详情页 Greeting tab 的备选开场白（`detail` 到齐后才排版，
+   内容多时可能在动画中途掉一帧 —— 真要治就按 pitfalls「新页首帧」那套先占位再替换）。
 
-## 四、下一步优先级
-
-1. **聊天跟随已收**（第二节）；要打磨 A↔C 接缝就下次顺手做，别单独占一轮。
-2. **P0-6 消息操作**：swipe / 重新生成 / 继续 / 编辑 / 删除单条。
-   注意：原版**只有最后一条助手消息能 swipe**（`script.js:9183 isMessageSwipeable`），
-   `Generate('swipe')` 会把被换掉的那条 `coreChat.pop()` 掉；存储是 `swipes[] + swipe_id + swipe_info[]`
-   （P0-7 的 jsonl 夹具里能直接看到）—— 开工前先用 `capture.mjs` 录 `P0-6-swipes` 夹具。
-3. 世界书剩余：sticky 计时落库、`@@` 装饰器、outlet 位置。
-4. C 批模型档案真机验收；D 批三级继承（会话 > 卡 > 全局）。
-
-## 五、这台机器与出包（每次都要用）
+## 六、这台机器与出包（每次都要用）
 
 - **本机编不了 `:app` / `:data`**：只能跑 `tools/test-core.sh`、`tools/check-kotlin-comments.sh`、
   `check-kotlin-imports.sh`、`check-core-purity.sh`；Android 侧错误只有 CI 能暴露。
 - **出包循环**：
   1. `git commit` → `git tag apk-mN && git push origin HEAD apk-mN`
-  2. `bash tools/poll-ci.sh <sha>`（只认本次 sha 的 run；约 40s 一次；`TAVERN_POLL_TRIES/SLEEP` 可调）
-  3. 下载 `releases/download/apk-latest/app-debug.apk`
-  4. **验 dex 里的 40-hex `BUILD_ID`**（APK 大小经常撞车，v96–v101 全长一样）
-  5. `tools/verify-apk.sh <apk> 55:E0:...:0B:E7` 验签名
+  2. `bash tools/poll-ci.sh <sha>`（只认本次 sha 的 run；约 40s 一次）
+  3. 下载 `releases/download/apk-mN/app-debug.apk`（tag release 钉死，不会被覆盖）
+  4. **验 dex 里的 40-hex `BUILD_ID`**（`app-debug.apk` 大小经常撞车，v116/v117 都是 15753607B）
+  5. `tools/verify-apk.sh <apk> 55:E0:…:0B:E7` 验签名
   6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk` 并 `present`
-- **日志**：设置 → 关于 → 导出日志（SAF）。tag：`startup` / `wi` / `nav` / `glass` / `rubber` / `chat` / `card`。
+- **日志**：设置 → 关于 → 导出日志（SAF）。排障入口见下一节。
 - **文档约定**：`status.md` 只写现状、每次**整篇重写**；`compat-matrix.md` 是进度唯一真相；
-  ADR **只增不改**；踩坑与"为什么是这个数"进 `pitfalls.md`；规则进两处 `AGENTS.md`（指令链 64 KB 上限）。
-- CI 轮询已收进 `tools/poll-ci.sh`（按 sha 过滤 run + 读 release body），不再依赖 `/tmp`。
+  ADR **只增不改**；踩坑进 `pitfalls.md`；规则进两处 `AGENTS.md`（指令链 64 KB 上限）。
 
-## 六、常用文件地图
+## 七、日志 tag 速查（排障从这儿进）
+
+| tag | 看什么 |
+|---|---|
+| `nav` | 转场两行：`转场预热 … 新页首帧 Xms` + `转场 … 帧 N，最长帧 Mms`（M 大 = 动画期间在干活） |
+| `scroll` | 聊天：`模式=A/B/C`、`补偿 +Npx(drift=N)`、`拖动中`、`边界 …`、`串流结束 N 笔/Mpx` |
+| `rubber` | `回弹 start raw=… visual=…`、`fling 撞上限`、`回弹被打断`（raw 有上限 ±444） |
+| `glass` | 玻璃档开关、着色器编译 ≥8ms、降采样图层回读 |
+| `startup` / `wi` / `card` | 启动各步 +ms、世界书解析、读详情耗时（`读详情 <card> Xms 条目=N`） |
+| `chat` / `profile` / `ui` / `regex` / `diag` | 发送/完成/失败、档案、主题、正则条数、导出日志 |
+
+## 八、常用文件地图
 
 | 想改什么 | 去哪 |
 |---|---|
-| 聊天 UI / 串流跟随 / 阅读锚点 | `app/src/main/kotlin/app/tavern/ChatScreen.kt`（`smoothHeight` / `readingBubble` / `anchoredHeight`） |
-| 状态机（几乎全部状态都在这里） | `ChatViewModel.kt`（`UiState` 一个 data class） |
-| 页面栈转场 | `PageStack.kt` |
+| 聊天 UI / 串流跟随 / 阅读锚点 | `ChatScreen.kt`（`smoothHeight` / `readingBubble` / `anchoredHeight` / 边界 effect） |
+| 页面栈转场 / 预热 | `PageStack.kt`（`warming` / `running` / `progress`） |
+| 橡皮筋 | `RubberOverscroll.kt`（最外层 `clipToBounds` 别删） |
+| 状态机（几乎全部状态） | `ChatViewModel.kt`（`UiState` 一个 data class） |
+| 角色详情页 / 卡配置二级页 | `CharacterDetailScreen.kt` / `CardConfigPageScreen.kt` |
 | 行系统 / 列表形状 | `ListRow.kt`、`Style.kt` |
 | 玻璃材质 | `Glass.kt`、`LiquidGlass.kt` + ADR 0005/0006/0007 |
-| 世界书条目行 | `WorldBookEntryRow.kt` |
 | 启动（外观预读 / 会话并行 / 遮罩） | `ChatViewModel.init`、`MainActivity`、`MainScreen.StartupCurtain` |
 | 缓存（卡面 / 世界书条目数） | `data/.../cards/impl/CardStore.kt`、`data/.../worldinfo/impl/FileWorldBookRepository.kt` |
+
+## 九、这一轮踩的坑（一句话，细节全在 pitfalls）
+
+1. `requestScrollToItem` 会 `itemAnimator.reset()` → 挂 `animateItem` 的气泡**重播淡入**；
+   它还会 `scroll{}` 抢 mutex 取消拖动。要平移内容用 `dispatchRawDelta`。
+2. **新页首帧**（组合+测量+录图层）落在动画里 = 丢几帧；修法是起动画前预热，不是减动画时长。
+3. 任何 **`graphicsLayer` 平移**（橡皮筋 / 桥接 / 拖拽）都要问一句"它的槽位边界谁来裁" ——
+   滚动容器自带 clip 管不到外面那层平移。
+4. **长文本别等数据到齐才第一次排版**：能拿列表里已有的字段先顶上就先顶（详情页描述）。
+5. 日志读法：`nav` 的「帧数 2–5」= 一次长帧；`wi`/`startup` 的数字能直接指认解析/GC/首帧。

@@ -159,6 +159,8 @@
   预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
   `onPostScroll` 把 available 全报成已消费；回弹必须能被手指打断（代数守卫）。
+  **拉伸的位移必须裁在自己的槽位里**（`rubberOverscroll` 最外层 `clipToBounds`）：那笔位移是
+  绘制量，不裁就会画到邻居身上（2026-11-25 详情页 Tab 栏被内容盖住就是这么来的）。
 
 **聊天串流跟随**（`ChatScreen`，2026-11-24 定；当晚撤掉"冻结"换成阅读锚点补偿）：
 - 贴底（`reverseLayout` 的 `firstVisibleItemIndex==0 && offset==0`）才跟随；
