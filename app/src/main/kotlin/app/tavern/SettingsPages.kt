@@ -535,7 +535,11 @@ private fun PresetPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val sheet = LocalSheetController.current
 
     SectionLabel("预设")
-    ListGroup(count = state.presets.size + 1) { index, _ ->
+    // 勾选放左侧（和模型页一致）：分隔线要让出"行内边距 + 圆圈 + 间距"，从标题左缘起
+    ListGroup(
+        count = state.presets.size + 1,
+        dividerInset = RowToken.padH + 20.dp + Space.m,
+    ) { index, _ ->
         if (index == 0) {
             PresetRow(
                 name = "内置默认预设",
@@ -603,15 +607,11 @@ private fun PresetRow(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val trailingSlot: (@Composable () -> Unit)? = if (active) {
-        { Text("✓", style = RowTitleStyle, color = MaterialTheme.colorScheme.primary) }
-    } else {
-        null
-    }
     ListRow(
         title = name,
         subtitle = subtitle,
-        trailing = trailingSlot,
+        // 勾选在左侧、和模型页是同一个 ActiveMark：实心圈 + 勾 = 当前，空心圈 = 未选中
+        leading = { ActiveMark(active) },
         onClick = onClick,
         onLongClick = onLongClick,
     )
