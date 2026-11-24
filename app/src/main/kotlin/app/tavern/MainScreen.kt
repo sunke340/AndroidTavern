@@ -18,6 +18,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -442,15 +443,31 @@ private fun TabsRoot(
                 glass = glassOn,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
+                // 抽屉要弹出来时，底栏先滑走 —— 两块浮层不叠在一起（用户 2026-11-24）
+                hidden = sheet.spec != null || state.showCardPicker,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
-            // 动作单画在最后 = 压在页头与底栏之上
+            // 选卡弹层（新建会话前必须先选卡）：一级页的浮层里，才有真磨砂
+            GlassSheetScaffold(
+                visible = state.showCardPicker,
+                onDismiss = viewModel::closeCardPicker,
+                frost = frostLayer,
+                contentOrigin = { contentOrigin.value },
+                glass = glassOn,
+                enterDelayMillis = SheetEnterDelayMillis,
+                title = "选一张卡开始新会话",
+            ) {
+                CardPickerBody(state = state, viewModel = viewModel)
+            }
+
+            // 动作单画在最后 = 压在页头、底栏与选卡弹层之上
             GlassActionSheetHost(
                 controller = sheet,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
                 glass = glassOn,
+                enterDelayMillis = SheetEnterDelayMillis,
             )
             }
         }
@@ -482,13 +499,27 @@ private fun TavernBottomBar(
     glass: Boolean,
     frost: GraphicsLayer,
     contentOrigin: () -> Offset,
+    hidden: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(Radius.pill)
+    // 抽屉弹出前先让位：往下滑走整条，再回来时错开一个"弹层收起"的时间
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val hidePx = with(LocalDensity.current) { (BarHeight + Space.s + navBottom + Space.s).toPx() }
+    val slideOff by animateFloatAsState(
+        targetValue = if (hidden) hidePx else 0f,
+        animationSpec = if (hidden) {
+            tween(180, easing = Motion.Standard)
+        } else {
+            tween(180, delayMillis = 200, easing = Motion.Decelerate)
+        },
+        label = "bar-hide",
+    )
 
     // 外壳只负责"离屏幕边缘多远"和阴影；胶囊本体在里面那层，坐标才准。
     Box(
         modifier = modifier
+            .offset { IntOffset(0, slideOff.roundToInt()) }
             .padding(horizontal = Space.l, vertical = Space.s)
             .navigationBarsPadding()
             .then(if (glass) Modifier else Modifier.shadow(elevation = 10.dp, shape = shape, clip = false)),
@@ -543,7 +574,12 @@ private fun TavernBottomBar(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(Radius.pill))
-                                .clickable { onSelect(item.screen) },
+                                // 涟漪关掉：它是一块方形深色，会压在滑动中的紫块上，
+                                // 看着像"先出现一个阴影再滑动"（用户 2026-11-24）
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) { onSelect(item.screen) },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {

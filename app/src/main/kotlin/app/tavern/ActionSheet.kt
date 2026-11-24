@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +38,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.unit.dp
+
+/** 底栏先滑走，弹层随后才上来（用户 2026-11-24 要求的先后顺序）。 */
+const val SheetEnterDelayMillis = 180
 
 /** 动作单里的一项。 */
 class SheetAction(
@@ -76,34 +79,32 @@ class SheetController {
 val LocalSheetController = staticCompositionLocalOf { SheetController() }
 
 /**
- * 页面骨架里渲染动作单的地方：遮罩 + 底部玻璃弹层。
+ * 底部弹层的外壳：遮罩 + 从底部滑上来的**液态玻璃板**。
  *
- * [frost] 就是该页面的磨砂底片（1/[FrostScale] 的内容层），所以弹层能真的糊住背后的内容，
- * 而不是"半透明白板"。放进骨架的最后一个孩子（压在页头、底栏之上）。
+ * [frost] 必须是该页面录的磨砂底片（1/[FrostScale] 的内容层），弹层才能真的糊住背后的内容；
+ * 所以这个函数只能在"页面骨架的浮层"里调用（录图层之外）。
+ *
+ * [enterDelayMillis] 用来做"底栏先滑走、弹层再上来"的先后（一级页传 [SheetEnterDelayMillis]）。
  */
 @Composable
-fun GlassActionSheetHost(
-    controller: SheetController,
+fun GlassSheetScaffold(
+    visible: Boolean,
+    onDismiss: () -> Unit,
     frost: GraphicsLayer,
     contentOrigin: () -> Offset,
     glass: Boolean,
     modifier: Modifier = Modifier,
+    enterDelayMillis: Int = 0,
+    title: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    val spec = controller.spec
     val reduceMotion = rememberReduceMotion()
-    // 退出动画期间内容已经清空，留一份最后一次的，动画才画得出来
-    var lastSpec by remember { mutableStateOf<SheetSpec?>(null) }
-    LaunchedEffect(spec) {
-        if (spec != null) lastSpec = spec
-    }
-    val content = spec ?: lastSpec
-
-    BackHandler(enabled = spec != null) { controller.dismiss() }
+    BackHandler(enabled = visible) { onDismiss() }
 
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
-            visible = spec != null,
-            enter = fadeIn(tween(Motion.Base)),
+            visible = visible,
+            enter = fadeIn(tween(Motion.Base, delayMillis = enterDelayMillis / 2)),
             exit = fadeOut(tween(Motion.Fast)),
         ) {
             Box(
@@ -114,16 +115,18 @@ fun GlassActionSheetHost(
                         interactionSource = remember { MutableInteractionSource() },
                         // 遮罩不要涟漪：整屏一块水波很奇怪
                         indication = null,
-                    ) { controller.dismiss() },
+                    ) { onDismiss() },
             )
         }
 
         AnimatedVisibility(
-            visible = spec != null,
+            visible = visible,
             enter = if (reduceMotion) {
-                fadeIn(tween(Motion.Base, easing = Motion.Decelerate))
+                fadeIn(tween(Motion.Base, delayMillis = enterDelayMillis, easing = Motion.Decelerate))
             } else {
-                slideInVertically(tween(Motion.Slow, easing = Motion.Standard)) { it }
+                slideInVertically(
+                    tween(Motion.Slow, delayMillis = enterDelayMillis, easing = Motion.Standard),
+                ) { it }
             },
             exit = if (reduceMotion) {
                 fadeOut(tween(Motion.Fast))
@@ -131,31 +134,25 @@ fun GlassActionSheetHost(
                 slideOutVertically(tween(Motion.Base, easing = Motion.Standard)) { it }
             },
         ) {
-            content?.let { current ->
-                GlassSheet(
-                    spec = current,
-                    frost = frost,
-                    contentOrigin = contentOrigin,
-                    glass = glass,
-                    onAction = { action ->
-                        // 先关弹层再执行：动作通常会弹确认框或换页，弹层留着会看到两层遮罩
-                        controller.dismiss()
-                        action.onClick()
-                    },
-                )
-            }
+            GlassSheetPlate(
+                frost = frost,
+                contentOrigin = contentOrigin,
+                glass = glass,
+                title = title,
+                content = content,
+            )
         }
     }
 }
 
-/** 弹层本体：上两角圆角的液态玻璃板 + 把手 + 标题 + 动作行。 */
+/** 弹层本体：上两角圆角的液态玻璃板 + 把手 + 可选标题 + 内容。 */
 @Composable
-private fun GlassSheet(
-    spec: SheetSpec,
+private fun GlassSheetPlate(
     frost: GraphicsLayer,
     contentOrigin: () -> Offset,
     glass: Boolean,
-    onAction: (SheetAction) -> Unit,
+    title: String?,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     GlassSurface(
         frost = frost,
@@ -164,6 +161,8 @@ private fun GlassSheet(
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         // 弹层不是浮起的小件，投影像"托了一下"，去掉；分层靠玻璃面与遮罩
         shadow = false,
+        // 面比胶囊更透一档（单独一份 spec，调这里不会连带改胶囊）
+        liquid = LiquidGlassSpec.Sheet,
         modifier = Modifier
             .fillMaxWidth()
             // 吃掉点按：不然点在弹层上会穿给遮罩，弹层自己就关了
@@ -181,35 +180,84 @@ private fun GlassSheet(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)),
             )
-            Text(
-                text = spec.title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = Space.l, vertical = Space.m),
-            )
-            spec.actions.forEach { action ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { onAction(action) }
-                        .padding(horizontal = Space.l, vertical = Space.m + 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = action.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (action.destructive) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                }
+            if (title != null) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.m),
+                )
             }
+            content()
             Box(Modifier.height(Space.l))
         }
+    }
+}
+
+/**
+ * 页面骨架里渲染动作单的地方（遮罩 + 玻璃弹层）。
+ *
+ * 放进骨架的最后一个孩子（压在页头、底栏之上）。
+ */
+@Composable
+fun GlassActionSheetHost(
+    controller: SheetController,
+    frost: GraphicsLayer,
+    contentOrigin: () -> Offset,
+    glass: Boolean,
+    modifier: Modifier = Modifier,
+    enterDelayMillis: Int = 0,
+) {
+    val spec = controller.spec
+    // 退出动画期间内容已经清空，留一份最后一次的，动画才画得出来
+    var lastSpec by remember { mutableStateOf<SheetSpec?>(null) }
+    LaunchedEffect(spec) {
+        if (spec != null) lastSpec = spec
+    }
+    val content = spec ?: lastSpec
+
+    GlassSheetScaffold(
+        visible = spec != null,
+        onDismiss = { controller.dismiss() },
+        frost = frost,
+        contentOrigin = contentOrigin,
+        glass = glass,
+        modifier = modifier,
+        enterDelayMillis = enterDelayMillis,
+        title = content?.title,
+    ) {
+        content?.actions?.forEach { action ->
+            SheetActionRow(action = action) {
+                // 先关弹层再执行：动作通常会弹确认框或换页，弹层留着会看到两层遮罩
+                controller.dismiss()
+                action.onClick()
+            }
+        }
+    }
+}
+
+/** 动作单里的一行（纯文字；destructive 用 error 色）。 */
+@Composable
+private fun SheetActionRow(action: SheetAction, onAction: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onAction,
+            )
+            .padding(horizontal = Space.l, vertical = Space.m + 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = action.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (action.destructive) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
     }
 }

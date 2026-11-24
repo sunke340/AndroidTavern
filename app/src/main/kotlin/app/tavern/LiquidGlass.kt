@@ -102,6 +102,14 @@ data class LiquidGlassSpec(
          * - `faceWhite = 0.80`：**面要稳定** —— 头顶是黑字还是空白，页头都该是同一块浅板
          *   （0.22 时它完全被头顶内容支配，就在浅灰/深灰之间漂）。
          */
+        /**
+         * 动作单 / 选卡弹层：同一套光，但**面更透一档**（`faceWhite` 0.22 → 0.14）。
+         *
+         * 弹层比胶囊大得多，整屏尺寸上 0.22 的白底会把背后的内容压没（用户 2026-11-24：
+         * "透明度降低一点点"）。单独一份实例 = 调弹层不会连带改胶囊。
+         */
+        val Sheet = Default.copy(faceWhite = 0.14f)
+
         val HeaderBand = LiquidGlassSpec(
             edgeDp = 8f,
             refraction = 0f,

@@ -111,9 +111,6 @@ fun SessionsScreen(
         }
     }
 
-    // 选卡弹层（新建会话前必须先选卡）
-    CardPickerSheet(state = state, viewModel = viewModel)
-
     pendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
