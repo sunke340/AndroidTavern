@@ -35,6 +35,15 @@ public interface WorldBookRepository {
     /** 这本书里被手动关掉的条目 uid（覆盖文件里的 `disable`）。 */
     public fun disabledEntries(name: String): Set<Int>
 
+    /** 这本书里被**强制开启**的条目 uid（文件里 `disable: true` 的那些）。 */
+    public fun forcedEntries(name: String): Set<Int>
+
     /** 逐条开关：覆盖文件里的 `disable`，不改文件本身（书还能原样导回 PC 版）。 */
     public fun setEntryDisabled(name: String, uid: Int, disabled: Boolean)
+
+    /** 逐条"强制开启"：文件里关着的条目也被当作开启。 */
+    public fun setEntryForced(name: String, uid: Int, forced: Boolean)
+
+    /** 一次性写两边的覆盖（页头的「全部开启 / 全部关闭 / 恢复默认」用，避免逐条落盘）。 */
+    public fun saveEntryOverrides(name: String, disabled: Set<Int>, forcedOn: Set<Int>)
 }

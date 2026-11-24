@@ -64,6 +64,23 @@ class LorebookMatchingTest {
         val entry = LorebookEntry(world = "w", uid = 0, keys = emptyList(), content = "NEVER")
         assertEquals("", scanOne(entry, "anything").beforeChar)
     }
+
+    /**
+     * 应用侧的「强制开启」就是把 `disabled` 翻回来（见 `ChatViewModel.scanWorldInfo`）：
+     * 文件/卡里关着的条目，扫描器会直接跳过；翻了之后按正常条目参与匹配。
+     */
+    @Test
+    fun `disabled 的条目被跳过，翻回来以后才激活`() {
+        val off = LorebookEntry(
+            world = "w",
+            uid = 3,
+            keys = listOf("alpha"),
+            content = "HIT",
+            disabled = true,
+        )
+        assertEquals("", scanOne(off, "alpha").beforeChar, "关着的条目不该注入")
+        assertEquals("HIT", scanOne(off.withDisabled(false), "alpha").beforeChar)
+    }
 }
 
 /** `LorebookEntry` 字段都是 val，改一个要重建。 */

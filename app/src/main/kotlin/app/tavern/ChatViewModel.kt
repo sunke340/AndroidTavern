@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import app.tavern.core.ai.ChatRequest
 import app.tavern.core.ai.OpenAiCompatibleClient
 import app.tavern.core.ai.StreamEvent
+import app.tavern.core.card.CardBookEntry
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.bookEntries
@@ -37,6 +38,7 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.log.AppLog
 import app.tavern.data.presets.PresetRef
+import app.tavern.data.settings.CardBookOverride
 import app.tavern.data.presets.PresetRepository
 import app.tavern.data.profiles.ProfileRepository
 import app.tavern.data.worldinfo.WorldBookRef
@@ -56,6 +58,16 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.Locale
+
+/** 世界书条目页右上角菜单的三个批量动作（全局书与卡内嵌书共用）。 */
+enum class BookBulkMode(
+    /** 菜单里的文字。 */
+    val label: String,
+) {
+    AllOn("全部开启"),
+    AllOff("全部关闭"),
+    Default("恢复默认"),
+}
 
 /**
  * 聊天页的 ViewModel。
@@ -81,6 +93,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val enabled: Boolean,
         /** 文件里本来就是关的（界面要说明"文件里就是关的"）。 */
         val disabledInFile: Boolean,
+        /** 应用内强制开启（文件里关着、被本机打开）。 */
+        val forcedOn: Boolean,
     )
 
     data class WorldBookView(
@@ -159,8 +173,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val detail: CardDetail? = null,
         /** 当前会话所属卡的样式覆盖；null = 跟随全局。 */
         val cardMessageStyle: MessageStyle? = null,
-        /** 当前这张卡里被关掉的内嵌世界书条目（按 `character_book.entries` 下标）。 */
+        /** 当前这张卡里被关掉的内嵌世界书条目（按条目 uid）。 */
         val bookDisabled: Set<Int> = emptySet(),
+        /** 当前这张卡里被**强制开启**的内嵌世界书条目（卡里关着的那些，按 uid）。 */
+        val bookForced: Set<Int> = emptySet(),
         /** 已导入的全局世界书。 */
         val worldBooks: List<WorldBookRef> = emptyList(),
         // ---- 预设（设置→预设） ----
@@ -313,7 +329,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val imported = _state.value.cards.firstOrNull { it.id == cardId }?.imported ?: false
-        val disabled = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(cardId) }
+        val entries = card.bookEntries()
+        val override = withContext(Dispatchers.IO) { bookOverrideOf(cardId, entries) }
         val style = withContext(Dispatchers.IO) { settingsRepository.cardMessageStyle(cardId) }
             ?.let { name -> runCatching { MessageStyle.valueOf(name) }.getOrNull() }
 
@@ -332,8 +349,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             spec = card.spec,
             specVersion = card.specVersion,
             tags = card.tags,
-            bookEntries = card.bookEntries(),
-            disabledEntries = disabled,
+            bookEntries = entries,
+            offUids = override.off,
+            forcedUids = override.forcedOn,
             messageStyle = style,
         )
 
@@ -342,21 +360,86 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 勾选/取消卡内嵌世界书的某一条。世界书引擎（P1）还没做，这里先把选择存下来。 */
-    fun setBookEntryEnabled(cardId: String, entryIndex: Int, enabled: Boolean) {
+    /**
+     * 逐条改内嵌世界书的开关。界面上仍是两态开关，但语义由**卡里怎么写**决定：
+     * - 卡里开着 → 关掉就是本地覆盖（[CardDetail.offUids]）；
+     * - 卡里关着 → 打开就是**强制开启**（[CardDetail.forcedUids]，整行标红）。
+     *
+     * 原版在 Character Lore 里也能这么改，只是它改的是卡文件；我们不写回卡，所以存在本机。
+     */
+    fun setBookEntryEnabled(cardId: String, uid: Int, enabled: Boolean) {
         val detail = _state.value.detail ?: return
-        val next = if (enabled) detail.disabledEntries - entryIndex else detail.disabledEntries + entryIndex
+        val fileEnabled = detail.bookEntries.firstOrNull { it.uid == uid }?.enabled ?: return
+        val override = if (fileEnabled) {
+            CardBookOverride(
+                off = if (enabled) detail.offUids - uid else detail.offUids + uid,
+                forcedOn = detail.forcedUids - uid,
+            )
+        } else {
+            CardBookOverride(
+                off = detail.offUids - uid,
+                forcedOn = if (enabled) detail.forcedUids + uid else detail.forcedUids - uid,
+            )
+        }
+        applyCardBookOverride(cardId, override)
+    }
 
+    /** 卡内嵌书的批量开关（配置页右上角菜单）。一次落盘，不逐条走。 */
+    fun setAllCardBookEntries(mode: BookBulkMode) {
+        val detail = _state.value.detail ?: return
+        val fileOn = detail.bookEntries.filter { it.enabled }.map { it.uid }.toSet()
+        val fileOff = detail.bookEntries.filter { !it.enabled }.map { it.uid }.toSet()
+        val override = when (mode) {
+            BookBulkMode.AllOn -> CardBookOverride(off = emptySet(), forcedOn = fileOff)
+            BookBulkMode.AllOff -> CardBookOverride(off = fileOn, forcedOn = emptySet())
+            BookBulkMode.Default -> CardBookOverride()
+        }
+        applyCardBookOverride(detail.id, override)
+        notify(
+            when (mode) {
+                BookBulkMode.AllOn -> "已全部开启（${detail.bookEntries.size} 条，强制 ${fileOff.size} 条）"
+                BookBulkMode.AllOff -> "已全部关闭（${detail.bookEntries.size} 条）"
+                BookBulkMode.Default -> "已恢复卡里的默认开关"
+            },
+        )
+    }
+
+    private fun applyCardBookOverride(cardId: String, override: CardBookOverride) {
         _state.update {
+            val current = it.detail
             it.copy(
-                detail = it.detail?.copy(disabledEntries = next),
-                // 聊天页要用它过滤，不只是详情页好看
-                bookDisabled = if (it.cardId == cardId) next else it.bookDisabled,
+                detail = if (current != null && current.id == cardId) {
+                    current.copy(offUids = override.off, forcedUids = override.forcedOn)
+                } else {
+                    current
+                },
+                // 聊天页拼提示词要用它过滤，不只是详情页好看
+                bookDisabled = if (it.cardId == cardId) override.off else it.bookDisabled,
+                bookForced = if (it.cardId == cardId) override.forcedOn else it.bookForced,
             )
         }
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { settingsRepository.saveDisabledBookEntries(cardId, next) }
+            withContext(Dispatchers.IO) { settingsRepository.saveCardBookOverride(cardId, override) }
         }
+    }
+
+    /**
+     * 读这张卡的开关覆盖；顺带把老版本**按下标**存的"关掉"集合迁到 uid。
+     *
+     * 只迁一次（迁完删键）。下标对不上的直接丢掉 —— 与其把旧覆盖套到错的条目上，
+     * 不如回到卡里的默认值。
+     */
+    private fun bookOverrideOf(cardId: String, entries: List<CardBookEntry>): CardBookOverride {
+        val current = settingsRepository.cardBookOverride(cardId)
+        val legacy = settingsRepository.legacyBookDisabledIndexes(cardId)
+        if (legacy.isEmpty()) return current
+        val byIndex = entries.associateBy { it.index }
+        val migrated = legacy.mapNotNull { index -> byIndex[index]?.uid }.toSet()
+        val next = current.copy(off = current.off + migrated)
+        settingsRepository.saveCardBookOverride(cardId, next)
+        settingsRepository.clearLegacyBookDisabledIndexes(cardId)
+        AppLog.i("card", "迁移内嵌书覆盖（下标→uid）：旧 ${legacy.size} 条，命中 ${migrated.size} 条")
+        return next
     }
 
     /** 卡级消息样式；传 null 表示跟随全局默认。 */
@@ -387,9 +470,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             card = loaded
             cardRepository.selectedId = cardId
-            // 卡内嵌书的勾选状态：哪些条目被关掉了（send 时据此过滤）
-            val disabledBook = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(cardId) }
-            _state.update { it.copy(bookDisabled = disabledBook) }
+            // 卡内嵌书的开关覆盖（send 时据此过滤/强制开启）
+            val bookOverride = withContext(Dispatchers.IO) { bookOverrideOf(cardId, loaded.bookEntries()) }
+            _state.update { it.copy(bookDisabled = bookOverride.off, bookForced = bookOverride.forcedOn) }
             val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
                 ?: loaded.name.ifBlank { cardId }
             startNewSession(
@@ -541,10 +624,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val cardStyle = withContext(Dispatchers.IO) {
             settingsRepository.cardMessageStyle(session.cardId)
         }?.let { name -> runCatching { MessageStyle.valueOf(name) }.getOrNull() }
-        val disabledBook = withContext(Dispatchers.IO) { settingsRepository.disabledBookEntries(session.cardId) }
         val loadedCard = loadCard(session.cardId)
         card = loadedCard
         if (loadedCard != null) cardRepository.selectedId = session.cardId
+        val bookOverride = withContext(Dispatchers.IO) {
+            bookOverrideOf(session.cardId, loadedCard?.bookEntries().orEmpty())
+        }
 
         _state.update {
             it.copy(
@@ -561,7 +646,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isStreaming = false,
                 chatOpen = navigate,
                 cardMessageStyle = cardStyle,
-                bookDisabled = disabledBook,
+                bookDisabled = bookOverride.off,
+                bookForced = bookOverride.forcedOn,
                 status = buildString {
                     append("会话：${session.title}｜${stored.size} 条")
                     if (loadedCard == null) append("｜这张卡已不在，只能看，不能聊")
@@ -911,8 +997,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 books.filter { it.enabled }.mapNotNull { ref ->
                     worldBookRepository.load(ref.name)?.let { book ->
                         val disabled = worldBookRepository.disabledEntries(ref.name)
+                        val forced = worldBookRepository.forcedEntries(ref.name)
                         ref.name to book.entries.map { entry ->
-                            if (entry.uid in disabled) entry.withDisabled(true) else entry
+                            when {
+                                entry.uid in disabled -> entry.withDisabled(true)
+                                entry.uid in forced -> entry.withDisabled(false)
+                                else -> entry
+                            }
                         }
                     }
                 }.toMap()
@@ -961,17 +1052,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val view = withContext(Dispatchers.IO) {
             val book = worldBookRepository.load(name) ?: return@withContext null
             val overrides = worldBookRepository.disabledEntries(name)
+            val forced = worldBookRepository.forcedEntries(name)
             WorldBookView(
                 name = name,
                 entries = book.entries.map { entry ->
+                    val forcedOn = entry.disabled && entry.uid in forced
                     WorldBookEntryView(
                         uid = entry.uid,
                         title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
                             ?: "条目 ${entry.uid}",
                         keys = entry.keys,
                         preview = entry.content.replace("\n", " ").take(90),
-                        enabled = !entry.disabled && entry.uid !in overrides,
+                        enabled = forcedOn || (!entry.disabled && entry.uid !in overrides),
                         disabledInFile = entry.disabled,
+                        forcedOn = forcedOn,
                     )
                 },
                 loaded = true,
@@ -989,10 +1083,59 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(worldBookView = null) }
     }
 
-    /** 逐条开关。只写"应用里的覆盖"，不改导入的原始文件（书还要能原样导回 PC 版）。 */
+    /**
+     * 逐条开关。只写"应用里的覆盖"，不改导入的原始文件（书还要能原样导回 PC 版）。
+     *
+     * 和卡内嵌书同一套三态：文件里开着 → 关掉是本地覆盖；文件里关着 → 打开是**强制开启**。
+     */
     fun setWorldBookEntryEnabled(name: String, uid: Int, enabled: Boolean) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { worldBookRepository.setEntryDisabled(name, uid, !enabled) }
+            val fileOff = _state.value.worldBookView
+                ?.takeIf { it.name == name }
+                ?.entries
+                ?.firstOrNull { it.uid == uid }
+                ?.disabledInFile
+                ?: false
+            withContext(Dispatchers.IO) {
+                if (fileOff) {
+                    worldBookRepository.setEntryForced(name, uid, enabled)
+                    worldBookRepository.setEntryDisabled(name, uid, false)
+                } else {
+                    worldBookRepository.setEntryDisabled(name, uid, !enabled)
+                    worldBookRepository.setEntryForced(name, uid, false)
+                }
+            }
+            loadWorldBook(name)
+            refreshWorldBooks()
+        }
+    }
+
+    /** 全局世界书的批量开关（页头右上角菜单）。 */
+    fun setAllWorldBookEntries(name: String, mode: BookBulkMode) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val book = worldBookRepository.load(name) ?: return@withContext null
+                val fileOn = book.entries.filter { !it.disabled }.map { it.uid }.toSet()
+                val fileOff = book.entries.filter { it.disabled }.map { it.uid }.toSet()
+                when (mode) {
+                    BookBulkMode.AllOn -> {
+                        worldBookRepository.saveEntryOverrides(name, emptySet(), fileOff)
+                        "已全部开启（${book.entries.size} 条，强制 ${fileOff.size} 条）"
+                    }
+
+                    BookBulkMode.AllOff -> {
+                        worldBookRepository.saveEntryOverrides(name, fileOn, emptySet())
+                        "已全部关闭（${book.entries.size} 条）"
+                    }
+
+                    BookBulkMode.Default -> {
+                        worldBookRepository.saveEntryOverrides(name, emptySet(), emptySet())
+                        "已恢复文件里的默认开关"
+                    }
+                }
+            } ?: return@launch
+            AppLog.i("worldinfo", "批量开关 $name mode=$mode")
+            _state.update { it.copy(notice = Notice(System.nanoTime(), result)) }
             loadWorldBook(name)
             refreshWorldBooks()
         }
@@ -1232,8 +1375,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 扫一遍世界书。数据来源目前只有**卡内嵌书**（减去被关掉的条目）；
-     * 全局世界书（设置里导入的）还没接。
+     * 扫一遍世界书。数据来源 = 卡内嵌书 + 启用中的全局书；两边的本机覆盖
+     * （关掉 / 强制开启）都已经在这一步算成"生效中的条目"了。
      *
      * 传给扫描器的聊天串要带名字前缀（原版 `chatForWI` 就是 `${name}: ${mes}`），
      * 否则 `matchPersonaDescription` 这类开关、以及"人类说话里点名"的条目会匹配不到。
@@ -1244,7 +1387,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         history: List<ChatMessage>,
     ): LorebookScanResult {
         val sessionKey = snapshot.sessionId ?: return LorebookScanResult()
-        val cardEntries = card.lorebookEntries().filterIndexed { index, _ -> index !in snapshot.bookDisabled }
+        val cardEntries = card.lorebookEntries()
+            .filter { it.uid !in snapshot.bookDisabled }
+            // 强制开启的条目在解析时被标成 disabled（卡里没写 enabled 的那些），这里翻回来
+            .map { if (it.uid in snapshot.bookForced) it.withDisabled(false) else it }
         // 全局书排在内嵌书之后（原版 character_first 策略：卡的书先，全局书后）
         val globalEntries = snapshot.worldBooks
             .filter { it.enabled }

@@ -4,6 +4,7 @@ import android.content.Context
 import app.tavern.data.secret.SecretStore
 import app.tavern.data.secret.impl.KeystoreSecretStore
 import app.tavern.data.settings.AppSettings
+import app.tavern.data.settings.CardBookOverride
 import app.tavern.data.settings.SettingsRepository
 
 /**
@@ -91,16 +92,23 @@ class PreferencesSettingsRepository(
         prefs.edit().putString(KEY_VISUAL_EFFECTS, name).apply()
     }
 
-    override fun disabledBookEntries(cardId: String): Set<Int> =
-        prefs.getStringSet(KEY_BOOK_DISABLED_PREFIX + cardId, emptySet())
-            .orEmpty()
-            .mapNotNull { it.toIntOrNull() }
-            .toSet()
+    override fun cardBookOverride(cardId: String): CardBookOverride = CardBookOverride(
+        off = prefs.getStringSet(KEY_CARD_BOOK_OFF_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
+        forcedOn = prefs.getStringSet(KEY_CARD_BOOK_FORCED_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
+    )
 
-    override fun saveDisabledBookEntries(cardId: String, disabled: Set<Int>) {
+    override fun saveCardBookOverride(cardId: String, override: CardBookOverride) {
         prefs.edit()
-            .putStringSet(KEY_BOOK_DISABLED_PREFIX + cardId, disabled.map { it.toString() }.toSet())
+            .putStringSet(KEY_CARD_BOOK_OFF_PREFIX + cardId, override.off.toStringSet())
+            .putStringSet(KEY_CARD_BOOK_FORCED_PREFIX + cardId, override.forcedOn.toStringSet())
             .apply()
+    }
+
+    override fun legacyBookDisabledIndexes(cardId: String): Set<Int> =
+        prefs.getStringSet(KEY_BOOK_DISABLED_PREFIX + cardId, emptySet()).orEmpty().toIntSet()
+
+    override fun clearLegacyBookDisabledIndexes(cardId: String) {
+        prefs.edit().remove(KEY_BOOK_DISABLED_PREFIX + cardId).apply()
     }
 
     override fun cardMessageStyle(cardId: String): String? =
@@ -134,7 +142,10 @@ class PreferencesSettingsRepository(
         const val KEY_NAV_ANIMATION = "nav_animation"
         const val KEY_VISUAL_EFFECTS = "visual_effects"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
+        // 老版本按下标存的"关掉"集合，只用于一次性迁移到 uid
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"
+        const val KEY_CARD_BOOK_OFF_PREFIX = "card_book_off:"
+        const val KEY_CARD_BOOK_FORCED_PREFIX = "card_book_forced:"
         const val KEY_CARD_STYLE_PREFIX = "card_style:"
         const val DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
         const val DEFAULT_MODEL = "deepseek-chat"
@@ -147,3 +158,9 @@ class PreferencesSettingsRepository(
         const val DEFAULT_VISUAL_EFFECTS = "Off"
     }
 }
+
+/** 偏好里存的是字符串集合（`StringSet` 不能放 Int）。 */
+private fun Set<String>.toIntSet(): Set<Int> = mapNotNull { it.toIntOrNull() }.toSet()
+
+private fun Set<Int>.toStringSet(): Set<String> = map { it.toString() }.toSet()
+

@@ -44,6 +44,9 @@ data class ThemePalette(
     val cardBorder: Color,
     val userBubble: Color,
     val onUserBubble: Color,
+    /** 「强制开启」等"偏离文件默认"的标记色。M3 的 error 语义是"出错了"，这里借用它的红但含义不同。 */
+    val error: Color,
+    val onError: Color,
 )
 
 /** 主题预设。以后加新配色只需要在这里加一个枚举项。 */
@@ -69,6 +72,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             // 气泡保留紫调（#E9E1FA），别让"我"的消息看起来是灰的
             userBubble = Color(0xFFE9E1FA),
             onUserBubble = Color(0xFF241A3A),
+            // 「强制开启」这类偏离默认的状态用它；浅色下要够深，压在白底上才读得清
+            error = Color(0xFFB3261E),
+            onError = Color(0xFFFFFFFF),
         ),
         dark = ThemePalette(
             // 深色底上要"亮一点的紫"：太暗会糊在背景里，太艳会刺眼
@@ -85,6 +91,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFF272235),
             userBubble = Color(0xFF261F38),
             onUserBubble = Color(0xFFECE4FB),
+            // 深色下同一个红要提亮，否则压在 #181521 上发黑
+            error = Color(0xFFF2B8B5),
+            onError = Color(0xFF601410),
         ),
     ),
 
@@ -104,6 +113,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFFE0E0DA),
             userBubble = Color(0xFFE3F1E8),
             onUserBubble = Color(0xFF133620),
+            // 「强制开启」这类偏离默认的状态用它；浅色下要够深，压在白底上才读得清
+            error = Color(0xFFB3261E),
+            onError = Color(0xFFFFFFFF),
         ),
         dark = ThemePalette(
             primary = Color(0xFF7BD88F),
@@ -119,6 +131,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFF232A34),
             userBubble = Color(0xFF15281C),
             onUserBubble = Color(0xFFD6F5DE),
+            // 深色下同一个红要提亮，否则压在 #181521 上发黑
+            error = Color(0xFFF2B8B5),
+            onError = Color(0xFF601410),
         ),
     ),
 
@@ -138,6 +153,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFFE5DCCE),
             userBubble = Color(0xFFF6E9D8),
             onUserBubble = Color(0xFF3B2410),
+            // 「强制开启」这类偏离默认的状态用它；浅色下要够深，压在白底上才读得清
+            error = Color(0xFFB3261E),
+            onError = Color(0xFFFFFFFF),
         ),
         dark = ThemePalette(
             primary = Color(0xFFE0B27A),
@@ -153,6 +171,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFF302B25),
             userBubble = Color(0xFF2A2118),
             onUserBubble = Color(0xFFF3E2C9),
+            // 深色下同一个红要提亮，否则压在 #181521 上发黑
+            error = Color(0xFFF2B8B5),
+            onError = Color(0xFF601410),
         ),
     ),
 
@@ -172,6 +193,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFFDDE2E7),
             userBubble = Color(0xFFE5ECF3),
             onUserBubble = Color(0xFF16283A),
+            // 「强制开启」这类偏离默认的状态用它；浅色下要够深，压在白底上才读得清
+            error = Color(0xFFB3261E),
+            onError = Color(0xFFFFFFFF),
         ),
         dark = ThemePalette(
             primary = Color(0xFF8FB3D9),
@@ -187,6 +211,9 @@ enum class ThemePreset(val label: String, val light: ThemePalette, val dark: The
             cardBorder = Color(0xFF232B34),
             userBubble = Color(0xFF16222E),
             onUserBubble = Color(0xFFD5E6F5),
+            // 深色下同一个红要提亮，否则压在 #181521 上发黑
+            error = Color(0xFFF2B8B5),
+            onError = Color(0xFF601410),
         ),
     ),
 }
@@ -218,6 +245,8 @@ fun TavernTheme(
             surfaceVariant = palette.surfaceVariant,
             onSurfaceVariant = palette.onSurfaceVariant,
             outline = palette.outline,
+            error = palette.error,
+            onError = palette.onError,
         )
     } else {
         lightColorScheme(
@@ -230,6 +259,8 @@ fun TavernTheme(
             surfaceVariant = palette.surfaceVariant,
             onSurfaceVariant = palette.onSurfaceVariant,
             outline = palette.outline,
+            error = palette.error,
+            onError = palette.onError,
         )
     }
 

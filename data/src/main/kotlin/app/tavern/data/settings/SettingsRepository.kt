@@ -47,14 +47,20 @@ interface SettingsRepository {
     fun saveVisualEffects(name: String)
 
     /**
-     * 这张卡里被手动关掉的内嵌世界书条目（按 `character_book.entries` 下标）。
+     * 这张卡的内嵌世界书开关覆盖（按条目 **uid**，不是下标 —— 卡在 PC 上改过内嵌书再导回来，
+     * 下标会整体错位，uid 不会）。
      *
-     * ST 是把 `enabled` 写进卡文件里的；我们先存在应用内，**不动卡文件**——
-     * 写回卡属于"卡编辑"，要单独一批（备份 + 校验）。等世界书引擎（P1）落地后再决定要不要同步回卡。
+     * ST 是把 `enabled` 写进卡文件里的；我们只存在应用内，**不动卡文件**——
+     * 写回卡属于"卡编辑"，要单独一批（备份 + 校验）。
      */
-    fun disabledBookEntries(cardId: String): Set<Int>
+    fun cardBookOverride(cardId: String): CardBookOverride
 
-    fun saveDisabledBookEntries(cardId: String, disabled: Set<Int>)
+    fun saveCardBookOverride(cardId: String, override: CardBookOverride)
+
+    /** 老版本按下标存的"关掉"集合：只用来迁移到 uid，迁完就清掉。 */
+    fun legacyBookDisabledIndexes(cardId: String): Set<Int>
+
+    fun clearLegacyBookDisabledIndexes(cardId: String)
 
     /** 这张卡的消息样式覆盖；null = 跟随全局默认。 */
     fun cardMessageStyle(cardId: String): String?
@@ -64,3 +70,13 @@ interface SettingsRepository {
     /** 保存 API Key（加密后落盘；空串表示清除）。 */
     fun saveApiKey(key: String)
 }
+
+/**
+ * 卡内嵌世界书的本地覆盖。两个集合互斥：
+ * - [off]：卡里是**开**着、应用内关掉的；
+ * - [forcedOn]：卡里是**关**着、应用内强制开启的（界面上整行标红）。
+ */
+data class CardBookOverride(
+    val off: Set<Int> = emptySet(),
+    val forcedOn: Set<Int> = emptySet(),
+)

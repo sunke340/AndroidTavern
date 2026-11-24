@@ -66,7 +66,25 @@ public class FileWorldBookRepository(context: Context) : WorldBookRepository {
         prefs.edit().putStringSet(entryKey(name), current.map { it.toString() }.toSet()).apply()
     }
 
+    override fun forcedEntries(name: String): Set<Int> =
+        prefs.getStringSet(forcedKey(name), emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+
+    override fun setEntryForced(name: String, uid: Int, forced: Boolean) {
+        val current = forcedEntries(name).toMutableSet()
+        if (forced) current += uid else current -= uid
+        prefs.edit().putStringSet(forcedKey(name), current.map { it.toString() }.toSet()).apply()
+    }
+
+    override fun saveEntryOverrides(name: String, disabled: Set<Int>, forcedOn: Set<Int>) {
+        prefs.edit()
+            .putStringSet(entryKey(name), disabled.map { it.toString() }.toSet())
+            .putStringSet(forcedKey(name), forcedOn.map { it.toString() }.toSet())
+            .apply()
+    }
+
     private fun entryKey(name: String): String = "disabled\u0000$name"
+
+    private fun forcedKey(name: String): String = "forced\u0000$name"
 
     private fun files(): List<File> =
         dir.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json") }.sortedBy { it.name }

@@ -34,7 +34,7 @@ class CardBookEntriesTest {
             {
               "name": "测试书",
               "entries": [
-                {"comment": "第一条", "keys": ["龙", "drago"], "content": "龙会喷火。", "enabled": true},
+                {"id": 7, "comment": "第一条", "keys": ["龙", "drago"], "content": "龙会喷火。", "enabled": true},
                 {"name": "第二条（只有 name）", "key": ["剑"], "content": "剑\n有两道刃。", "enabled": false}
               ]
             }
@@ -43,6 +43,9 @@ class CardBookEntriesTest {
         val entries = card(book).bookEntries()
         assertEquals(2, entries.size)
 
+        // uid 取条目里的 id；没有 id 的老卡退回下标（应用内的开关按 uid 存）
+        assertEquals(7, entries[0].uid)
+        assertEquals(1, entries[1].uid)
         assertEquals("第一条", entries[0].comment)
         assertEquals(listOf("龙", "drago"), entries[0].keys)
         // 正文给界面做两行预览（全局世界书详情页同一套）
@@ -59,11 +62,13 @@ class CardBookEntriesTest {
     }
 
     @Test
-    fun `enabled 缺省为 true，空 keywords 不会报错`() {
+    fun `没写 enabled 按关闭读（与原版 convertCharacterBook 一致），空 keywords 不报错`() {
         val book = """{"entries": [{"comment": "没有 enabled 和 keys"}]}"""
         val entry = card(book).bookEntries().single()
 
-        assertTrue(entry.enabled, "卡里没写 enabled 时按启用读；真正生效另由 lorebookEntries 判")
+        // 原版是 disable: !entry.enabled → 缺字段等于关。以前这里缺省成 true，
+        // 于是界面显示"开着"但扫描器从不激活它（用户报的问题）。
+        assertFalse(entry.enabled, "卡里没写 enabled = 关")
         assertEquals(0, entry.keys.size)
         assertEquals("", entry.content)
         Unit

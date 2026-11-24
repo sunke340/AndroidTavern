@@ -38,6 +38,11 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
         },
         onBack = viewModel::closeCardConfigPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        actions = if (page == CardConfigPage.WorldBook) {
+            { WorldBookBulkMenu { mode -> viewModel.setAllCardBookEntries(mode) } }
+        } else {
+            null
+        },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -59,7 +64,8 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
 @Composable
 private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: ChatViewModel) {
     val entries = detail?.bookEntries.orEmpty()
-    val disabled = detail?.disabledEntries.orEmpty()
+    val off = detail?.offUids.orEmpty()
+    val forced = detail?.forcedUids.orEmpty()
 
     if (entries.isEmpty()) {
         EmptyHint("这张卡没有内嵌世界书。")
@@ -76,11 +82,17 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
         WorldBookEntryRow(
             title = entry.comment,
             content = entry.content,
-            // 生效状态 = 卡里写的 enabled **叠加** 应用内关掉的那几条
-            enabled = entry.enabled && entry.index !in disabled,
-            disabledInFile = !entry.enabled,
+            // 生效状态 = 卡里写的 enabled **叠加** 应用内的两个覆盖（强关 / 强制开启）
+            checked = when {
+                entry.uid in forced -> true
+                entry.uid in off -> false
+                else -> entry.enabled
+            },
+            fileEnabled = entry.enabled,
+            forcedOn = entry.uid in forced,
+            defaultOffNote = "卡里默认关闭",
             onToggle = { enabled ->
-                viewModel.setBookEntryEnabled(cardId, entry.index, enabled)
+                viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
             },
         )
     }

@@ -230,7 +230,8 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
                     DetailTab.Config -> ScrollArea {
                         val bookCount = detail?.bookEntries?.size ?: 0
-                        val disabledCount = detail?.disabledEntries?.size ?: 0
+                        val disabledCount = detail?.offUids?.size ?: 0
+                        val forcedCount = detail?.forcedUids?.size ?: 0
                         val globalStyle = if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
                         val styleLabel = when (detail?.messageStyle) {
                             null -> "跟随全局（$globalStyle）"
@@ -245,7 +246,10 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     value = if (bookCount == 0) {
                                         "这张卡没有内嵌书"
                                     } else {
-                                        "$bookCount 条 · 已关闭 $disabledCount 条"
+                                        buildString {
+                                            append("$bookCount 条 · 已关闭 $disabledCount 条")
+                                            if (forcedCount > 0) append(" · 强制 $forcedCount 条")
+                                        }
                                     },
                                 ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
 

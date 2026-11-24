@@ -34,6 +34,11 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         subtitle = book?.let { "${it.entries.size} 条" },
         onBack = viewModel::closeWorldBook,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        actions = {
+            if (book != null) {
+                WorldBookBulkMenu { mode -> viewModel.setAllWorldBookEntries(book.name, mode) }
+            }
+        },
     ) { padding ->
         if (book == null || !book.loaded) {
             Box(
@@ -77,8 +82,10 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
                     WorldBookEntryRow(
                         title = entry.title,
                         content = entry.preview,
-                        enabled = entry.enabled,
-                        disabledInFile = entry.disabledInFile,
+                        checked = entry.enabled,
+                        fileEnabled = !entry.disabledInFile,
+                        forcedOn = entry.forcedOn,
+                        defaultOffNote = "文件里默认关闭",
                         onToggle = { enabled ->
                             viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
                         },
