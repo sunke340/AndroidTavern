@@ -155,15 +155,21 @@
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
   `onPostScroll` 把 available 全报成已消费；回弹必须能被手指打断（代数守卫）。
 
-**聊天串流跟随**（`ChatScreen`，2026-11-24 定）：
+**聊天串流跟随**（`ChatScreen`，2026-11-24 定；当晚撤掉"冻结"换成阅读锚点补偿）：
 - 贴底（`reverseLayout` 的 `firstVisibleItemIndex==0 && offset==0`）才跟随；
 - 内容长高用**一条动画追高度差**（`实测高度 − 平滑高度` 平移上去），**不要**"加一笔补偿再收回"
   —— 文字到得快时那样会累积、抽搐（v112 踩过）；
-- 不在底部时不动视口：看更早的消息（下标 > 0）本来就稳；停在串流气泡自己身上时
-  要么冻结（现状），要么按 pitfalls 里的 B/C 方案处理 —— **别改成无条件跟随**。
+- **不在底部时不许冻结文本**（用户 2026-11-24 晚明确不要"内容卡住"）：看更早的消息（下标 > 0）
+  视口本来就稳，什么都不做；停在串流气泡自己身上（下标 == 0、偏移 > 0）时，把**滚动偏移**
+  补上这次长高的量（`requestScrollToItem`），让读到的那一段留在原处；
+- 补偿只认**量到的高度变化**（`onSizeChanged` 的差量），不许按 token/按帧无条件调滚动；
+  手指/惯性期间（`isScrollInProgress`）一律让位、只把基线推到最新，不攒"回头债"；
+- 布局与滚动是两趟：补偿那一帧用 `translationY` 顶住差量，等偏移落地时两边同时归零。
+  这是"桥接一帧"，不是用绘制位移长期掩盖布局 —— 别把 `translationY` 做成常驻偏移。
 
 ## 日志与自查
 
-走 `AppLog`（真机没有 logcat），只记事件与状态码，不记 Key 与正文；导航也打 `tag=nav`。
+走 `AppLog`（真机没有 logcat），只记事件与状态码，不记 Key 与正文；导航也打 `tag=nav`，
+聊天滚动/锚点补偿打 `tag=scroll`（只记模式切换、补偿落地、补偿跳过，并按时间窗合并）。
 本机编不了 `:app` → 改完必跑 `tools/check-kotlin-comments.sh`、`tools/check-kotlin-imports.sh`、
 `tools/check-core-purity.sh`；出包走 CI。

@@ -60,6 +60,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,22 +79,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
+import app.tavern.data.log.AppLog
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * 聊天页（全屏二级页）。
  *
  * 动效只做三件有信息量的事：新消息入场、流式光标、发送↔停止的按钮形变。
  *
- * 串流跟随的规矩（2026-11-24 定）：
- * - 列表贴底时，文本长高多少就"滑"多少（动画追高度差，而不是每行跳一下）；
- * - 不在底部、看的是**更早的消息**时：气泡照常长，但视口本来就不动；
- * - 不在底部、正停在**串流气泡自己**身上时：冻结文本，视口一像素都不动 ——
- *   否则气泡长高会把正在读的这一段顶走。
+ * 串流跟随的规矩（2026-11-24 定，晚上把"冻结"换成了阅读锚点保护）：
+ * - **贴底**（场景 A）：文本长高多少就"滑"多少（动画追高度差，而不是每行跳一下）；
+ * - **看更早的消息**（场景 B，第一可见项下标 > 0）：气泡在视口外长，视口本来就不动，
+ *   什么都不做；
+ * - **停在串流气泡自己身上**（场景 C，下标 == 0 且滚出去 > 0）：文本照常长，长高多少就把
+ *   滚动偏移加多少，让读到的那一段留在原处。补偿只在真的量到高度变化时做，**手指/惯性期间
+ *   一律让位**；不做冻结（用户 2026-11-24 晚明确不要"内容卡住"）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,16 +120,19 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         }
     }
 
-    // 用户滚到了"串流气泡自己身上"（既不在底部，也不是在看更早的消息）：
-    // 这时气泡继续长高会把视口顶走，所以只在这种情况冻结文本。
-    // 看更早的消息（index > 0）时**不冻结**：气泡在视口外长，画面本来就不动。
-    val insideStreamingBubble = !atBottom && listState.firstVisibleItemIndex == 0
-    val freezeStream = insideStreamingBubble && state.isStreaming
-    var frozenStream by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(freezeStream) {
-        frozenStream = if (freezeStream) state.streamingText else null
+    // 串流气泡永远显示最新文本：冻结已撤掉（用户 2026-11-24 晚：卡住的观感不是我要的）。
+    val shownStream = state.streamingText
+
+    // 场景 C 的判据（不能只看 isStreaming）：滚离了底部，但"第一可见项"仍是串流气泡自己。
+    // reverseLayout 下这意味着气泡下沿已经沉到视口外，正在读的是它上半截 —— 只有这种情形，
+    // 气泡长高才会把读到的那一段顶走。看更早的消息时下标 > 0，气泡在视口外长，视口不动。
+    // 用 derivedState 而不是直接读：绘制里也要用这个判据，derivedState 在绘制时总是最新。
+    val readingBubble by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset > 0
+        }
     }
-    val shownStream = frozenStream ?: state.streamingText
+    val readingStreamBubble = readingBubble && shownStream.isNotEmpty()
 
     // 串流气泡的高度：量出来以后用**一条动画去追它**，追不上差多少就往下平移多少。
     // 于是每换一行是"滑"上去的，而不是"啪"地跳一行（用户 2026-11-24）。
@@ -135,11 +145,80 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (smoothHeight.value == 0f) smoothHeight.snapTo(target)
         else smoothHeight.animateTo(target, tween(Motion.Base, easing = Motion.Decelerate))
     }
-    // 新一轮串流 / 换会话：高度归零，下一轮气泡重新量
+
+    // ── 阅读锚点保护（场景 C）──
+    //
+    // reverseLayout 的滚动位置 = "第一可见项 + 它被滚过去的距离"。气泡长高 delta 时，Compose
+    // 只把这条锚点钉在气泡的**下沿**，于是整屏内容被顶上去 delta（旧轮次记过这个"瞬移一行"）。
+    // 贴底时用动画追上去就顺眼了；读气泡自己时不能追 —— 抬上去再滑回来就是把读到的那段拽走。
+    // 所以这里把**滚动偏移**补上 delta：偏移加大 = 内容整体往下让 delta，气泡上沿停回原处。
+    //
+    // 两个约束决定了它不抢手指：
+    // 1. 只调偏移（requestScrollToItem），不启动滚动动画、不累积任务、不做逐 token 滚；
+    // 2. 布局与滚动是两趟，差量这一帧先由 translationY 抹平，等偏移在下一帧落地时
+    //    两个量同时归零（恒等于原位置）—— 所以既不是用绘制位移长期掩盖布局，也不会闪。
+    var anchoredHeight by remember { mutableIntStateOf(0) }
+    val streamProbe = remember { StreamProbe() }
+    val anchorDiag = remember { AnchorDiag() }
+    LaunchedEffect(streamHeight, readingStreamBubble, state.isStreaming) {
+        // 不在场景 C，或者这会儿没在长：只把基线推平，绝不补偿
+        if (!state.isStreaming || !readingStreamBubble) {
+            anchoredHeight = streamHeight
+            return@LaunchedEffect
+        }
+        val drift = streamHeight - anchoredHeight
+        if (drift <= 0) {
+            anchoredHeight = streamHeight
+            return@LaunchedEffect
+        }
+        if (listState.isScrollInProgress) {
+            // 手势/惯性优先（原则 4）：这一段长高不补，基线推到最新；
+            // 手指松开后从新位置重新开始保护，不会攒出一笔"回头债"。
+            anchorDiag.skipped("scrolling", drift, streamProbe.topY)
+            anchoredHeight = streamHeight
+            return@LaunchedEffect
+        }
+        val from = listState.firstVisibleItemScrollOffset
+        // reverseLayout 里偏移方向是"往前滚 = 内容往下"，所以是加不是减。
+        listState.requestScrollToItem(0, from + drift)
+        anchoredHeight = streamHeight
+        anchorDiag.compensated(drift, from, from + drift, streamHeight, streamProbe.topY)
+    }
+
+    // 滚动模式 A/B/C 的变化各记一条（只记切换，不记每帧；脚本/日志里靠它对齐上下文）
+    LaunchedEffect(state.isStreaming, state.sessionId) {
+        if (!state.isStreaming) return@LaunchedEffect
+        snapshotFlow {
+            val index = listState.firstVisibleItemIndex
+            val offset = listState.firstVisibleItemScrollOffset
+            ScrollMode(
+                mode = when {
+                    index == 0 && offset == 0 -> ScrollMode.AT_BOTTOM
+                    index == 0 -> ScrollMode.READING_BUBBLE
+                    else -> ScrollMode.READING_HISTORY
+                },
+                index = index,
+                offset = offset,
+            )
+        }
+            .distinctUntilChanged { old, new -> old.mode == new.mode }
+            .collect { mark ->
+                // 平滑差：从贴底切出去时"追高度"的那点欠账。它不是 0 就说明切换那一帧
+                // 内容会往上收一点点（贴底跟随的既有行为，这里先量出来，别和补偿混为一谈）。
+                val pending = (streamHeight - smoothHeight.value).toInt()
+                anchorDiag.mode(mark.mode, mark.index, mark.offset, streamHeight, pending, streamProbe.topY)
+            }
+    }
+
+    // 新一轮串流 / 换会话：高度归零，下一轮气泡重新量；上一轮收尾时把补偿总量写进日志
     LaunchedEffect(state.isStreaming, state.sessionId) {
         if (state.isStreaming) {
             streamHeight = 0
             smoothHeight.snapTo(0f)
+            anchoredHeight = 0
+            anchorDiag.reset()
+        } else {
+            anchorDiag.finish()
         }
     }
     val regexScripts = state.regexScripts
@@ -192,8 +271,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = Space.m)
-                // 柔和抬升就落在这：布局已经跑到前面去了，差多少就下移多少（只改绘制，不重新布局）
-                .graphicsLayer { translationY = if (atBottom) streamHeight - smoothHeight.value else 0f }
+                // 位移只落在绘制上，两者都是"追上布局"用的短命差量：
+                // - 贴底：布局已经跑到前面去了，差多少就下移多少，再平滑追上去；
+                // - 读气泡自己：长高的差量先在这里顶住，等上面那笔滚动补偿落地，两边同时归零。
+                .graphicsLayer {
+                    translationY = when {
+                        atBottom -> streamHeight - smoothHeight.value
+                        readingBubble -> (streamHeight - anchoredHeight).toFloat().coerceAtLeast(0f)
+                        else -> 0f
+                    }
+                }
                 .rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
@@ -214,8 +301,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             style = state.effectiveMessageStyle,
                             showCursor = true,
                             displayText = displayText,
-                            // 量气泡高度：长高多少就补偿多少，用来做柔和抬升
-                            modifier = Modifier.onSizeChanged { streamHeight = it.height },
+                            // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
+                            // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
+                            modifier = Modifier
+                                .onSizeChanged { streamHeight = it.height }
+                                .onGloballyPositioned { streamProbe.topY = it.positionInWindow().y.toInt() },
                         )
                     }
                 }
@@ -530,5 +620,93 @@ private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * 串流气泡上沿在窗口里的 Y：只给日志用，**故意不做成 state** ——
+ * 它滚动时每帧都变，进 snapshot 只会给重组添乱。
+ */
+private class StreamProbe {
+    var topY: Int = 0
+}
+
+/** 一次读数里的滚动模式：A 贴底 / B 看更早的消息 / C 读串流气泡自己。 */
+private data class ScrollMode(val mode: String, val index: Int, val offset: Int) {
+    companion object {
+        const val AT_BOTTOM = "A"
+        const val READING_HISTORY = "B"
+        const val READING_BUBBLE = "C"
+    }
+}
+
+/**
+ * 阅读锚点保护的诊断日志（`tag=scroll`）。
+ *
+ * 为什么只记三类事件：一次长回复会让气泡长高几十上百次，每次都记一条会把 800 条的环形缓冲
+ * 冲干净（那里面还有启动和请求的线索）。所以模式切换（罕见）原样记，补偿与跳过都按窗口合并。
+ *
+ * 字段（对照 [ChatScreen] 里的阅读锚点保护）：
+ * - `drift`：这一笔补的像素 = 气泡这次长高多少；
+ * - `off a→b`：滚动偏移补偿前后（reverseLayout 下加大 = 内容往下让）；
+ * - `气泡高`：补偿后的气泡高度；
+ * - `顶Y`：气泡上沿在窗口里的 Y —— **这是验收证据**，补偿有效时它应当基本不变。
+ */
+private class AnchorDiag {
+    private var lastMode: String? = null
+    private var lastAt = 0L
+    private var mergedCount = 0
+    private var mergedDrift = 0
+
+    // 这一轮串流的累计量（收尾时打一行，方便把一次回复和它的补偿对上号）
+    private var totalCount = 0
+    private var totalDrift = 0
+
+    fun reset() {
+        lastMode = null
+        lastAt = 0L
+        mergedCount = 0
+        mergedDrift = 0
+        totalCount = 0
+        totalDrift = 0
+    }
+
+    /** 一轮串流收尾：把补偿总量记一行（没有补偿就不记，别占缓冲）。 */
+    fun finish() {
+        if (totalCount > 0) {
+            AppLog.i("scroll", "串流结束 补偿 $totalCount 笔 / 共 ${totalDrift}px")
+        }
+        reset()
+    }
+
+    fun mode(mode: String, index: Int, offset: Int, height: Int, pending: Int, topY: Int) {
+        if (mode == lastMode) return
+        lastMode = mode
+        AppLog.i("scroll", "模式=$mode idx=$index off=$offset 气泡高=$height 平滑差=${pending}px 顶Y=$topY")
+        mergedCount = 0
+        mergedDrift = 0
+    }
+
+    fun compensated(drift: Int, from: Int, to: Int, height: Int, topY: Int) {
+        totalCount++
+        totalDrift += drift
+        val now = System.currentTimeMillis()
+        if (now - lastAt < 300L) {
+            mergedCount++
+            mergedDrift += drift
+            return
+        }
+        lastAt = now
+        val extra = if (mergedCount > 0) " 合并=$mergedCount 笔/${mergedDrift}px" else ""
+        AppLog.i("scroll", "补偿 drift=${drift}px off $from→$to 气泡高=$height 顶Y=$topY$extra")
+        mergedCount = 0
+        mergedDrift = 0
+    }
+
+    fun skipped(reason: String, drift: Int, topY: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastAt < 500L) return
+        lastAt = now
+        AppLog.i("scroll", "补偿跳过 reason=$reason drift=${drift}px 顶Y=$topY")
     }
 }
