@@ -266,7 +266,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             anchorDiag.finish()
         }
     }
-    val regexScripts = state.regexScripts
+    // 用"生效中"的那份：会话/卡可能把某些脚本关了，显示侧与输入侧必须读同一个集合
+    val regexScripts = state.effectiveRegexScripts
     val displayText: (String) -> String = remember(regexScripts) {
         { text ->
             if (regexScripts.isEmpty()) text

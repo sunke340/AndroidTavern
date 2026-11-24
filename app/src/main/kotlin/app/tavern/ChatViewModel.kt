@@ -1585,8 +1585,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * 只改 `activePreset` 不重算它们等于没换。
      */
     private suspend fun loadPresetIntoState(name: String?) {
-        val loaded = withContext(Dispatchers.IO) { name?.let { presetRepository.load(it) } }
-        val order = withContext(Dispatchers.IO) { name?.let { presetRepository.orderOverride(it) } }
+        // 传 null = 回到**全局选中的那份**（不是"内置默认"）：会话跟着全局时，读的必须是同一份
+        val target = name ?: _state.value.activePreset
+        val loaded = withContext(Dispatchers.IO) { target?.let { presetRepository.load(it) } }
+        val order = withContext(Dispatchers.IO) { target?.let { presetRepository.orderOverride(it) } }
             ?: loaded?.order
         _state.update {
             it.copy(
