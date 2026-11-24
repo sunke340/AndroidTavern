@@ -90,7 +90,6 @@ private fun CardWorldBookPage(detail: CardDetail?, cardId: String, viewModel: Ch
             },
             fileEnabled = entry.enabled,
             forcedOn = entry.uid in forced,
-            defaultOffNote = "卡里默认关闭",
             onToggle = { enabled ->
                 viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
             },
