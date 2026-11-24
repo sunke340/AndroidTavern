@@ -419,39 +419,3 @@ private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIn
         )
     }
 }
-
-@Composable
-private fun ScrollArea(content: @Composable () -> Unit) {
-    // 四个标签各自是一块可滚动面：每个都要橡皮筋（和会话/角色卡页一致）
-    val overscroll = rememberRubberOverscroll()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .rubberOverscroll(overscroll)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) { content() }
-}
-
-@Composable
-private fun GreetingTab(detail: CardDetail?) {
-    val first = detail?.firstMessage.orEmpty()
-    Text(
-        first.ifBlank { "（这张卡没有开场白）" },
-        style = MaterialTheme.typography.bodySmall,
-    )
-
-    val alternates = detail?.alternateGreetings.orEmpty()
-    if (alternates.isNotEmpty()) {
-        Text("备选开场白（${alternates.size}）", style = MaterialTheme.typography.labelMedium)
-        alternates.forEachIndexed { index, text ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text("备选 ${index + 1}", style = MaterialTheme.typography.labelSmall)
-                    Text(text, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
