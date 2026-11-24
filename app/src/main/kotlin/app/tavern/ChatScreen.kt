@@ -167,7 +167,38 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var anchoredHeight by remember { mutableIntStateOf(0) }
     val streamProbe = remember { StreamProbe() }
     val anchorDiag = remember { AnchorDiag() }
-    LaunchedEffect(streamHeight, readingStreamBubble, state.isStreaming) {
+    // 贴底那套"追高欠账"（`平滑差`）是**绘制量**，只在贴底时起作用。跨边界时它会凭空丢掉
+    // （离开贴底 → 画面向上收一下）或凭空补上（回到贴底 → 向下沉一下），实测 8–151px。
+    // 所以边界上做两件事：离开贴底把欠账折成滚动量；回到贴底把平滑高度对齐。
+    var wasAtBottom by remember { mutableStateOf(atBottom) }
+    LaunchedEffect(streamHeight, readingStreamBubble, state.isStreaming, atBottom) {
+        val justEnteredBottom = !wasAtBottom && atBottom
+        val leftBottom = wasAtBottom && !atBottom
+        wasAtBottom = atBottom
+        if (justEnteredBottom) {
+            // 回到贴底：这笔欠账在场景 C 里已经消化过（内容本来就在正确位置），
+            // 直接对齐，否则会先向下沉一下再滑上来。
+            val pending = (streamHeight - smoothHeight.value).toInt()
+            smoothHeight.snapTo(streamHeight.toFloat())
+            anchoredHeight = streamHeight
+            if (pending != 0) anchorDiag.edge("回到贴底", pending, 0)
+            return@LaunchedEffect
+        }
+        if (atBottom) {
+            // 贴底期间的基线跟着高度走；**不要**动 smoothHeight（那是跟底动画自己管的）
+            anchoredHeight = streamHeight
+            return@LaunchedEffect
+        }
+        if (leftBottom) {
+            // 离开贴底：把当前欠账折成滚动量，画面上就不会"收一下"。
+            // 折不完的部分留给 anchoredHeight 当桥接，下一笔补偿接着消化。
+            val pending = (streamHeight - smoothHeight.value).toInt()
+            if (pending > 0) {
+                val moved = listState.dispatchRawDelta(pending.toFloat()).roundToInt()
+                anchoredHeight = streamHeight - pending + moved
+                anchorDiag.edge("离开贴底", pending, moved)
+            }
+        }
         // 不在场景 C，或者这会儿没在长：只把基线推平，绝不补偿
         if (!state.isStreaming || !readingStreamBubble) {
             anchoredHeight = streamHeight
@@ -706,6 +737,11 @@ private class AnchorDiag {
         AppLog.i("scroll", "补偿 +${moved}px(drift=$drift) 气泡高=$height 顶Y=$topY$drag$extra")
         mergedCount = 0
         mergedDrift = 0
+    }
+
+    /** 跨贴底边界：把"追高欠账"折成滚动（离开）或直接对齐（回到）。 */
+    fun edge(label: String, pending: Int, moved: Int) {
+        AppLog.i("scroll", "边界 $label 欠账=${pending}px 折成滚动=${moved}px")
     }
 
     /** 补偿没滚出去（到边界）：桥接先顶住，基线不动，下一笔再试。 */
