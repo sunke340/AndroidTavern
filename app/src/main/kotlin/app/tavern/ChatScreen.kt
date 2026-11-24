@@ -17,6 +17,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -85,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -123,6 +126,25 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 输入区的实测高度（像素）：列表底部让位跟着它走 —— 聚焦时输入区会向上翻倍
     var inputBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+
+    // 消息操作（P0-6）：长按气泡出动作单；编辑与删除各自一个弹层
+    val sheet = LocalSheetController.current
+    val clipboard = LocalClipboardManager.current
+    var editingIndex by remember { mutableStateOf<Int?>(null) }
+    var deletingIndex by remember { mutableStateOf<Int?>(null) }
+
+    fun messageActions(index: Int): List<SheetAction> {
+        val message = state.transcript.getOrNull(index) ?: return emptyList()
+        val actions = mutableListOf<SheetAction>()
+        actions += SheetAction("复制") { clipboard.setText(AnnotatedString(message.content)) }
+        actions += SheetAction("编辑") { editingIndex = index }
+        // 只有最后一条助手消息能重新生成（原版也一样：重新生成作用在最后一条上）
+        if (index == state.transcript.lastIndex && message.role == ChatRole.Assistant) {
+            actions += SheetAction("重新生成") { viewModel.regenerateLast() }
+        }
+        actions += SheetAction("删除这条", destructive = true) { deletingIndex = index }
+        return actions
+    }
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
@@ -385,11 +407,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 itemsIndexed(state.transcript.asReversed()) { index, message ->
                     // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
                     // 位移动画会不断重放，整屏看起来在闪。
-                    val itemAnim = Modifier.animateItem(
-                        fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
-                        placementSpec = null,
-                        fadeOutSpec = tween(Motion.Fast),
-                    )
+                    // 长按出动作单（P0-6）：复制 / 编辑 / 删除 / 最后一条助手消息可重新生成
+                    val realIndex = state.transcript.lastIndex - index
+                    val itemAnim = Modifier
+                        .animateItem(
+                            fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                            placementSpec = null,
+                            fadeOutSpec = tween(Motion.Fast),
+                        )
+                        .pointerInput(realIndex, message.content) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    sheet.show(title = "消息", actions = messageActions(realIndex))
+                                },
+                            )
+                        }
                     val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
                     if (isGreetingSlot) {
                         Column(modifier = itemAnim) {
@@ -415,6 +447,32 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                 }
         }
+    }
+
+    // 编辑这条：文本编辑弹层（不是玻璃 —— 玻璃只给"确认/动作"，编辑要塞键盘与长文本）
+    editingIndex?.let { index ->
+        val original = state.transcript.getOrNull(index)?.content.orEmpty()
+        EditMessageDialog(
+            initial = original,
+            onDismiss = { editingIndex = null },
+            onSave = { text ->
+                editingIndex = null
+                viewModel.editMessageAt(index, text)
+            },
+        )
+    }
+
+    // 删除这条：走统一的玻璃确认框（和删会话/删卡同一个材质与措辞规则）
+    deletingIndex?.let { index ->
+        ConfirmDeleteDialog(
+            title = "删除这条消息？",
+            message = "只删这一条，不能撤销。",
+            onConfirm = {
+                deletingIndex = null
+                viewModel.deleteMessageAt(index)
+            },
+            onDismiss = { deletingIndex = null },
+        )
     }
 
     // 请求面板：全屏弹层，可选中复制。以前内嵌在消息上方，白占一块地方。
@@ -778,6 +836,46 @@ private fun CardRow(
             Row {
                 Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                 if (showCursor) StreamingCursor()
+            }
+        }
+    }
+}
+
+/**
+ * 编辑一条消息的弹层。
+ *
+ * 为什么不用玻璃：这里要浮起键盘、可能要改一大段文字，玻璃面板在键盘上方既抢注意力
+ * 又不好量高度；确认类弹层（删除）才是玻璃的适用场景。
+ */
+@Composable
+private fun EditMessageDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember(initial) { mutableStateOf(initial) }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(Space.l),
+            shape = RoundedCornerShape(Radius.card),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 3.dp,
+        ) {
+            Column(modifier = Modifier.padding(Space.l)) {
+                Text("编辑这条消息", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(Space.m))
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    maxLines = 12,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 320.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = Space.s),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(
+                        enabled = text.isNotBlank() && text != initial,
+                        onClick = { onSave(text) },
+                    ) { Text("保存") }
+                }
             }
         }
     }

@@ -1933,8 +1933,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val rawText = snapshot.input.trim()
         val text = applyRegex(rawText, RegexPlacement.UserInput, characterCard)
-        val userMessage = ChatMessage(ChatRole.User, text)
-        val history = snapshot.transcript + userMessage
+        beginCompletion(snapshot.transcript + ChatMessage(ChatRole.User, text), userText = text)
+    }
+
+    /**
+     * 真正发一次请求。两条路共用：`send()`（新用户消息）与 `regenerateLast()`（不追加用户消息）。
+     *
+     * 为什么抽出来：重新生成与发送在"扫世界书 → 拼提示词 → 建请求 → 流式收尾"这一段完全一样，
+     * 唯一区别是**要不要把一条用户消息写进库**（[userText] 为 null 表示不写）。
+     * 各抄一份两百行会立刻分叉 —— 世界书、正则、思考强度改一处忘一处。
+     */
+    private fun beginCompletion(history: List<ChatMessage>, userText: String?) {
+        val snapshot = _state.value
+        val characterCard = card ?: return
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.apiKey.isBlank()) {
+            _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
+            return
+        }
         // 世界书：卡内嵌书扫一遍再拼提示词。没有条目时是空结果，不会多出一条消息。
         val worldInfo = scanWorldInfo(characterCard, snapshot, history)
         val messages = PromptBuilder().build(
@@ -2037,7 +2053,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         current.copy(streamingText = "", isStreaming = false, status = message)
                     } else {
                         current.copy(
-                            transcript = current.transcript.dropLast(1),
+                            // 失败时撤回的只有"这次追加的那一条"：重新生成没有追加用户消息，
+                            // 这里再去 dropLast 就会把上一句用户说的话删掉
+                            transcript = if (userText != null) {
+                                current.transcript.dropLast(1)
+                            } else {
+                                current.transcript
+                            },
                             streamingText = "",
                             isStreaming = false,
                             input = snapshot.input,
@@ -2047,25 +2069,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // 用户消息先落库：进程被杀也不会丢"我说了什么"
-            userMessageId = withContext(Dispatchers.IO) {
-                runCatching { chatRepository.append(sessionId, isUser = true, content = text) }
-                    .getOrNull()
-                    ?.id
-            }
-            if (userMessageId == null) {
-                _state.update {
-                    it.copy(
-                        transcript = it.transcript.dropLast(1),
-                        streamingText = "",
-                        isStreaming = false,
-                        input = snapshot.input,
-                        status = "写库失败：这条消息没有发出去",
-                    )
+            // 用户消息先落库：进程被杀也不会丢"我说了什么"。
+            // 重新生成没有新用户消息（userText == null），这一段整块跳过。
+            if (userText != null) {
+                userMessageId = withContext(Dispatchers.IO) {
+                    runCatching { chatRepository.append(sessionId, isUser = true, content = userText) }
+                        .getOrNull()
+                        ?.id
                 }
-                return@launch
+                if (userMessageId == null) {
+                    _state.update {
+                        it.copy(
+                            transcript = it.transcript.dropLast(1),
+                            streamingText = "",
+                            isStreaming = false,
+                            input = snapshot.input,
+                            status = "写库失败：这条消息没有发出去",
+                        )
+                    }
+                    return@launch
+                }
+                refreshSessions()
             }
-            refreshSessions()
 
             try {
                 var settled = false
@@ -2110,6 +2135,96 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 AppLog.e("chat", "客户端异常", error)
                 fail("客户端异常：${error.message ?: error::class.simpleName}")
             }
+        }
+    }
+
+    // ---- 消息操作（P0-6 的一部分：重新生成 / 编辑 / 删除）---------------------
+
+    /**
+     * 重新生成：把最后一条助手消息撤掉，用剩下的历史再请求一次。
+     *
+     * 原版是"swipe 出新的一条，旧的一条存进 `swipes[]`"，我们**还没有 swipes 存储**
+     * （那要动表结构 + 夹具），所以现在这一步是"替换"：撤掉再生成。
+     * 会话内容与提示词的结果一致；差别只在于翻不回上一版。
+     */
+    fun regenerateLast() {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) return
+        val last = snapshot.transcript.lastOrNull()
+        if (last == null || last.role != ChatRole.Assistant) {
+            notify("最后一条不是角色的回复，没得重新生成")
+            return
+        }
+        if (snapshot.apiKey.isBlank()) {
+            _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
+            return
+        }
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            val lastStored = stored.lastOrNull()
+            if (lastStored != null && !lastStored.isUser) {
+                withContext(Dispatchers.IO) { chatRepository.deleteMessage(lastStored.id) }
+            }
+            val trimmed = _state.value.transcript.dropLast(1)
+            _state.update { it.copy(transcript = trimmed, streamingText = "", status = "重新生成中…") }
+            refreshSessions()
+            AppLog.i("chat", "重新生成：撤掉最后一条，历史 ${trimmed.size} 条")
+            beginCompletion(trimmed, userText = null)
+        }
+    }
+
+    /** 删一条消息（index = 在 transcript 里的位置）。库里同下标的行一起删。 */
+    fun deleteMessageAt(index: Int) {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) {
+            notify("正在生成，等它写完再删")
+            return
+        }
+        val target = snapshot.transcript.getOrNull(index) ?: return
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            stored.getOrNull(index)?.let { row ->
+                withContext(Dispatchers.IO) { chatRepository.deleteMessage(row.id) }
+            }
+            _state.update { current ->
+                if (current.sessionId != sessionId) current
+                else current.copy(
+                    transcript = current.transcript.filterIndexed { i, _ -> i != index },
+                )
+            }
+            refreshSessions()
+            AppLog.i("chat", "删除单条 index=$index role=${target.role}")
+            notify("已删除 1 条")
+        }
+    }
+
+    /** 改一条消息的正文。只改库与内存，不重新请求（重新生成是另一件事）。 */
+    fun editMessageAt(index: Int, content: String) {
+        val text = content.trim()
+        if (text.isEmpty()) return
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) {
+            notify("正在生成，等它写完再改")
+            return
+        }
+        if (snapshot.transcript.getOrNull(index)?.content == text) return
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            stored.getOrNull(index)?.let { row ->
+                withContext(Dispatchers.IO) { chatRepository.updateMessage(row.id, text) }
+            }
+            _state.update { current ->
+                if (current.sessionId != sessionId) current
+                else current.copy(
+                    transcript = current.transcript.mapIndexed { i, message ->
+                        if (i == index) message.copy(content = text) else message
+                    },
+                )
+            }
+            AppLog.i("chat", "改单条 index=$index ${text.length} 字")
         }
     }
 

@@ -17,7 +17,7 @@
 | P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3 | 同上 |
 | P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ✅ | 单测 + [真机验证](dev/device-verification.md)：真连 provider，回复为卡内角色设定 | `public/scripts/openai.js` |
 | P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（9 条）/ P0-5-prompt-history（12 条，多轮）逐字相等；names_behavior 仅覆盖默认值 DEFAULT；世界书注入与预算裁剪未做 | `public/script.js`、`PromptManager.js` |
-| P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | ⬜ | 手工 + fixture:P0-6-swipes | `public/script.js` |
+| P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 | 🟨 | 重新生成（撤掉最后一条再请求，**不是** swipes[] 翻页）/ 编辑 / 删除单条已做，长按气泡出动作单；swipe 与「继续」未做（都缺 P0-6-swipes 夹具与 swipes 存储）；**待真机** | `public/script.js` |
 | P0-7 | 聊天持久化：JSONL 读写（metadata + 逐行消息） | 🟨 | fixture:P0-7-jsonl（原版录制的真实聊天：逐字节往返 + swipes + 坏行容错）；App 内运行时持久化走 SQLite，未做导入导出 UI | `src/endpoints/chats.js` |
 | P0-8 | 角色卡库（头像、标签、搜索、分组） | 🟨 | 手工：两列网格（卡图 + 名字 + 简介）+ 角色详情页（只读）已做，**待真机**；标签/搜索/分组未做 | `src/endpoints/characters.js` |
 | P0-9 | 开场白：新建聊天时插入 `first_mes` | 🟨 | fixture:P0-8-first-mes（原版 chat 数组 + 同一时刻的请求体交叉断言）；App 侧插入已实现，**待真机** | `public/script.js`（`createNewChat`/`selectCharacterById`） |

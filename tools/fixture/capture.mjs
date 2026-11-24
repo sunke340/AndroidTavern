@@ -41,6 +41,11 @@ const SELECT_WORLD = arg('select-world', null);
 // 传一个 JSON 数组：[{"identifier":"scenario","enabled":true}, ...]，没列到的按原相对顺序追在后面。
 const PROMPT_ORDER = arg('prompt-order', null) ? JSON.parse(arg('prompt-order')) : null;
 
+// --swipes N：录**消息 swipe**（P0-6）。先正常生成一条，再对最后一条助手消息 swipe N 次。
+// 为什么要这一步：原版把"被换掉的那一条"存进 `swipes[]`、并把 `swipe_id` 指向当前这条；
+// 不看原版落盘的结构就实现 swipe 存储 = 猜。
+const SWIPES = Number(arg('swipes', '0'));
+
 // 每次录制都从「只有开场白」的干净聊天开始，否则上一轮生成的假回复会变成历史，
 // 第二次录出来的 messages 就跟第一次不一样了（我踩过）。
 const chatDir = path.join(ROOT, 'vendor/SillyTavern/data/default-user/chats', CHARACTER);
@@ -91,7 +96,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -197,6 +202,10 @@ try {
             if (!userTurns.length) {
                 await S.Generate('normal', { skipWIAN: skipWorldInfo });
             }
+            // P0-6：先有一条助手消息，再对它连续 swipe —— 原版会把换掉的那条存进 swipes[]
+            for (let i = 0; i < swipes; i++) {
+                await S.Generate('swipe', { skipWIAN: skipWorldInfo });
+            }
         } catch (e) {
             error = String(e?.message ?? e);
         } finally {
@@ -223,7 +232,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);
@@ -242,7 +251,9 @@ try {
             stVersion: readStVersion(),
             capturedAt: new Date().toISOString(),
             endpoint: last.url,
-            how: 'playwright + window.fetch 拦截，调用原版 Generate("normal")',
+            how: 'playwright + window.fetch 拦截，调用原版 Generate("normal")' +
+                (SWIPES > 0 ? ` + Generate("swipe") x${SWIPES}` : ''),
+            swipes: SWIPES,
             character: CHARACTER,
             world: SELECT_WORLD,
             wiSettings: WI_SETTINGS,
