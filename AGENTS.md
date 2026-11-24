@@ -20,8 +20,8 @@
 ## 仓库布局与依赖方向
 
 ```
-app/        Compose 入口、NavHost、DI 装配（无业务逻辑）
-feature/    界面：chat / character / lorebook / preset / settings（MVVM，禁直接摸 data）
+app/        Compose 入口 + 全部界面 + DI 装配（**目前界面就在这里**，见下）
+feature/    ⚠️ **空目录**（只有 AGENTS.md，0 个 kt 文件）；界面没有拆进来，别当成已存在
 data/       Room、DataStore、SAF、Keystore、仓库实现
 core/       纯 JVM 内核：card-format / chat-format / prompt / lorebook / tokenizer / preset / ai
 docs/       plan（方向）· compat-matrix（进度）· adr（决策）· dev（怎么搭）
@@ -30,7 +30,9 @@ fixtures/   golden 夹具；命名 `P<档>-<号>-<case>.json`，与矩阵 ID 对
 vendor/     原版 ST 只读副本（.gitignore）
 ```
 
-依赖单向：`app → feature → data → core`，`feature`/`app` 可直达 `core`。反向禁止，`feature` 之间禁止互依。
+依赖单向：**现在实际是 `app → data → core`**（界面全在 `:app`）；`app`/`feature` 可直达 `core`，反向禁止。
+什么时候把 `feature/*` 真正拆出来、以及为什么现在不拆，见
+[docs/dev/structure-audit.md](docs/dev/structure-audit.md) 第七、九节。
 模块内部结构与新增模块的判据见 [docs/dev/layout.md](docs/dev/layout.md)。
 
 命名：Gradle 模块 `core/prompt` → `:core:prompt` → 包 `app.tavern.core.prompt` → 入口类 `PromptBuilder`。
@@ -83,6 +85,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
 | 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
 | **当前状态与下一步（压缩上下文后先读这个）** | [docs/dev/status.md](docs/dev/status.md) |
+| 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
 | 夜间那一轮的计划与结果（历史） | [docs/plan-overnight.md](docs/plan-overnight.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
 | 本机能力边界（实测） | [docs/environment.md](docs/environment.md) |

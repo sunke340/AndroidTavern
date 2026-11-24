@@ -2,6 +2,10 @@
 
 装配层，只做三件事：`MainActivity` + 主题、`NavHost`、依赖注入对象图。
 
+> ⚠️ **现状**：这个模块其实装着**全部界面**（30 个文件、约 7.6k 行，包 `app.tavern` 是扁平的）。
+> 包分层与去重的计划在 [docs/dev/structure-audit.md](../docs/dev/structure-audit.md)；
+> 那份文档里还有"哪些已经是可复用件（约 34%）""7 处重复的删除确认"这类盘点。
+
 **不写**：业务逻辑、数据访问、提示词拼装、界面细节（那在 `feature`）。
 
 - 导航：在这里把各 feature 的 `NavGraphBuilder.xxxScreen(...)` 拼起来，路由常量集中在 `Routes.kt`。
