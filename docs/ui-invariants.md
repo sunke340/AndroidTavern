@@ -38,7 +38,7 @@
 
 | ID | 不变量（必须成立什么） | 唯一入口 | 判据 | 状态 | 破坏记录 |
 |---|---|---|---|---|---|
-| INV-01 | 二级页页头的**材质 + 首项让位**只能由骨架决定，页面不得各写 | `GlassDetailScaffold` 的 `DetailHeaderMode { Frosted, Translucent, Solid }`（待引入） | 脚本：页面目录里不得再出现 `contentTopInset =` / `frostedHeader =`；真机：二级页滚动时内容从页头底下穿过，首项留白 = Column 页贴页头底边、列表页 +16dp | ⬜ | `8ee1b72`（磨砂带→色罩）、`df71772`（首项多出 12dp）、`6f4dd53`（世界书列表少了 64dp） |
+| INV-01 | 二级页页头的**材质 + 首项让位**只能由骨架决定，页面层**没有 API 可写** | `GlassDetailScaffold` 的 `DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`（规格见第五节的"第一批"；待引入） | 脚本（白名单只有 `DetailPage.kt`）：页面文件不得出现 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` / `DetailHeaderHeight` / `statusBarTop(` / `calculateTopPadding() +`；每处 `GlassDetailScaffold(` 必须显式传 `headerMode =`。真机：按 [device-verification.md](dev/device-verification.md)「M9 / M9.1 回执」A 组复验 | ⬜ | `8ee1b72`（磨砂带→色罩）、`df71772`（首项多出 12dp）、`6f4dd53`（世界书列表少了 64dp；同提交把卡配置三页的分发写死成常量，另两页内容被顶掉 → M10） |
 | INV-02 | 聊天页气泡底板必须用 `MessagePanel`，**不许**用 Material3 `Surface` | `ChatScreen.MessagePanel` | 脚本：`ChatScreen.kt` 里裸 `Surface(` 只允许出现在 `RequestDialog` 内（注释先剔除） | ✅ | `1952a2b`：Surface 的 `clip(shape)` 让 18900px 高的气泡在约 8k px 之后收不到触摸 → 长按完全没反应 |
 | INV-03 | 选中文字**不许**拖动列表 | `ChatScreen` 的 `NoFocusScrollSpec` + `LocalBringIntoViewSpec` | 脚本：`ChatScreen.kt` 必须出现 `LocalBringIntoViewSpec provides NoFocusScrollSpec`；真机：反复长按，`偏移=` 不变 | ✅ | `f58ad0c`（修 `8ee1b72` 之后暴露的焦点滚动，跳动量 = `trailingEdge - containerSize`） |
 | INV-04 | 玻璃三铁律：不许 `Modifier.blur` / Haze；录图层只用 `record` 扩展；`renderEffect` 不许在 draw 块里"设了再清" | `GlassSurface`（`Glass.kt`） | 脚本：grep `Modifier.blur(`、`haze`、四参数 `record(`；（待做） | ⬜ | ADR 0005/0006：Haze 在 vivo sdk37 只给半透明；四参数 record 画出空图层 |
@@ -53,18 +53,77 @@
 `contentTopInset`"，而是"同一批参数被不同人按不同理解组合"。B 型只能拦前者。
 只有把材质与让位收进一个枚举、页面层**没有 API 可写**，"页头坏了"才不再取决于 11 个页面记得写什么。
 
+**补充（2026-11-25 晚定稿时想清楚的）**：枚举**只收两种材质**。原来计划的第三个值
+`Solid`（或叫 `BelowHeader`）想表达"内容不从页头底下穿过"，但**这件事骨架管不了**：
+穿不穿取决于页面把 `padding.top` 用在滚动容器里面还是外面，代码路径与 `Translucent` 完全一样。
+给它一个值等于撒谎 —— 一个"实际上什么也不做"的枚举值，正是"文档说一套、代码做一套"的来源。
+所以：枚举两种材质，"不穿"只留**一个具名例外**（角色详情页把 `padding` 用在滚动容器外面），
+由白名单 + 真机条目守住；要不要让它也穿，是另一个产品问题（见下面第一批第 7 条）。
+
 ---
 
 ## 五、执行计划（三批，可分批验收）
 
-### 第一批（约半天）—— 收口 + 骨架
+### 第一批（约半天）—— 收口 + 骨架（**规格定稿 2026-11-25 晚**）
 
-1. 引入 `DetailHeaderMode { Frosted, Translucent, Solid }`：骨架内部由它同时决定
-   ①材质（磨砂带 / 色罩）②首项让位（`DetailScrollUnderTop` 或列表 `contentPadding`）。
-2. 删掉页面上的 `contentTopInset` / `frostedHeader` 参数（11 个调用点），聊天页传 `Frosted`，
-   其余二级页 `Translucent`，角色详情暂按现状（见"已知未做"）。
-3. `tools/check-ui-invariants.sh` 加 INV-01 判据；`device-verification.md` 补对应真机条目。
-4. **验收**：观感零变化；脚本自测会红；`tools/check-ui-invariants.sh` 与 `check-ui-map.sh` 都绿。
+**要解决的问题**：页头的"材质"和"首项让位"散在 12 处调用里，而且让位有**四种写法** ——
+`+ DetailScrollUnderTop`、`+ DetailHeaderHeight + Space.l`、聊天页自己算 `+ statusBarTop() + Space.l`、
+`.padding(padding)` 全用。枚举只收 `contentTopInset` 的话，页面照样能往首项留白上加一笔：
+`df71772`（多 12dp）和 `6f4dd53`（世界书列表少 64dp）两次都是这么坏的。所以**骨架要交出最终 top**。
+
+1. **枚举只收材质**（为什么不是三个值，见上一节末尾的补充）：
+
+   ```kotlin
+   /** 二级/三级页页头材质。首项让位不在这里 —— 见 contentSpacing。 */
+   enum class DetailHeaderMode {
+       /** 磨砂带（`LiquidGlassSpec.HeaderBand`）：内容一直在标题正下方滚时才用，只有聊天页 */
+       Frosted,
+       /** 半透明色罩（`HeaderScrimAlpha`）：其余二级页 */
+       Translucent,
+   }
+   ```
+
+2. **骨架交出最终 top**：`content(padding)` 的 `padding.calculateTopPadding()`
+   = `statusBarTop() + DetailHeaderHeight + contentSpacing`。
+   `contentSpacing: Dp = 0.dp` 由页面按"首项是什么"传（列表给 `Space.l`，Column 页不传）。
+   **页面从此只写 `padding.calculateTopPadding()`，不许再接 `+` 运算** —— 那两次间距事故的入口就在这个 `+`。
+3. 删 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop`；12 处调用逐一对表：
+
+   | 页面 / 调用处 | `headerMode` | `contentSpacing` | 让位用法 |
+   |---|---|---|---|
+   | `SettingsPages` / 设置七个二级页 | `Translucent` | 0 | bottom 在外 + top 在滚动层内 |
+   | `SessionConfigScreen` | `Translucent` | 0 | 同上 |
+   | `ProfileEditScreen` | `Translucent` | 0 | 同上 |
+   | `ConfigPickerScreen` | `Translucent` | 0 | 同上 |
+   | `GalleryScreen` / 组件预览 | `Translucent` | 0 | 同上 |
+   | `CardEditScreen` / 正式 | `Translucent` | 0 | 同上 |
+   | `CardEditScreen` / 读取中 | `Translucent` | 0 | `.padding(padding)`（空状态） |
+   | `CardConfigPageScreen` / 内嵌世界书 | `Translucent` | `Space.l` | 列表 `contentPadding` |
+   | `CardConfigPageScreen` / 对话样式·关于 | `Translucent` | 0 | bottom 在外 + top 在滚动层内 |
+   | `WorldBookEntriesScreen` | `Translucent` | `Space.l` | 列表 `contentPadding` |
+   | `PresetEditScreen` | `Translucent` | `Space.l` | 列表 `contentPadding` |
+   | `ChatScreen` | `Frosted` | `Space.l` | 列表 `contentPadding` |
+   | `CharacterDetailScreen` | `Translucent` | 0 | `.padding(padding)` —— **唯一"不穿"的具名例外** |
+
+   > 已知的小差：空状态 / 读取中的居中盒子用了 `.padding(padding)`，top 会从"只剩状态栏"变成
+   > "状态栏 + 页头"，居中点下移半个页头（28dp）—— 那本来就是"内容区"该在的位置，真机点一眼即可。
+4. 脚本判据（`tools/check-ui-invariants.sh` 的 INV-01，白名单只有 `DetailPage.kt`）：
+   - **先剔除注释再判**（`PageHeader.kt` / `Style.kt` 的说明里就写着 `frostedHeader`，
+     `PresetEditScreen` 的 KDoc 里也写着 `contentTopInset` —— 不剔注释一上来就是误报）；
+   - **只判"含 `GlassDetailScaffold(` 的文件"**（三个一级页 `CharactersScreen` / `SessionsScreen` /
+     `SettingsScreen` 合法地用了 `statusBarTop()` 给内容让位，不能一起判）；
+   - 这些文件不得出现 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` /
+     `DetailHeaderHeight` / `statusBarTop(`；
+   - 不得出现 `calculateTopPadding() +`；
+   - 每处 `GlassDetailScaffold(` 必须显式传 `headerMode =`（**不许吃默认值** —— 角色详情那种"没写"
+     的页面在判据里就是盲区，和 M10 那个常量写死是同一类"看不出来"）。
+5. 同一提交要改 [ui-map.md](ui-map.md) 的「页头 · 磨砂」「内容首项留白」两行：`check-ui-map.sh`
+   会查表里的代码标识必须真实存在，删了 `frostedHeader` / `DetailScrollUnderTop` 而词表不改，CI 直接红。
+6. `device-verification.md` 补 M11 真机条目：按「M9 / M9.1 回执」A 组复验，外加
+   「聊天页磨砂页头不变」「角色详情仍不穿」。
+7. **不在这批里做**：角色详情页改成穿页头（卡头是常驻海报，要连着 TabRow 一起重排，单独一轮）。
+8. **验收**：与 v150 逐页一致（除了第 3 条那个已知小差）；三条脚本判据分别**自测会红**；
+   `check-ui-map` / `check-ui-invariants` 绿。
 
 ### 第二批（约 1 小时）—— 便宜的保险
 

@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-25 18:40）
+# 项目状态快照（2026-11-25 19:05）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -11,39 +11,37 @@
 
 | | |
 |---|---|
-| 代码 | `df71772`（APK 那一版，tag `apk-m181`）；其后只有文档：`a437bc0` / `343804d` 词表、本页与接手卡 |
-| 最新交付 | `artifacts/app-v150-df71772.apk`（还原二级页首项留白 + 世界书列表补回页头那 64dp） |
-| 真机确认到哪 | `v148`（选字不拖动列表，用户："长按正常了"）；**`v150` 尚未回执** |
+| 代码 | `f42458e`（修卡配置分发；tag `apk-m182`）；上游 `df71772` / v150 已真机确认 |
+| 最新交付 | `artifacts/app-v151-f42458e.apk`（BUILD_ID 已验 = `f42458e…`，签名与 debug 指纹一致） |
+| 真机确认到哪 | `v150`（2026-11-25 晚：M9 / M9.1 的 A 页头与间距 / B 配置与按钮 / C 文本与气泡**三组全过**）；**v151 待验**（M10 四条） |
 | CI | 铁律（含 `check-ui-map.sh` / `check-ui-invariants.sh`）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个模块，98 条）+ `check-core-purity` / `check-kotlin-comments` / `check-kotlin-imports` / `check-ui-map` / `check-ui-invariants` |
 | 规模 | `app` 约 41 个 kt 文件 / 约 11k 行；`data` 有 config + message_swipes（DB v3） |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
 
-## 最近这三轮改了什么
+## 最近这几轮改了什么
 
 | 主题 | 状态 |
 |---|---|
-| 选字真因：气泡底板用 Material3 `Surface`，其 `clip(shape)` 让超高气泡（18900px）在约 8k px 之后收不到触摸 → 换 `MessagePanel`（背景 + 描边） | ✅ v147 |
-| 选字会拖动列表（焦点 `bringIntoView`，跳 427px = `trailingEdge - containerSize`）→ 聊天列表给 `NoFocusScrollSpec` | ✅ v148 |
-| 思考强度只留会话 / 角色卡两级；两级滑块加「自定义」（默认串 `max`）；档案层整项移除 | ✅ v149，待验 |
-| 模型抽屉收回后输入栏展开 + 键盘弹出（`SheetSpec.onDismiss`） | ✅ v149，待验 |
-| 默认正则清标签规则：标签名改可选 → `</>` / `<>` 也清（补 3 条单测） | ✅ v149，待验 |
-| 模型钮淡紫 12% 底 + 满色主色字；流式停止钮淡红 20% + 红方块 | ✅ v149，待验 |
-| 二级页页头恢复"半透明"：`contentTopInset = 0.dp` + 让位挪进滚动容器（内容从页头底下穿过） | ✅ v149；两处间距问题在 v150 还原 |
-| 首项留白还原：`DetailScrollUnderTop` = `DetailHeaderHeight`（不夹带呼吸值）；列表页补回 `+ DetailHeaderHeight + Space.l` | ✅ v150，待验 |
-| 开场白气泡不挂动作行（判据 `isGreetingMessage`，与开场白条数无关） | ✅ v149，待验 |
-| 选字诊断探针（`SelectionProbe.kt` / `tag=sel`） | ✅ 已整文件删除 |
-| UI 词表 `docs/ui-map.md` + `check-ui-map.sh`（进 CI）+ `gen-ui-map.sh` | ✅ |
-| 不变量规格 `docs/ui-invariants.md` + `check-ui-invariants.sh`（已覆盖 INV-02/03/05/07，进 CI） | ✅ 十条表已立，第一批重构未做 |
+| 页头材质与首项留白（`8ee1b72` → `df71772`：Surface 裁剪、焦点滚动、半透明页头、12dp/64dp 两次间距） | ✅ v150 真机确认，**这一系列结案** |
+| 思考强度只留会话 / 角色卡两级；两级滑块加「自定义」；档案层整项移除 | ✅ v150 确认 |
+| 模型抽屉收回后输入栏展开 + 键盘弹出 | ✅ v150 确认 |
+| 默认正则：标签名改成可选 → `</>` / `<>` 也清，`<foo>` 保留 | ✅ v150 确认 |
+| 模型钮淡紫 12% + 满色主色字；流式停止钮淡红 20% + 红方块 | ✅ v150 确认 |
+| 开场白气泡不挂动作行（判据 `isGreetingMessage`） | ✅ v150 确认 |
+| **卡配置的「对话样式」「关于这张卡」被内嵌世界书页顶掉** → 改回按页判据（`6f4dd53` 把分发写死成常量 `true`） | ✅ v151，待验 |
+| UI 词表 `docs/ui-map.md` + `check-ui-map.sh` + `gen-ui-map.sh` | ✅ 进 CI |
+| 不变量规格 `docs/ui-invariants.md` + `check-ui-invariants.sh`（已覆盖 INV-02/03/05/07） | ✅ 十条表已立；INV-01 规格已定稿，重构未做 |
 
 ## 悬着的事
 
-1. **v150 待真机回执**：M9 / M9.1 七条（页头间距、世界书列表留白、思考强度两级+自定义、
-   抽屉收起后键盘、`</>`、两个圆钮配色、开场白动作行）—— 见 [device-verification.md](device-verification.md)。
-2. **INV-01 没做**：页头的材质与让位还散在 11 个页面里。计划见 [ui-invariants.md](../ui-invariants.md)
-   的"第一批"（收成 `DetailHeaderMode` 枚举，半天）。
+1. **v151 待真机回执**：M10 四条（「对话样式」「关于这张卡」两页内容对不对、这两页页头仍穿透、
+   内嵌世界书页不受影响）—— 见 [device-verification.md](device-verification.md)。
+2. **INV-01 没做**：规格已在 [ui-invariants.md](../ui-invariants.md)「第一批（规格定稿）」——
+   枚举只收材质（Frosted / Translucent）、骨架交出最终 top（`contentSpacing`）、12 处调用对照表、
+   三条脚本判据。**等用户点头再动**。
 3. **角色详情页页头**保持"内容在页头下面开始"（卡头是常驻海报，结构与其他二级页不同），
-   要不要也让它穿过页头需要用户拍。
+   它是唯一具名例外；要不要也让它穿过 → 单独一轮（卡头 + TabRow 要一起重排）。
 4. 世界书 **outlet** 未做且缺夹具；卡库**分组**未做；`forbid_overrides`、"按角色禁用某段"未做
    （现在顶替无条件生效）。
 
@@ -52,6 +50,9 @@
 - 超长消息（单条 269 行）是本项目的常态输入。任何"整段正文一个节点"或"会生成本地渲染层"的
   做法都要先算高度上限；`MessagePanel` 与 `SelectionProbe` 的教训都在
   [pitfalls.md](pitfalls.md) 与 [ui-invariants.md](../ui-invariants.md) 的 INV-02。
+- **`if (常量)` 包两套内容 = 静默死代码**：`6f4dd53` 的 `val scrollUnderHeader = true` 让卡配置
+  另两页在 v149 / v150 里显示错内容，编译、脚本、回执三套防线都没挡住（M10）。
+  分发条件写页面判据；真机清单要点**入口行**，不能只点"这次改到的那一行"。
 - 真机视觉无法在 CI 验证（无 KVM / 模拟器），所以"看起来对不对"只能靠 `device-verification.md`
   的编号条目 + 用户点一次；脚本只管结构与名字（`check-ui-map.sh` / `check-ui-invariants.sh`）。
 - 词表里"一句话外观"这类人写的描述仍会过期：它只用来**对词**，不用来判断"现在是不是这个样子"。
