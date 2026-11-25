@@ -640,10 +640,12 @@ private fun ChatInputBar(
     // 规则：有焦点 且（键盘在 或 已经有字）才展开；键盘收起且没字就回到一行（带动画）。
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val expanded = keepExpanded || (focused && (imeVisible || state.input.isNotEmpty()))
-    LaunchedEffect(focused) {
-        // 抽屉收回后 requestFocus 会让 focused 变回 true；那一刻解冻，且 expanded 仍是 true
-        // （focused=true），所以整个开合过程中输入区高度一次都没变。
-        if (focused) keepExpanded = false
+    LaunchedEffect(focused, imeVisible) {
+        // 什么时候解冻：**只有"解冻后高度不会变"时**才解。
+        // - 焦点回来了但键盘还没弹出来（键盘是异步的）：继续冻着，否则会先缩一行再撑开，列表跟着跳；
+        // - 键盘真的在了 / 已经有字：解冻也还是展开态（expanded 不变）；
+        // - 焦点丢了（用户点去别处）：正常收起。
+        if (!focused || imeVisible || state.input.isNotEmpty()) keepExpanded = false
     }
     // 真机上"键盘收了但输入框没缩"这类问题只能靠日志判断：展开条件三个量都记上
     LaunchedEffect(expanded, imeVisible) {
