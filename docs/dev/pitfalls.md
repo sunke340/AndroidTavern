@@ -923,3 +923,16 @@ Seraphina 的。日志里还有一个更怪的名字：`写回卡 …（备份 s
 结论文本条：**消息底板不要用 `Surface`**，用 `MessagePanel`（background + border）。
 以后要加投影/抬升，别退回 `Surface`；任何会生成本地渲染层的 modifier，都要先想
 "这条消息可能有多高"。
+
+## 2026-11-25 · 选字会拖动列表（焦点 bringIntoView，不是滚动逻辑）
+
+`SelectionContainer` 一旦拿到焦点，焦点系统就会对焦点节点请求 `bringIntoView`，
+而 `LazyColumn` 会用 `BringIntoViewSpec` 算滚动量。默认算法对"比视口高、但一端在视口内"的节点
+会挑一条边对齐 —— 18900px 高的消息正好落在这一支：`trailingEdge - containerSize = -427`，
+于是长按一下列表就挪 427px；按得靠上时改挑 leadingEdge，于是往上跳一大段。
+
+修法：`LocalBringIntoViewSpec` 提供一个 `calculateScrollDistance` 恒为 0 的 spec（只挂在聊天列表上）。
+判据：`sel 列表 按下 … 偏移=` 在反复长按之间不变；日志 `scroll 焦点滚动被拦下 …`。
+
+教训：**"选中文字"这类操作不应该改变阅读位置**。任何会拿焦点的子节点（`SelectionContainer`、
+输入框）放进滚动容器时，都该先决定"焦点滚动要不要"。
