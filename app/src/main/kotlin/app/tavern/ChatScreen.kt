@@ -1,5 +1,6 @@
 package app.tavern
 
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -18,8 +19,11 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -141,7 +145,7 @@ import kotlin.math.roundToInt
  *   滚动偏移加多少，让读到的那一段留在原处。补偿只在真的量到高度变化时做，**手指/惯性期间
  *   一律让位**；不做冻结（用户 2026-11-24 晚明确不要"内容卡住"）。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
@@ -415,6 +419,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // key(selectionEpoch)：离场时 epoch +1，这一整层重建 —— SelectionContainer 随旧组合销毁，
         // 选文字手柄/工具栏立刻消失（它们是窗口级弹层，不跟页面滑动）。
         key(selectionEpoch) {
+        // 选字要拿焦点才能出手柄/工具栏，而焦点系统会请求 bringIntoView ——
+        // 消息节点比视口高得多时，默认算法会把列表挪一小段（用户 2026-11-25 报的"长按一下列表就跳"）。
+        // 这里把焦点滚动关掉：这个列表的阅读位置只由三种东西决定 —— 手指滚动、串流跟随、撤回回底。
+        CompositionLocalProvider(LocalBringIntoViewSpec provides NoFocusScrollSpec) {
         LazyColumn(
             reverseLayout = true,
             state = listState,
@@ -566,6 +574,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                     }
                 }
+        }
         }
         }
     }
@@ -1099,6 +1108,49 @@ private fun UndoGlyph(tint: Color) {
             close()
         }
         drawPath(head, tint)
+    }
+}
+
+/**
+ * 焦点滚动关掉：选字引起的 `bringIntoView` **不允许**移动列表。
+ *
+ * 为什么需要（2026-11-25 真机，v147 之后）：选字能用了，但长按会让列表跳一下。
+ * `SelectionContainer` 拿焦点才能出手柄/工具栏，焦点系统随即请求 `bringIntoView`；
+ * 消息节点是个 **18900px 高**的节点，默认算法 `defaultCalculateScrollDistance` 落在
+ * "对齐某条边"那一支：
+ *
+ *     leadingEdge = 气泡容器上沿 = -16457
+ *     trailingEdge = 上沿 + 高 = 2373，容器（视口）高 2800
+ *     → 不走"完全可见"、也不走"两端都超出"，于是取 abs 较小的那侧对齐
+ *     → trailingEdge - containerSize = 2373 - 2800 = **-427**
+ *
+ * 日志里正是 `偏移 0 → 427`。按在消息上方时，它改选 leadingEdge 那一侧，于是往上跳一大段 ——
+ * 用户看到的就是"最上方长按往上滑、最下方长按往下滑"。
+ *
+ * 返回 0 表示"这条请求已经满足"，动画立刻停，位置一点不动。
+ */
+private val NoFocusScrollSpec = object : BringIntoViewSpec {
+    // 一律 0：这个列表里唯一的焦点目标是消息气泡（`SelectionContainer` 要焦点才能出手柄），
+    // 而"因为选中了一段文字就把阅读位置挪走"在任何情况下都是错的 —— 普通长度的气泡同样是跳一下。
+    // `BringIntoViewSpec.defaultCalculateScrollDistance` 是 internal，拿不到，所以不回落默认实现。
+    private var lastLogAt = 0L
+
+    override fun calculateScrollDistance(
+        offset: Float,
+        size: Float,
+        containerSize: Float,
+    ): Float {
+        // 真机上只能靠日志确认"这条 spec 真的生效了"：被拦下的请求记一行（节流，不刷屏）。
+        val now = SystemClock.elapsedRealtime()
+        if (size > containerSize && now - lastLogAt > 2_000) {
+            lastLogAt = now
+            AppLog.i(
+                "scroll",
+                "焦点滚动被拦下 节点高=${size.toInt()} 视口高=${containerSize.toInt()} " +
+                    "偏移=${offset.toInt()}",
+            )
+        }
+        return 0f
     }
 }
 
