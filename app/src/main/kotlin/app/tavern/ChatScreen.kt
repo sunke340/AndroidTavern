@@ -173,11 +173,17 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val pageIsCurrent = LocalPageIsCurrent.current
     val focusManager = LocalFocusManager.current
     var selectionEpoch by remember { mutableIntStateOf(0) }
+    // 重建会连带重播每个气泡的 `animateItem` 淡入 —— 页面正滑走时那一下就是"闪"（用户 2026-11-25）。
+    // 所以离场这一帧起关掉淡入，回来时再打开（见 itemsIndexed 里的 itemAnim）。
+    var suppressItemFade by remember { mutableStateOf(false) }
     LaunchedEffect(pageIsCurrent) {
-        if (!pageIsCurrent) {
+        if (pageIsCurrent) {
+            suppressItemFade = false
+        } else {
             focusManager.clearFocus(force = true)
+            suppressItemFade = true
             selectionEpoch++
-            AppLog.i("ui", "离场：收掉输入焦点与选区 epoch=$selectionEpoch")
+            AppLog.i("ui", "离场：收掉输入焦点与选区 epoch=$selectionEpoch 关淡入")
         }
     }
     // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
@@ -500,12 +506,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val realIndex = state.transcript.lastIndex - index
                     val isLast = realIndex == state.transcript.lastIndex
                     val isAssistant = message.role == ChatRole.Assistant
-                    val itemAnim = Modifier
-                        .animateItem(
+                    val itemAnim = if (suppressItemFade) {
+                        // 离场重建（销毁 SelectionContainer）这一趟不要淡入：否则整屏闪一下
+                        Modifier
+                    } else {
+                        Modifier.animateItem(
                             fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
                             placementSpec = null,
                             fadeOutSpec = tween(Motion.Fast),
                         )
+                    }
                     val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
                     // 「这条是不是开场白」和「能不能翻页」是两件事（用户 2026-11-25：
                     // 单开场白的会话里开场白气泡底下还挂着动作行，多开场白时才没有 —— 前后不一致）。
@@ -622,11 +632,19 @@ private fun ChatInputBar(
     val keyboard = LocalSoftwareKeyboardController.current
     val sheet = LocalSheetController.current
     var focused by remember { mutableStateOf(false) }
+    // 抽屉开着的那段时间输入区要**保持展开**：它一缩，列表底部让位（读实测高度）就跟着缩，
+    // 背后的气泡会上下动（用户 2026-11-25 第 11 条）。焦点真的回来了才解除冻结。
+    var keepExpanded by remember { mutableStateOf(false) }
     // 键盘是否真的在：只靠 focus 不行 —— 按返回键收起键盘后输入框仍然有焦点，
     // 于是它会一直停在两行的高度（用户 2026-11-25 第 9 条）。
     // 规则：有焦点 且（键盘在 或 已经有字）才展开；键盘收起且没字就回到一行（带动画）。
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    val expanded = focused && (imeVisible || state.input.isNotEmpty())
+    val expanded = keepExpanded || (focused && (imeVisible || state.input.isNotEmpty()))
+    LaunchedEffect(focused) {
+        // 抽屉收回后 requestFocus 会让 focused 变回 true；那一刻解冻，且 expanded 仍是 true
+        // （focused=true），所以整个开合过程中输入区高度一次都没变。
+        if (focused) keepExpanded = false
+    }
     // 真机上"键盘收了但输入框没缩"这类问题只能靠日志判断：展开条件三个量都记上
     LaunchedEffect(expanded, imeVisible) {
         AppLog.i("ui", "输入区展开=$expanded 键盘=$imeVisible 字数=${state.input.length}")
@@ -638,7 +656,9 @@ private fun ChatInputBar(
     val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
 
     val openModelSheet = {
-        // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘
+        // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘。
+        // **但输入区高度要冻住**（keepExpanded）—— 它一缩，列表底部让位就跟着缩，背后气泡会动。
+        keepExpanded = true
         focusManager.clearFocus()
         showModelSheet(
             sheet = sheet,

@@ -454,10 +454,5 @@ private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIn
                 modifier = Modifier.padding(Space.m),
             )
         }
-        Text(
-            if (greetings.size > 1) "新会话默认用第 ${preferred + 1} 条" else "这张卡只有这一条开场白",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

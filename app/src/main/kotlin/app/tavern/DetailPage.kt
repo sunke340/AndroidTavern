@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -149,6 +151,15 @@ fun GlassDetailScaffold(
     // 注意是**并集**不是相加：键盘弹出时导航栏区域本来就被键盘盖住了，两个数相加会多抬一个导航栏高度。
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val statusBar = statusBarTop()
+
+    // 离场时统一收掉输入焦点：输入框的光标与选区是**窗口级**元素，不跟页面位移一起走 ——
+    // 不收的话页面已经滑走，光标还钉在屏幕上（聊天页先修过，这里是二级页的通用解；
+    // 聊天页自己的选字手柄另有一层清理，见 ChatScreen 的 selectionEpoch）。
+    val focusManager = LocalFocusManager.current
+    val pageIsCurrent = LocalPageIsCurrent.current
+    LaunchedEffect(pageIsCurrent) {
+        if (!pageIsCurrent) focusManager.clearFocus(force = true)
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
