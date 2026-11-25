@@ -76,7 +76,8 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = padding.calculateTopPadding() + Space.l,
+                // 页头那 64dp 以前由骨架让开，现在要自己补：列表才能从它底下穿过（间距保持原样 +16dp）
+                top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
                 // 底部把导航栏/键盘也吃进去，最后一行不会钻到导航栏下面
                 bottom = padding.calculateBottomPadding() + Space.l,
             ),
