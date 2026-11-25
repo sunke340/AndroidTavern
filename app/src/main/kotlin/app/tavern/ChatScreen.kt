@@ -158,6 +158,17 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
+
+    // 撤回会把列表削短：视口可能停在中段、下面留一片空白。这里收到一次性信号就贴底。
+    // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
+    val scrollToBottomSignal = state.scrollToBottomSignal
+    LaunchedEffect(scrollToBottomSignal) {
+        if (scrollToBottomSignal > 0 && state.transcript.isNotEmpty()) {
+            // 用 animate 而不是瞬间跳：撤掉一大段后，滑回底部能看清"现在剩到哪"
+            listState.animateScrollToItem(0)
+            AppLog.i("scroll", "回到列表底部 signal=$scrollToBottomSignal")
+        }
+    }
     val atBottom by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0

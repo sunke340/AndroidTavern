@@ -261,6 +261,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val lastSwipes: List<String> = emptyList(),
         /** 当前显示的是 `lastSwipes` 里的哪一条。 */
         val lastSwipeId: Int = 0,
+        /**
+         * 让聊天列表"跳回最底部"的一次性信号（每次 +1）。
+         *
+         * 撤回会把列表削短：如果用户当时正翻着旧消息，视口停在中段、下面留一片空白。
+         * 视图层收到新信号就 `scrollToItem(0)`（反排列表的 0 就是最底部）。
+         */
+        val scrollToBottomSignal: Long = 0,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -2753,6 +2760,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     // 被删掉的那批里可能有最后一条助手消息，它的 swipe 备选也跟着没了
                     lastSwipes = emptyList(),
                     lastSwipeId = 0,
+                    // 列表削短后要回到最底部（用户 2026-11-25：撤回后停在半空）
+                    scrollToBottomSignal = it.scrollToBottomSignal + 1,
                 )
             }
             refreshSessions()
