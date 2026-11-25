@@ -894,3 +894,17 @@ Seraphina 的。日志里还有一个更怪的名字：`写回卡 …（备份 s
 1. local 换成**动态** `compositionLocalOf`（读它的页面会在值变化时重组）；
 2. 不再改变"有没有 SelectionContainer"（那会让列表项处于两种结构），改成离场时把消息列表
    `key(epoch)` 整体重建 —— 旧 `SelectionContainer` 随组合销毁，手柄/工具栏一起消失。
+
+## 2026-11-25 · CI 失败日志怎么取（不用 gh）
+
+本机没有 `gh`。失败日志由 CI 自己发到 release：`ci-log-android`（`app` 编译）与
+`ci-log-jvm`（纯 JVM 单测），每次失败覆盖 `build.log`：
+
+    curl -sL https://github.com/sunke340/AndroidTavern/releases/download/ci-log-android/build.log -o /tmp/ci.log
+
+看时间戳确认是不是本次（历史上这份日志偶尔不刷新）。`grep -nE "^e: |error:" /tmp/ci.log`。
+
+顺带记两个 API 的包名（这次各踩一次，编译期才报）：
+- `awaitFirstDown` / `awaitLongPressOrCancellation` / `awaitEachGesture` 都在
+  **`androidx.compose.foundation.gestures`**，不在 `ui.input.pointer`；
+- `PointerEventPass`、`pointerInput` 在 `ui.input.pointer`。

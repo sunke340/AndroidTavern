@@ -10,8 +10,8 @@
 
 | | |
 |---|---|
-| 代码 | `4ada4c6`（tag `apk-m175`） |
-| 最新交付 | `artifacts/app-v144-4ada4c6.apk`（默认正则 + 显示格式）；上一包 v143 是选字修复 |
+| 代码 | `e67692a`（tag `apk-m176`） |
+| 最新交付 | `artifacts/app-v145-e67692a.apk`（**选字诊断包**：`tag=sel` 记录按下落在哪个矩形上）；v144 是默认正则 |
 | 真机验过的最后一版 | `artifacts/app-v117-0631bff.apk`（串流跟随那一轮） |
 | CI | 铁律 / 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个模块，89 条）+ 三个 `check-*.sh` |
