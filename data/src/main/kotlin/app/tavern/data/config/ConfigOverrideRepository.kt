@@ -42,6 +42,11 @@ data class ConfigOverride(
      */
     val builtinDisabled: Set<String>? = null,
     /**
+     * 聊天气泡字号（sp）：null = 跟随上级。三级：会话 > 卡 > 全局（用户 2026-11-26 第 6 条）。
+     * 只影响聊天页气泡正文的显示，不改存档、导出与提示词。
+     */
+    val bubbleFontSize: Float? = null,
+    /**
      * 卡级专用：默认用第几条开场白。0 = `first_mes`，N = `alternateGreetings[N-1]`。
      * 会话级不用这一项（它读的是已经写进库里的第一条消息）。
      */
@@ -51,6 +56,7 @@ data class ConfigOverride(
     val isEmpty: Boolean
         get() = profileId == null && reasoningEffort == null && presetName == null &&
             worldBookNames == null && regexIds == null && builtinDisabled == null &&
+            bubbleFontSize == null &&
             temperature == null && maxTokens == null && topP == null &&
             frequencyPenalty == null && presencePenalty == null &&
             greetingIndex == null

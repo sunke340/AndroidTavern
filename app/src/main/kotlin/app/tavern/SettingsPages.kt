@@ -299,6 +299,16 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         onSelect = viewModel::onMessageStyleChange,
     )
 
+    // 气泡字号（用户 2026-11-26 第 6 条）：只有聊天页气泡正文受影响，
+    // 会话 / 角色卡还能各自覆盖（三级继承，入口在各自的配置页）。
+    SectionLabel("气泡字号")
+    SegmentedRow(
+        options = BubbleFontSizes,
+        selected = state.bubbleFontSize,
+        label = { bubbleFontSizeLabel(it) },
+        onSelect = viewModel::setBubbleFontSize,
+    )
+
     // 玻璃档要 API 33+（AGSL 液态玻璃）；不支持就只留轻量，不给选
     if (glassSupported) {
         SectionLabel("视觉效果")

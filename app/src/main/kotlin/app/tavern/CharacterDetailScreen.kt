@@ -12,6 +12,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,7 +42,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -484,12 +486,12 @@ private fun GreetingTab(
             // 两个状态**占同样大小**（用户 2026-11-25 第 9 条）：以前只在"不是默认"时才出现
             // 「设为默认」，它一冒出来就把下面的开场白正文往下压一截。现在默认那条也放一个
             // 同尺寸的灰字胶囊「当前默认」，翻页时高度不变。
-            TextButton(
+            // 2026-11-26：原文案用 TextButton，Material 的最小高度 40dp 把这一行撑得太高，
+            // 换成 26dp 的细胶囊（上下各让 7dp），一眼看过去不再是一条"宽按钮"。
+            DefaultGreetingChip(
+                isDefault = index == preferred,
                 onClick = { viewModel.useCardGreeting(index) },
-                enabled = index != preferred,
-            ) {
-                Text(if (index == preferred) "当前默认" else "设为默认")
-            }
+            )
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -507,5 +509,38 @@ private fun GreetingTab(
                 modifier = Modifier.padding(Space.m),
             )
         }
+    }
+}
+
+/**
+ * 开场白页的「设为默认 / 当前默认」：一枚 **26dp 高的细胶囊**，两个状态同尺寸。
+ *
+ * 之前用 Material3 `TextButton`，它的最小高度是 40dp —— 在只有一行箭头 + 页码的横排里
+ * 显得上下各多出一截（用户 2026-11-26："上下长度太长，薄一点"）。
+ * 现在高度由文字决定、上下各留 3dp，翻页时那句「当前默认」也不会把正文往下压。
+ */
+@Composable
+private fun DefaultGreetingChip(isDefault: Boolean, onClick: () -> Unit) {
+    val palette = LocalTavernPalette.current
+    val shape = RoundedCornerShape(Radius.pill)
+    Box(
+        modifier = Modifier
+            .heightIn(min = 26.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, palette.cardBorder, shape)
+            .clickable(enabled = !isDefault, onClick = onClick)
+            .padding(horizontal = Space.m, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (isDefault) "当前默认" else "设为默认",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isDefault) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+        )
     }
 }

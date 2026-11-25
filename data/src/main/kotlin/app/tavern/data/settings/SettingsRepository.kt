@@ -12,6 +12,11 @@ data class AppSettings(
     val topP: Double? = null,
     val frequencyPenalty: Double? = null,
     val presencePenalty: Double? = null,
+    /**
+     * 聊天气泡字号（sp）：null = 标准 14。只影响聊天页气泡正文。
+     * 会话/卡级可在它之上覆盖（用户 2026-11-26 第 6 条，三级继承）。
+     */
+    val bubbleFontSize: Float? = null,
     /** 消息展示样式，见 app 层 `MessageStyle`（这里只存字符串，data 不关心 UI 枚举）。 */
     val messageStyle: String,
     /** 主题预设名（如 `Forest`）与深浅模式（`Follow` / `Light` / `Dark`）。 */
@@ -48,6 +53,9 @@ interface SettingsRepository {
         frequencyPenalty: Double? = null,
         presencePenalty: Double? = null,
     )
+
+    /** 保存聊天气泡字号（sp）；null = 回到标准（跟随默认）。 */
+    fun saveBubbleFontSize(size: Float?)
 
     /** 保存消息展示样式（字符串，由 UI 层定义取值）。 */
     fun saveMessageStyle(style: String)
@@ -112,6 +120,8 @@ data class UiAppearance(
     val navAnimation: String,
     val visualEffects: String,
     val messageStyle: String,
+    /** 首帧就要用：气泡字号决定第一帧气泡里的文字大小。null = 标准。 */
+    val bubbleFontSize: Float? = null,
 )
 
 /**

@@ -2,12 +2,11 @@ package app.tavern
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -38,6 +38,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.os.SystemClock
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** 间距阶梯。只允许用这里的值，避免 12/14/16 混着来。 */
 object Space {
@@ -141,22 +145,46 @@ fun CapsuleIcon(
  * 人已经到二级页了（用户 2026-11-24："还没出现就进去了"）。
  * 反馈属于"必须跟手"的那一类，不该有进入时长；退出时长只为不留一块硬色。
  *
+ * 2026-11-26 又修一层（用户报"出现太慢、点得太短干脆没效果"）：
+ * 1. 不再走 `collectIsPressedAsState()` —— 它是"收集交互后置 state"，同一帧里按下+抬起
+ *    会被合并掉，短促点按一次都不播；现在直接吃 `interactions` 流，按下立刻 `snapTo(1f)`。
+ * 2. **最短可视时长** [MinPressVisibleMs]：抬手太快也补足到 90ms 再淡出，
+ *    于是"点一下就走"也有反馈，而不是什么都没发生。
+ *
  * 行（白面板上盖 7% 主色）与角色卡（图上压 8% 黑）共用这一套手感。
  */
 @Composable
 fun rememberPressTint(source: MutableInteractionSource): Float {
-    val pressed by source.collectIsPressedAsState()
-    val tint by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = if (pressed) {
-            snap()
-        } else {
-            tween(Motion.Fast + 40, easing = Motion.Decelerate)
-        },
-        label = "press-tint",
-    )
-    return tint
+    val tint = remember { Animatable(0f) }
+    LaunchedEffect(source) {
+        var pressedAt = 0L
+        var release: Job? = null
+        source.interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press -> {
+                    release?.cancel()
+                    release = null
+                    pressedAt = SystemClock.uptimeMillis()
+                    // 当帧满色：snapTo 在收集流里做，下一帧组合就能读到 1f
+                    tint.snapTo(1f)
+                }
+
+                is PressInteraction.Release, is PressInteraction.Cancel -> {
+                    release?.cancel()
+                    release = launch {
+                        val shown = SystemClock.uptimeMillis() - pressedAt
+                        if (shown < MinPressVisibleMs) delay(MinPressVisibleMs - shown)
+                        tint.animateTo(0f, tween(Motion.Fast + 40, easing = Motion.Decelerate))
+                    }
+                }
+            }
+        }
+    }
+    return tint.value
 }
+
+/** 按压底色最短显示多久：短于点按时长也保证看得见这一下。 */
+private const val MinPressVisibleMs = 90L
 
 /**
  * 等宽分段选择器：**每个选项 weight(1f)**，无论几个都均分铺满整行。

@@ -37,6 +37,9 @@ enum class ConfigKind(val title: String) {
     WorldBook("世界书"),
     Regex("正则"),
     Preset("预设"),
+
+    /** 聊天气泡字号：只影响聊天页气泡正文（用户 2026-11-26 第 6 条）。 */
+    FontSize("气泡字号"),
 }
 
 /** 采样参数的五项（会话/卡三级覆盖共用；全局页也是这五项）。 */
@@ -71,6 +74,24 @@ enum class CardConfigPage(val title: String) {
  * 不动消息模型、数据库、提示词。
  */
 enum class MessageStyle { Card, Bubble }
+
+/**
+ * 聊天气泡字号的四档（用户 2026-11-26 第 6 条）。
+ *
+ * **只调聊天页气泡正文**：存档、导出、看请求、提示词一概不动 —— 这是显示设置，不是内容。
+ * 三级继承：会话 > 角色卡 > 全局；全局值本身没有"跟随"，默认就是标准 14sp（= 现状观感）。
+ */
+val BubbleFontSizes: List<Float> = listOf(12f, 14f, 16f, 18f)
+
+const val DefaultBubbleFontSize: Float = 14f
+
+/** 档位说明文字（界面上只写这四个词）。 */
+fun bubbleFontSizeLabel(size: Float): String = when {
+    size < 13f -> "小"
+    size < 15f -> "标准"
+    size < 17f -> "大"
+    else -> "特大"
+}
 
 /**
  * 二级页的转场风格。

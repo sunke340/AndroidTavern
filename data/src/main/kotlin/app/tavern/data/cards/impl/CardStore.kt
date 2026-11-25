@@ -183,9 +183,11 @@ class CardStore(context: Context) : CardRepository {
         return runCatching {
             val original = file.readBytes()
             val updated = PngCard.write(original, card)
-            // 备份：只留"第一次改之前"的那份，反复编辑不会把备份也覆盖掉
-            val backup = File(file.parentFile, "${file.nameWithoutExtension}.bak.png")
-            if (!backup.exists()) backup.writeBytes(original)
+            // 不再写 `.bak.png`（用户 2026-11-26）：提示说"旧卡已备份"但手机上没有入口能找到它，
+            // 而且「新建一张」本身就是原卡的备份。旧版本留下的备份顺手清掉，免得白占空间。
+            File(file.parentFile, "${file.nameWithoutExtension}.bak.png")
+                .takeIf { it.isFile }
+                ?.delete()
             // 原子替换：先写临时文件，再 rename（同一目录内 rename 是原子的）
             val temp = File(file.parentFile, "${file.name}.tmp")
             temp.writeBytes(updated)
@@ -193,7 +195,7 @@ class CardStore(context: Context) : CardRepository {
                 temp.delete()
                 error("写回失败（重命名）")
             }
-            AppLog.i("card", "写回卡 ${id.take(8)} ${original.size}→${updated.size} 字节（备份 ${backup.name}）")
+            AppLog.i("card", "写回卡 ${id.take(8)} ${original.size}→${updated.size} 字节")
             true
         }.onFailure { AppLog.e("card", "写回卡失败 ${id.take(8)}", it) }.getOrDefault(false)
     }

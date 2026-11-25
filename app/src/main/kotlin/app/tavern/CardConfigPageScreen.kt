@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +32,12 @@ import androidx.compose.ui.unit.dp
  * 以后接三级继承（会话 > 卡 > 全局）时，这里的"跟随全局"就是继承入口。
  */
 @Composable
-fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun CardConfigPageScreen(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    /** 条目列表的滚动位置由上层持有：点进「条目全文」再返回时不能回到顶部（M16）。 */
+    bookListState: LazyListState = rememberLazyListState(),
+) {
     val page = state.cardConfigPage ?: return
     val cardId = state.detailCardId ?: return
     val detail = state.detail
@@ -59,6 +66,7 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
                 cardId = cardId,
                 viewModel = viewModel,
                 padding = padding,
+                listState = bookListState,
             )
         }
 
@@ -80,7 +88,7 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
                 verticalArrangement = Arrangement.spacedBy(Space.m),
             ) {
                 when (page) {
-                    CardConfigPage.MessageStyle -> CardMessageStylePage(detail, cardId, viewModel)
+                    CardConfigPage.MessageStyle -> CardMessageStylePage(detail, cardId, viewModel, state)
                     else -> CardInfoPage(detail)
                 }
             }
@@ -101,6 +109,7 @@ private fun CardWorldBookPage(
     cardId: String,
     viewModel: ChatViewModel,
     padding: PaddingValues,
+    listState: LazyListState,
 ) {
     val entries = detail?.bookEntries.orEmpty()
     val off = detail?.offUids.orEmpty()
@@ -129,6 +138,7 @@ private fun CardWorldBookPage(
 
     val count = filtered.size
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
         contentPadding = contentPadding,
     ) {
@@ -187,7 +197,12 @@ private fun CardWorldBookPage(
 }
 
 @Composable
-private fun CardMessageStylePage(detail: CardDetail?, cardId: String, viewModel: ChatViewModel) {
+private fun CardMessageStylePage(
+    detail: CardDetail?,
+    cardId: String,
+    viewModel: ChatViewModel,
+    state: ChatViewModel.UiState,
+) {
     SectionLabel("这张卡的对话样式")
 
     val options = listOf<MessageStyle?>(null, MessageStyle.Bubble, MessageStyle.Card)
@@ -202,6 +217,15 @@ private fun CardMessageStylePage(detail: CardDetail?, cardId: String, viewModel:
             }
         },
         onSelect = { viewModel.setCardMessageStyle(cardId, it) },
+    )
+
+    // 这张卡的气泡字号（用户 2026-11-26 第 6 条）：null = 跟随全局。
+    SectionLabel("气泡字号")
+    SegmentedRow(
+        options = listOf<Float?>(null) + BubbleFontSizes,
+        selected = state.cardOverride.bubbleFontSize,
+        label = { it?.let(::bubbleFontSizeLabel) ?: "跟随全局" },
+        onSelect = { viewModel.useCardBubbleFontSize(it) },
     )
 }
 

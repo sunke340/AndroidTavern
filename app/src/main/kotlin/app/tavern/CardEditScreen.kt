@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
  *
  * 只开放六个文本字段：名字 / 简介 / 人格 / 场景 / 开场白 / 示例对话。
  * **内嵌世界书、扩展字段、图片数据原样保留** —— 写回由 `PngCard.write` 只替换卡片 JSON，
- * `IDAT` 逐字节不动（P0-3 有单测）；写之前 `CardStore` 会留一份 `.bak.png`。
+ * `IDAT` 逐字节不动（P0-3 有单测）；写回是 temp + rename（原子），不留备份。
  *
  * 为什么不做成"什么都能改"：`raw` 里有大量我们不认识的字段，露出来改错一个键就是废卡。
  */
@@ -156,7 +156,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         ConfirmChoiceDialog(
             controller = confirm,
             title = "保存角色卡？",
-            message = "覆盖原卡会先把当前文件备份为 .bak.png；新建会以这张卡的图另存一张新卡。",
+            message = "覆盖原卡会直接替换当前文件；新建会以这张卡的图另存一张新卡（原卡不动）。",
             confirmLabel = "覆盖原卡",
             onConfirm = {
                 showSaveChoice = false

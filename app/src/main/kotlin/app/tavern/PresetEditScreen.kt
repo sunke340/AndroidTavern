@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,7 +21,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -126,6 +131,9 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         animationSpec = tween(Motion.Fast),
                         label = "prompt-scale",
                     )
+                    // 点行 = 看这一段全文（用户 2026-11-26 第 7 条）；按压底色与列表行同一套手感
+                    val press = remember { MutableInteractionSource() }
+                    val tint = rememberPressTint(press)
 
                     Column(Modifier.fillMaxWidth().zIndex(if (isDragging) 1f else 0f)) {
                         Box(
@@ -139,12 +147,19 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                     shape = pill
                                     shadowElevation = lift.toPx()
                                 }
-                                .background(MaterialTheme.colorScheme.surface, pill),
+                                .background(MaterialTheme.colorScheme.surface, pill)
+                                // 按压时整颗胶囊压 7% 主色（和 ListRow 一致）
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f * tint), pill),
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    // 拖拽在最外层：长按起拖优先，单击落到下面那层
                                     .then(handle)
+                                    .clickable(
+                                        interactionSource = press,
+                                        indication = null,
+                                    ) { viewModel.openPresetPrompt(entry.identifier) }
                                     .padding(horizontal = RowToken.padH),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -203,7 +218,7 @@ private fun DragGrip(highlighted: Boolean) {
 }
 
 /** identifier → 人话。原版界面里的叫法（Main Prompt / Post-History Instructions …）。 */
-private fun promptLabel(identifier: String): String = when (identifier) {
+internal fun promptLabel(identifier: String): String = when (identifier) {
     "main" -> "主提示词"
     "nsfw" -> "辅助提示词"
     "enhanceDefinitions" -> "补强设定"
@@ -217,4 +232,43 @@ private fun promptLabel(identifier: String): String = when (identifier) {
     "jailbreak" -> "历史后指令"
     "personaDescription" -> "用户人设"
     else -> identifier
+}
+
+/**
+ * 预设里某一段提示词的**全文**（用户 2026-11-26 第 7 条）。
+ *
+ * 和世界书的「条目全文」同一形态：只读、整页、正文可长按复制。
+ * 开关不搬到这里 —— 它仍在外面的行尾，免得"这一页改了没"变成第二个心智模型。
+ * 空内容（原版里 nsfw / jailbreak 默认就是空的）给一句空状态，不留白板。
+ */
+@Composable
+fun PresetPromptScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    val identifier = state.presetPromptDetail ?: return
+    val content = state.presetPrompts[identifier].orEmpty()
+
+    GlassDetailScaffold(
+        title = promptLabel(identifier),
+        subtitle = state.presetEditName ?: "预设",
+        onBack = viewModel::closePresetPrompt,
+        glass = state.visualEffects.effective() == VisualEffects.Glass,
+        headerMode = DetailHeaderMode.Translucent,
+    ) { padding ->
+        val overscroll = rememberRubberOverscroll()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = padding.calculateBottomPadding())
+                .rubberOverscroll(overscroll)
+                .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding())
+                .padding(horizontal = Space.l, vertical = Space.l),
+        ) {
+            SelectionContainer {
+                Text(
+                    text = content.ifBlank { "（这一段没有内容）" },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
 }

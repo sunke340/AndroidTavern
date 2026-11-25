@@ -58,9 +58,18 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ConfigScope.Card -> state.cardOverride.regexIds
         }.let { it == null }
 
+        ConfigKind.FontSize -> when (target.scope) {
+            ConfigScope.Session -> state.sessionOverride.bubbleFontSize
+            ConfigScope.Card -> state.cardOverride.bubbleFontSize
+        }.let { it == null }
+
         else -> false
     }
-    val subtitle = if (target.kind == ConfigKind.WorldBook || target.kind == ConfigKind.Regex) {
+    // 这三类都有"跟随上级"这一档；模型/预设/采样在页面里各自表达，副标题只写作用域
+    val followable = target.kind == ConfigKind.WorldBook ||
+        target.kind == ConfigKind.Regex ||
+        target.kind == ConfigKind.FontSize
+    val subtitle = if (followable) {
         if (following) "$scopeLabel · 跟随上级" else scopeLabel
     } else {
         scopeLabel
@@ -182,6 +191,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 ConfigKind.WorldBook -> WorldBookPickerBody(state, viewModel, target.scope)
                 ConfigKind.Regex -> RegexPickerBody(state, viewModel, target.scope)
                 ConfigKind.Preset -> PresetPickerBody(state, viewModel, target.scope)
+                ConfigKind.FontSize -> FontSizePickerBody(state, viewModel, target.scope)
             }
         }
     }
@@ -483,6 +493,59 @@ private fun PickerBulkMenu(
                 onClick = {
                     open = false
                     onFollow()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 气泡字号的整页选择（用户 2026-11-26 第 6 条）。
+ *
+ * 和预设一样是单选，但顶上常驻一行「跟随上级」（清掉这一层的覆盖）—— 它不随覆盖增删，
+ * 免得出现/消失时整列挪一格、点错邻居。
+ */
+@Composable
+private fun FontSizePickerBody(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    scope: ConfigScope,
+) {
+    val stored = when (scope) {
+        ConfigScope.Session -> state.sessionOverride.bubbleFontSize
+        ConfigScope.Card -> state.cardOverride.bubbleFontSize
+    }
+    val following = stored == null
+    // 上级的值：会话看卡（没有再落到全局），卡只看全局
+    val parent = when (scope) {
+        ConfigScope.Session -> state.cardOverride.bubbleFontSize ?: state.bubbleFontSize
+        ConfigScope.Card -> state.bubbleFontSize
+    }
+
+    ListGroup(count = 1 + BubbleFontSizes.size) { index, _ ->
+        if (index == 0) {
+            ListRow(
+                title = "跟随上级",
+                subtitle = "${parent.toInt()}sp · ${bubbleFontSizeLabel(parent)}",
+                leading = { ActiveMark(following) },
+                onClick = {
+                    when (scope) {
+                        ConfigScope.Session -> viewModel.useSessionBubbleFontSize(null)
+                        ConfigScope.Card -> viewModel.useCardBubbleFontSize(null)
+                    }
+                },
+            )
+        } else {
+            val size = BubbleFontSizes[index - 1]
+            ListRow(
+                title = bubbleFontSizeLabel(size),
+                subtitle = "${size.toInt()}sp",
+                leading = { ActiveMark(!following && stored == size) },
+                onClick = {
+                    when (scope) {
+                        ConfigScope.Session -> viewModel.useSessionBubbleFontSize(size)
+                        ConfigScope.Card -> viewModel.useCardBubbleFontSize(size)
+                    }
                 },
             )
         }

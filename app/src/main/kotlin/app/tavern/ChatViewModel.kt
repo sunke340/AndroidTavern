@@ -225,6 +225,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val presetSampling: SamplingPreset? = null,
         /** 非 null 时打开"编辑预设"二级页（顺序开关与拖动都在那一页里）。 */
         val presetEditName: String? = null,
+        /** 非 null 时显示「提示词全文」（从预设编辑页点进来）：值是 prompt identifier。 */
+        val presetPromptDetail: String? = null,
         /** 正则脚本（导入自 ST 的脚本数组）。 */
         val regexScripts: List<RegexScript> = emptyList(),
         /**
@@ -245,6 +247,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val frequencyPenaltyText: String = "",
         val presencePenaltyText: String = "",
         val messageStyle: MessageStyle = MessageStyle.Card,
+        /** 全局气泡字号（sp，只影响聊天页气泡正文）。会话/卡级可在它之上覆盖。 */
+        val bubbleFontSize: Float = DefaultBubbleFontSize,
         val themePreset: ThemePreset = ThemePreset.Violet,
         val themeMode: ThemeMode = ThemeMode.Follow,
         /** 二级页转场风格；见 [NavAnimation]。 */
@@ -293,6 +297,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
         val effectiveMessageStyle: MessageStyle
             get() = cardMessageStyle ?: messageStyle
+
+        /**
+         * 实际生效的气泡字号：会话 > 卡 > 全局（用户 2026-11-26 第 6 条）。
+         * 只给聊天页气泡正文用；开场白、输入框、其它页面都保持各自字号。
+         */
+        val effectiveBubbleFontSize: Float
+            get() = sessionOverride.bubbleFontSize ?: cardOverride.bubbleFontSize ?: bubbleFontSize
 
         // ---- 三级继承的生效值（会话 → 角色卡 → 全局）--------------------------
         // 全 App 只有这几个 getter 能回答"现在真正用的是什么"，界面与请求都读它们；
@@ -520,6 +531,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         .getOrDefault(NavAnimation.Slide),
                     visualEffects = runCatching { VisualEffects.valueOf(saved.visualEffects) }
                         .getOrDefault(VisualEffects.Off),
+                    bubbleFontSize = saved.bubbleFontSize ?: DefaultBubbleFontSize,
                 )
             }
 
@@ -577,6 +589,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         .getOrDefault(VisualEffects.Off),
                     messageStyle = runCatching { MessageStyle.valueOf(look.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
+                    bubbleFontSize = look.bubbleFontSize ?: DefaultBubbleFontSize,
                 )
             }
         }.onFailure { AppLog.w("ui", "外观预读失败：${it.message}") }
@@ -1642,7 +1655,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun closeCardEditor() = _state.update { it.copy(cardEditOpen = false) }
 
     /**
-     * 把编辑后的字段写回卡文件（备份在 `.bak.png`，原子替换）。
+     * 把编辑后的字段写回卡文件（原子替换；2026-11-26 起不再留 `.bak.png` 备份）。
      *
      * 只改这六个文本字段；内嵌世界书、扩展字段、图片数据都原样保留
      * （[app.tavern.core.card.PngCard.write] 只换卡片 JSON，IDAT 逐字节不动 —— P0-3 有单测）。
@@ -1737,7 +1750,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             refreshSessions()
             loadDetail(cardId)
             AppLog.i("card", "卡编辑保存 name=${trimmed.take(20)}")
-            notify("已保存（原文件备份为 .bak.png）")
+            notify("已保存")
         }
     }
 
@@ -1999,6 +2012,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(navAnimation = animation) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveNavAnimation(animation.name) }
+        }
+    }
+
+    /** 全局气泡字号（设置 · 外观）；只影响聊天页气泡正文。 */
+    fun setBubbleFontSize(size: Float) {
+        _state.update { it.copy(bubbleFontSize = size) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveBubbleFontSize(size) }
+        }
+        AppLog.i("config", "全局气泡字号=${size}sp")
+    }
+
+    /** 会话级气泡字号：null = 跟随上级。 */
+    fun useSessionBubbleFontSize(size: Float?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(bubbleFontSize = size) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(bubbleFontSize = size)) }
+            AppLog.i("config", "会话气泡字号=${size?.toString() ?: "跟随"}")
+        }
+    }
+
+    /** 卡级气泡字号：null = 跟随上级。 */
+    fun useCardBubbleFontSize(size: Float?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(bubbleFontSize = size) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(bubbleFontSize = size)) }
+            AppLog.i("config", "卡级气泡字号 card=${cardId.take(8)} ${size?.toString() ?: "跟随"}")
         }
     }
 
@@ -2446,7 +2488,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         AppLog.i("preset", "打开预设编辑 $name")
     }
 
-    fun closePresetEditor() = _state.update { it.copy(presetEditName = null) }
+    fun closePresetEditor() = _state.update {
+        it.copy(presetEditName = null, presetPromptDetail = null)
+    }
+
+    /** 预设编辑页点某一段 → 看这一段的全文（只读）。 */
+    fun openPresetPrompt(identifier: String) {
+        _state.update { it.copy(presetPromptDetail = identifier) }
+        AppLog.i("preset", "看提示词全文 $identifier")
+    }
+
+    fun closePresetPrompt() = _state.update { it.copy(presetPromptDetail = null) }
 
     fun deletePreset(name: String) {
         viewModelScope.launch {

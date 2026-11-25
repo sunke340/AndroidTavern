@@ -32,6 +32,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         var topP: Double? = null
         var freq: Double? = null
         var presence: Double? = null
+        var bubbleFontSize: Float? = null
         raw.lineSequence().forEach { line ->
             val at = line.indexOf('=')
             if (at <= 0) return@forEach
@@ -50,6 +51,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 KEY_TOP_P -> topP = value.toDoubleOrNull()
                 KEY_FREQ_PENALTY -> freq = value.toDoubleOrNull()
                 KEY_PRESENCE_PENALTY -> presence = value.toDoubleOrNull()
+                KEY_BUBBLE_FONT_SIZE -> bubbleFontSize = value.toFloatOrNull()
             }
         }
         return ConfigOverride(
@@ -65,6 +67,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             topP = topP,
             frequencyPenalty = freq,
             presencePenalty = presence,
+            bubbleFontSize = bubbleFontSize,
         )
     }
 
@@ -95,6 +98,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             value.topP?.let { append(KEY_TOP_P).append('=').append(it).append('\n') }
             value.frequencyPenalty?.let { append(KEY_FREQ_PENALTY).append('=').append(it).append('\n') }
             value.presencePenalty?.let { append(KEY_PRESENCE_PENALTY).append('=').append(it).append('\n') }
+            value.bubbleFontSize?.let { append(KEY_BUBBLE_FONT_SIZE).append('=').append(it).append('\n') }
         }
         prefs.edit().putString(scope, text).apply()
     }
@@ -121,5 +125,6 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         const val KEY_TOP_P = "top_p"
         const val KEY_FREQ_PENALTY = "frequency_penalty"
         const val KEY_PRESENCE_PENALTY = "presence_penalty"
+        const val KEY_BUBBLE_FONT_SIZE = "bubble_font_size"
     }
 }

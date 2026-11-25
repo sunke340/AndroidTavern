@@ -47,6 +47,10 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         sessionSet = state.sessionOverride.presetName != null,
         cardSet = state.cardOverride.presetName != null,
     )
+    val bubbleSrc = src(
+        sessionSet = state.sessionOverride.bubbleFontSize != null,
+        cardSet = state.cardOverride.bubbleFontSize != null,
+    )
 
     GlassDetailScaffold(
         title = "会话配置",
@@ -76,7 +80,7 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 samplingOverride.frequencyPenalty,
                 samplingOverride.presencePenalty,
             ).any { it != null }
-            ListGroup(count = 5) { index, _ ->
+            ListGroup(count = 6) { index, _ ->
                 when (index) {
                     0 -> SettingLinkRow("模型", "$profileName · $modelSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Model)
@@ -98,8 +102,15 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Regex)
                     }
 
-                    else -> SettingLinkRow("预设", "$preset · $presetSrc") {
+                    4 -> SettingLinkRow("预设", "$preset · $presetSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Preset)
+                    }
+
+                    else -> SettingLinkRow(
+                        "气泡字号",
+                        "${bubbleFontSizeLabel(state.effectiveBubbleFontSize)} · $bubbleSrc",
+                    ) {
+                        viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.FontSize)
                     }
                 }
             }

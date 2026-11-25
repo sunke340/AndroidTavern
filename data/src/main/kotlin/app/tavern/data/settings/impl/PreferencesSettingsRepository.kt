@@ -61,6 +61,7 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_NAV_ANIMATION,
         visualEffects = prefs.getString(KEY_VISUAL_EFFECTS, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_VISUAL_EFFECTS,
+        bubbleFontSize = prefs.getFloatOrNull(KEY_BUBBLE_FONT_SIZE),
     )
 
     /**
@@ -78,6 +79,7 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_VISUAL_EFFECTS,
         messageStyle = prefs.getString(KEY_MESSAGE_STYLE, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_MESSAGE_STYLE,
+        bubbleFontSize = prefs.getFloatOrNull(KEY_BUBBLE_FONT_SIZE),
     )
 
     override fun saveConnection(baseUrl: String, model: String) {
@@ -106,6 +108,16 @@ class PreferencesSettingsRepository(
     /** 没存过就是 null（= 不指定），不能拿 getFloat 的默认值顶替 —— 那会变成"发了一个 0"。 */
     private fun android.content.SharedPreferences.getDoubleOrNull(key: String): Double? =
         if (contains(key)) getFloat(key, 0f).toDouble() else null
+
+    override fun saveBubbleFontSize(size: Float?) {
+        prefs.edit().apply {
+            if (size == null) remove(KEY_BUBBLE_FONT_SIZE) else putFloat(KEY_BUBBLE_FONT_SIZE, size)
+        }.apply()
+    }
+
+    /** 没存过就是 null（= 标准），不能拿 getFloat 的默认值顶替。 */
+    private fun android.content.SharedPreferences.getFloatOrNull(key: String): Float? =
+        if (contains(key)) getFloat(key, 0f) else null
 
     override fun saveMessageStyle(style: String) {
         prefs.edit().putString(KEY_MESSAGE_STYLE, style).apply()
@@ -186,6 +198,7 @@ class PreferencesSettingsRepository(
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_NAV_ANIMATION = "nav_animation"
         const val KEY_VISUAL_EFFECTS = "visual_effects"
+        const val KEY_BUBBLE_FONT_SIZE = "bubble_font_size"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         // 老版本按下标存的"关掉"集合，只用于一次性迁移到 uid
         const val KEY_BOOK_DISABLED_PREFIX = "book_disabled:"

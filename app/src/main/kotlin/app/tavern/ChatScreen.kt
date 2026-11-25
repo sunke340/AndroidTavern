@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -61,6 +62,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
@@ -98,6 +100,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
@@ -122,10 +125,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.data.log.AppLog
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -377,13 +382,42 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         contentSpacing = Space.l,
         // 输入区画在录制之外：可以采磨砂，消息从胶囊后面滚过去
         bottomOverlay = { backdrop ->
-            ChatInputBar(
-                state = state,
-                viewModel = viewModel,
-                glass = glassOn,
-                backdrop = backdrop,
-                onHeightChanged = { inputBarHeightPx = it },
-            )
+            val scrollScope = rememberCoroutineScope()
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 回到底部（用户 2026-11-26 第 3 条）：只在"不在底部"时出现，浮在输入胶囊上方、
+                // 右对齐。它**不进 `ChatInputBar` 的测量** —— 列表底部让位读的是输入区实测高度，
+                // 按钮若参与那笔测量，出现/消失就会让整屏气泡上下跳一下。
+                AnimatedVisibility(
+                    visible = !atBottom,
+                    enter = fadeIn(tween(Motion.Fast)),
+                    exit = fadeOut(tween(Motion.Fast)),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = Space.m, bottom = Space.xs),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        JumpToBottomButton(
+                            glass = glassOn,
+                            backdrop = backdrop,
+                            onClick = {
+                                scrollScope.launch {
+                                    listState.animateScrollToItem(0)
+                                    AppLog.i("scroll", "回到底部：点了浮动钮")
+                                }
+                            },
+                        )
+                    }
+                }
+                ChatInputBar(
+                    state = state,
+                    viewModel = viewModel,
+                    glass = glassOn,
+                    backdrop = backdrop,
+                    onHeightChanged = { inputBarHeightPx = it },
+                )
+            }
         },
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
@@ -503,6 +537,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             style = state.effectiveMessageStyle,
                             showCursor = true,
                             displayText = displayText,
+                            fontSizeSp = state.effectiveBubbleFontSize,
                             // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
                             // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
                             modifier = Modifier
@@ -556,6 +591,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             message = message,
                             style = state.effectiveMessageStyle,
                             displayText = displayText,
+                            fontSizeSp = state.effectiveBubbleFontSize,
                         )
                         if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
@@ -663,8 +699,26 @@ private fun ChatInputBar(
     // 键盘是否真的在：只靠 focus 不行 —— 按返回键收起键盘后输入框仍然有焦点，
     // 于是它会一直停在两行的高度（用户 2026-11-25 第 9 条）。
     // 规则：有焦点 且（键盘在 或 已经有字）才展开；键盘收起且没字就回到一行（带动画）。
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    val expanded = keepExpanded || (focused && (imeVisible || state.input.isNotEmpty()))
+    val ime = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeBottomPx = ime.getBottom(density)
+    val imeVisible = imeBottomPx > 0
+    // 键盘**开始**收起就跟着缩，不等它完全落下（用户 2026-11-26 第 5 条）：
+    // 以前只认 `imeVisible == false`，而它在 IME 的 250ms 退场动画跑完才变假 ——
+    // 观感就是"键盘先滑下去，滑完了输入框才慢半拍缩回一行"。
+    var imeHiding by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        var last = imeBottomPx
+        snapshotFlow { ime.getBottom(density) }.collect { now ->
+            when {
+                now < last -> imeHiding = true
+                now > last -> imeHiding = false
+            }
+            last = now
+        }
+    }
+    val expanded = keepExpanded ||
+        (focused && (imeVisible || state.input.isNotEmpty()) && !imeHiding)
     LaunchedEffect(focused, imeVisible) {
         // 什么时候解冻：**只有"解冻后高度不会变"时**才解。
         // - 焦点回来了但键盘还没弹出来（键盘是异步的）：继续冻着，否则会先缩一行再撑开，列表跟着跳；
@@ -997,10 +1051,12 @@ private fun MessageRow(
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
     displayText: (String) -> String = { it },
+    /** 气泡正文的字号（sp）：三级继承的生效值，只有聊天页气泡用它。 */
+    fontSizeSp: Float = DefaultBubbleFontSize,
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, fontSizeSp)
+        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText, fontSizeSp)
     }
 }
 
@@ -1219,6 +1275,7 @@ private fun BubbleRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
+    fontSizeSp: Float,
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
@@ -1245,7 +1302,8 @@ private fun BubbleRow(
                     SelectionContainer {
                         Text(
                             markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
-                            style = MaterialTheme.typography.bodyMedium,
+                            // 只改字号：行高跟着字号走，气泡自己会跟着长高
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
                         )
                     }
                     if (showCursor) StreamingCursor()
@@ -1262,6 +1320,7 @@ private fun CardRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
+    fontSizeSp: Float,
 ) {
     val palette = LocalTavernPalette.current
     MessagePanel(
@@ -1281,7 +1340,7 @@ private fun CardRow(
                 SelectionContainer {
                     Text(
                         markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
                     )
                 }
                 if (showCursor) StreamingCursor()
@@ -1465,5 +1524,42 @@ private class AnchorDiag {
         if (now - lastAt < 500L) return
         lastAt = now
         AppLog.i("scroll", "补偿失败 reason=roll drift=${drift}px 顶Y=$topY")
+    }
+}
+
+/**
+ * 聊天页的「回到底部」浮动钮（用户 2026-11-26 第 3 条）。
+ *
+ * 只在**离开底部**时出现，贴在输入胶囊上方右侧；点了用 `animateScrollToItem(0)` 滑回去
+ * （反排列表的 0 就是视觉最底部，也是串流跟随的锚点）。
+ *
+ * 为什么放在 `bottomOverlay` 的 Column 里、而不参与输入区高度：列表底部让位读的是
+ * `ChatInputBar` 的实测高度，这枚钮一旦进那笔测量，它出现/消失就会让整屏气泡跳一下。
+ * 现在它只是"长在输入区上方的一段额外高度"，输入栏本身仍在屏幕底部不动。
+ */
+@Composable
+private fun JumpToBottomButton(
+    glass: Boolean,
+    backdrop: GlassBackdrop,
+    onClick: () -> Unit,
+) {
+    val press = remember { MutableInteractionSource() }
+    GlassSurface(
+        backdrop = backdrop,
+        glass = glass,
+        shape = CircleShape,
+        interactionSource = press,
+        // 浮在正文上：投影用半强度，别比输入胶囊还重
+        shadowScale = 0.6f,
+        modifier = Modifier
+            .size(36.dp)
+            .clickable(interactionSource = press, indication = null, onClick = onClick),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowDown,
+            contentDescription = "回到底部",
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+            modifier = Modifier.align(Alignment.Center).size(22.dp),
+        )
     }
 }

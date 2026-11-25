@@ -123,6 +123,9 @@ internal sealed interface Destination {
     /** 设置 → 预设 → 某一份（三级）：提示词顺序的开关与拖动。 */
     data class PresetEdit(val name: String) : Destination
 
+    /** 预设编辑 → 点某段提示词（四级）：只看这一段的全文，可长按复制。 */
+    data object PresetPrompt : Destination
+
     /** 聊天 → ⋮ → 会话配置（三级）：三级继承最内层。 */
     data object SessionConfig : Destination
 
@@ -144,6 +147,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     Destination.WorldBookEntry -> 3
     Destination.Gallery -> 2
     is Destination.PresetEdit -> 2
+    Destination.PresetPrompt -> 3
     Destination.SessionConfig -> 3
     is Destination.ConfigPicker -> if (destination.target.scope == ConfigScope.Session) 4 else 2
     is Destination.CardEdit -> 2
@@ -161,6 +165,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     Destination.WorldBookEntry -> "wb-entry"
     Destination.Gallery -> "gallery"
     is Destination.PresetEdit -> "preset-edit"
+    Destination.PresetPrompt -> "preset-prompt"
     Destination.SessionConfig -> "session-config"
     is Destination.ConfigPicker -> "config/${destination.target.kind.name}"
     is Destination.CardEdit -> "card-edit"
@@ -201,6 +206,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 editingProfile -> Destination.ProfileEdit
                 // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
                 state.galleryOpen -> Destination.Gallery
+                // 预设的「提示词全文」叠在预设编辑之上：返回落回编辑页
+                state.presetPromptDetail != null -> Destination.PresetPrompt
                 // 预设编辑叠在"设置→预设"之上：返回落在预设列表，所以 settingsPage 不清
                 presetEdit != null -> Destination.PresetEdit(presetEdit)
                 // 世界书条目页叠在"设置→世界书"之上：返回落在书单
@@ -219,6 +226,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             // 换一本书才回顶部；从「条目全文」返回同一本时保持位置（状态在这一层才活得过页面切换）
             LaunchedEffect(worldBook?.name) {
                 if (worldBook != null) worldBookList.scrollToItem(0)
+            }
+            // 卡内嵌书条目页同理（2026-11-25 M16 唯一没过的项）：点进「条目全文」再返回时
+            // 那一页整棵离开组合树，状态留在页里就会回到顶部。换一张卡才回顶部。
+            val cardBookList = rememberLazyListState()
+            LaunchedEffect(detailId) {
+                if (detailId != null && cardConfig == CardConfigPage.WorldBook) {
+                    cardBookList.scrollToItem(0)
+                }
             }
 
             // 导航打点：每次换页留一行。日志是唯一的真机证据来源，没这行就只能靠猜
@@ -311,7 +326,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
 
                         is Destination.CardConfig -> {
                             if (live) BackHandler { viewModel.closeCardConfigPage() }
-                            CardConfigPageScreen(state = snap, viewModel = viewModel)
+                            CardConfigPageScreen(
+                                state = snap,
+                                viewModel = viewModel,
+                                bookListState = cardBookList,
+                            )
                         }
 
                         Destination.ProfileEdit -> {
@@ -327,6 +346,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         is Destination.PresetEdit -> {
                             if (live) BackHandler { viewModel.closePresetEditor() }
                             PresetEditScreen(state = snap, viewModel = viewModel)
+                        }
+
+                        Destination.PresetPrompt -> {
+                            if (live) BackHandler { viewModel.closePresetPrompt() }
+                            PresetPromptScreen(state = snap, viewModel = viewModel)
                         }
 
                         Destination.SessionConfig -> {

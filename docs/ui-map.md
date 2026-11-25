@@ -77,6 +77,7 @@
 | 世界书条目 | `WorldBookEntriesScreen` | 设置 · 世界书 → 某本；卡详情 → 配置 → 内嵌世界书 |
 | 条目全文 | `WorldBookEntryScreen` | 世界书条目 → 点某条（全局书与卡内嵌书共用） |
 | 预设编辑 | `PresetEditScreen` | 设置 · 预设 → 长按某份 → 编辑 |
+| 提示词全文 | `PresetPromptScreen` | 预设编辑 → 点某一段（只读，可长按复制） |
 | 会话配置 | `SessionConfigScreen` | 聊天 → 页头右上「⋮」 |
 | 卡的配置 | `CardConfigPageScreen` | 角色详情 → 配置；三页：内嵌世界书 / 对话样式 / 关于这张卡 |
 | 编辑角色卡 | `CardEditScreen` | 角色详情 → 页头右上「⋮」→ 编辑卡片 |
