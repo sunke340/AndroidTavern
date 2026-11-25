@@ -67,17 +67,34 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.l),
         ) {
-            ListGroup(count = 4) { index, _ ->
+            // 采样这一层的摘要：显示的是**生效值**，后缀说明是本层覆盖还是跟随（用户 2026-11-25 第 2 条）
+            val samplingOverride = state.sessionOverride
+            val samplingLocal = listOf(
+                samplingOverride.temperature,
+                samplingOverride.maxTokens,
+                samplingOverride.topP,
+                samplingOverride.frequencyPenalty,
+                samplingOverride.presencePenalty,
+            ).any { it != null }
+            ListGroup(count = 5) { index, _ ->
                 when (index) {
                     0 -> SettingLinkRow("模型", "$profileName · $modelSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Model)
                     }
 
-                    1 -> SettingLinkRow("世界书", "参与 ${books.size} 本 · $booksSrc") {
+                    1 -> SettingLinkRow(
+                        "采样",
+                        "temperature ${state.effectiveTemperature} · " +
+                            if (samplingLocal) "本会话" else "跟随上级",
+                    ) {
+                        viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Sampling)
+                    }
+
+                    2 -> SettingLinkRow("世界书", "参与 ${books.size} 本 · $booksSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.WorldBook)
                     }
 
-                    2 -> SettingLinkRow("正则", "参与 ${regex.size} 条 · $regexSrc") {
+                    3 -> SettingLinkRow("正则", "参与 ${regex.size} 条 · $regexSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Regex)
                     }
 

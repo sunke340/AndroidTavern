@@ -26,6 +26,12 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         var books: Set<String>? = null
         var regex: Set<String>? = null
         var greeting: Int? = null
+        var builtin: Set<String>? = null
+        var temperature: Double? = null
+        var maxTokens: Int? = null
+        var topP: Double? = null
+        var freq: Double? = null
+        var presence: Double? = null
         raw.lineSequence().forEach { line ->
             val at = line.indexOf('=')
             if (at <= 0) return@forEach
@@ -38,6 +44,12 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 KEY_BOOKS -> books = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_REGEX -> regex = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_GREETING -> greeting = value.toIntOrNull()
+                KEY_BUILTIN -> builtin = value.split(SEP).filter { it.isNotEmpty() }.toSet()
+                KEY_TEMPERATURE -> temperature = value.toDoubleOrNull()
+                KEY_MAX_TOKENS -> maxTokens = value.toIntOrNull()
+                KEY_TOP_P -> topP = value.toDoubleOrNull()
+                KEY_FREQ_PENALTY -> freq = value.toDoubleOrNull()
+                KEY_PRESENCE_PENALTY -> presence = value.toDoubleOrNull()
             }
         }
         return ConfigOverride(
@@ -46,7 +58,13 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             presetName = preset,
             worldBookNames = books,
             regexIds = regex,
+            builtinDisabled = builtin,
             greetingIndex = greeting,
+            temperature = temperature,
+            maxTokens = maxTokens,
+            topP = topP,
+            frequencyPenalty = freq,
+            presencePenalty = presence,
         )
     }
 
@@ -67,6 +85,16 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 append(KEY_REGEX).append('=').append(it.joinToString(SEP)).append('\n')
             }
             value.greetingIndex?.let { append(KEY_GREETING).append('=').append(it).append('\n') }
+            // 内置正则的开关集合：和世界书/正则一样，空集要写出来（"明确全开"≠跟随）
+            value.builtinDisabled?.let {
+                append(KEY_BUILTIN).append('=').append(it.joinToString(SEP)).append('\n')
+            }
+            // 采样五项：只写非 null 的（null = 跟随上级）
+            value.temperature?.let { append(KEY_TEMPERATURE).append('=').append(it).append('\n') }
+            value.maxTokens?.let { append(KEY_MAX_TOKENS).append('=').append(it).append('\n') }
+            value.topP?.let { append(KEY_TOP_P).append('=').append(it).append('\n') }
+            value.frequencyPenalty?.let { append(KEY_FREQ_PENALTY).append('=').append(it).append('\n') }
+            value.presencePenalty?.let { append(KEY_PRESENCE_PENALTY).append('=').append(it).append('\n') }
         }
         prefs.edit().putString(scope, text).apply()
     }
@@ -87,5 +115,11 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         const val KEY_BOOKS = "books"
         const val KEY_REGEX = "regex"
         const val KEY_GREETING = "greeting"
+        const val KEY_BUILTIN = "builtin_disabled"
+        const val KEY_TEMPERATURE = "temperature"
+        const val KEY_MAX_TOKENS = "max_tokens"
+        const val KEY_TOP_P = "top_p"
+        const val KEY_FREQ_PENALTY = "frequency_penalty"
+        const val KEY_PRESENCE_PENALTY = "presence_penalty"
     }
 }

@@ -154,10 +154,15 @@
 
 - 数据是 `data/config/ConfigOverride`：每项 `null` = **跟随上级**，空集 ≠ null（"全都不要"是合法选择）。
   会话级存 `session:<id>`、卡级存 `card:<id>`（SharedPreferences），不动 DB。
+- **采样五项**（temperature / max_tokens / top_p / 两个 penalty）也是三级：**会话 > 卡 > 预设 > 全局**
+  （用户 2026-11-25 第 2 条），留空 = 跟随上级；请求体只读 `UiState.effectiveTemperature` 那一组 getter。
+- **内置正则也是三级**（`builtinDisabled`，空集 = 明确全开、null = 跟随）：会话 > 卡 > 全局；
+  选择页的「全部开启/关闭」对整页生效（含内置），卡/会话页里也能逐条开关。
 - **生效值只能从 `UiState.effective*` 这几个 getter 读**（profile / reasoning / preset /
-  worldBookNames / regexIds / regexScripts）。发送、世界书扫描、正则（输入与显示）、连接参数全读它们；
+  worldBookNames / regexIds / regexScripts / 采样五项 / builtinDisabled）。发送、世界书扫描、正则（输入与显示）、连接参数全读它们；
   别再在各处写 `x ?: y ?: z` —— 漏一层就是"显示 A、实际发 B"。
-- 界面：会话级在 `SessionConfigScreen`、卡级在详情页「配置」tab；四行点进去都是**整页选择**
+- 界面：会话级在 `SessionConfigScreen`、卡级在详情页「配置」tab；**五行**（模型 / 采样 / 世界书 /
+  正则 / 预设）点进去都是**整页选择**
   （`ConfigPickerScreen` + `Destination.ConfigPicker`，观感照设置二级页），**不再弹底部抽屉**。
   页面里单选/多选都点在原地生效、不自动返回，当前项用 `ActiveMark` 勾出。
   **「跟随上级」那一行常驻**（不随"这一层有没有覆盖"增删）：它一出现/消失就会把整列挪一格，
@@ -175,8 +180,10 @@
 - 两组**只读内置正则**（`core/regex` 的 `BuiltinRegex`，设置→正则「内置」开关，默认开）：
   「清理包裹标签」（白名单 `content/output/response/message/text/answer`）和
   「动作描写强调」（`**粗**` / `*斜*` / `_斜_`）。关掉 = 不跑这条 = 原文。
-- 执行顺序：**用户脚本 → 清标签 → 强调**；内置是全局开关，不受会话/卡级 `regexIds` 过滤
-  （老会话存的 id 集合里没有它们，混在一起会被误关）。
+- 执行顺序：**用户脚本 → 清标签 → 强调**；内置走**单独的开关集合**（`builtinDisabled`，三级覆盖），
+  不混进会话/卡级的 `regexIds`（老会话存的 id 集合里没有它们，混在一起会被误关）。
+- 清标签两条规则：**整行只有标签时连那一行一起删**（用户 2026-11-25），行内出现只删标签本身；
+  另外清 `</>`/`<>` 这类空标签和 MVU 的 `<StatusPlaceHolderImpl/>` 占位符（**不做状态栏渲染**）。
 - 正则把强调替换成 `<i>` / `<b>`，再由 `InlineMarkup` 解析成 `AnnotatedString`；
   **只认** `<i> <em> <b> <strong> <br>`，其他标签原样显示 —— 不做 HTML/WebView，也不做
   列表/标题那套完整 Markdown。

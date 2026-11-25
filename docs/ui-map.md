@@ -80,7 +80,7 @@
 | 会话配置 | `SessionConfigScreen` | 聊天 → 页头右上「⋮」 |
 | 卡的配置 | `CardConfigPageScreen` | 角色详情 → 配置；三页：内嵌世界书 / 对话样式 / 关于这张卡 |
 | 编辑角色卡 | `CardEditScreen` | 角色详情 → 页头右上「⋮」→ 编辑卡片 |
-| 选一项 | `ConfigPickerScreen` | 会话配置 / 卡的配置 里的四行；会话级时是四级 |
+| 选一项 | `ConfigPickerScreen` | 会话配置 / 卡的配置 里的五行（模型 / 采样 / 世界书 / 正则 / 预设）；会话级时是四级 |
 
 ---
 

@@ -8,6 +8,10 @@ data class AppSettings(
     val temperature: Double,
     /** 0 表示不限（不往请求里放 max_tokens）。 */
     val maxTokens: Int,
+    /** 以下三项 null = 不指定（请求里就不发，交给服务端默认）。用户 2026-11-25 第 2 条。 */
+    val topP: Double? = null,
+    val frequencyPenalty: Double? = null,
+    val presencePenalty: Double? = null,
     /** 消息展示样式，见 app 层 `MessageStyle`（这里只存字符串，data 不关心 UI 枚举）。 */
     val messageStyle: String,
     /** 主题预设名（如 `Forest`）与深浅模式（`Follow` / `Light` / `Dark`）。 */
@@ -31,8 +35,19 @@ interface SettingsRepository {
     /** 保存非机密字段（baseUrl / model）。 */
     fun saveConnection(baseUrl: String, model: String)
 
-    /** 保存采样参数。传 null 表示"这一项不动"。 */
-    fun saveSampling(temperature: Double?, maxTokens: Int?)
+    /**
+     * 保存采样参数。传 null 表示"这一项不动"。
+     *
+     * 五项都在这一个方法里：温度 / max_tokens / top_p / 两个 penalty，
+     * 省得以后再加一项又多一个接口（用户 2026-11-25 第 2 条把采样补全成五项）。
+     */
+    fun saveSampling(
+        temperature: Double?,
+        maxTokens: Int?,
+        topP: Double? = null,
+        frequencyPenalty: Double? = null,
+        presencePenalty: Double? = null,
+    )
 
     /** 保存消息展示样式（字符串，由 UI 层定义取值）。 */
     fun saveMessageStyle(style: String)

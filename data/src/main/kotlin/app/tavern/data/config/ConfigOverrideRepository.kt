@@ -28,6 +28,20 @@ data class ConfigOverride(
      */
     val regexIds: Set<String>? = null,
     /**
+     * 采样覆盖（用户 2026-11-25 第 2 条）：每项 null = 跟随上一级。
+     * 优先级：会话 > 卡 > 预设 > 全局。
+     */
+    val temperature: Double? = null,
+    val maxTokens: Int? = null,
+    val topP: Double? = null,
+    val frequencyPenalty: Double? = null,
+    val presencePenalty: Double? = null,
+    /**
+     * 关掉哪些**内置**规则（`BuiltinRegex.features` 的 id）。null = 跟随上一级；
+     * 空集 = 全开（明确打开）。用户 2026-11-25 第 15 条：卡/会话页也要能开关默认正则。
+     */
+    val builtinDisabled: Set<String>? = null,
+    /**
      * 卡级专用：默认用第几条开场白。0 = `first_mes`，N = `alternateGreetings[N-1]`。
      * 会话级不用这一项（它读的是已经写进库里的第一条消息）。
      */
@@ -36,7 +50,10 @@ data class ConfigOverride(
     /** 全是"跟随"？那这条覆盖不必落盘。 */
     val isEmpty: Boolean
         get() = profileId == null && reasoningEffort == null && presetName == null &&
-            worldBookNames == null && regexIds == null && greetingIndex == null
+            worldBookNames == null && regexIds == null && builtinDisabled == null &&
+            temperature == null && maxTokens == null && topP == null &&
+            frequencyPenalty == null && presencePenalty == null &&
+            greetingIndex == null
 }
 
 /** 按作用域读写覆盖：`session:<会话 id>` / `card:<卡 id>`。 */

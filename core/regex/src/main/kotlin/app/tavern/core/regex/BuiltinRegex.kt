@@ -35,14 +35,31 @@ public object BuiltinRegex {
         BuiltinRegexFeature(
             id = CLEAN_TAGS,
             title = "清理包裹标签",
-            description = "去掉正文里单独出现的 </content>、<output>、</> 等包裹标签",
+            description = "去掉正文里单独出现的 </content>、<output>、</>、<StatusPlaceHolderImpl/> 等包裹标记；" +
+                "整行只有标记时连那一行一起去掉",
             rules = listOf(
-                // 标签名那一组是**可选**的：`</>`、`<>` 这种"空标签"（模型常把它当分隔符写）
-                // 也要清掉，而 `<foo>` 之类不在白名单里的仍然原样保留（用户 2026-11-25：
-                // 只清白名单，但单行的 `</>` 之前漏了 —— 它原来匹配不到，因为要求有标签名）。
+                // ① 整行只有标签（可带前后空白）：连这一行一起删。
+                // 用户 2026-11-25：标签独占一行时，只删标签会留下一条空行，看着像漏清理了。
+                // `(?:\r?\n)?` 把行尾换行一起吃掉；**别的空行不动**（那是正文分段）。
                 RegexScript(
-                    name = "内置 · 清理包裹标签",
+                    name = "内置 · 清理包裹标签（整行）",
+                    findRegex = "/^[ \\t]*<\\/?(?:content|output|response|message|text|answer|StatusPlaceHolderImpl\\s*\\/?)?>[ \\t]*(?:\\r?\\n)?/gm",
+                    replaceString = "",
+                    placement = setOf(RegexPlacement.AiOutput),
+                ),
+                // ② 行内标签：只删标签本身。标签名那一组是**可选**的 —— `</>`、`<>` 这种"空标签"
+                //（模型常把它当分隔符写）也要清；`<foo>` 之类不在白名单里的原样保留。
+                RegexScript(
+                    name = "内置 · 清理包裹标签（行内）",
                     findRegex = "/<\\/?(?:content|output|response|message|text|answer)?>/gi",
+                    replaceString = "",
+                    placement = setOf(RegexPlacement.AiOutput),
+                ),
+                // ③ 状态栏占位符（MVU / 酒馆助手的变量卡用）：它不是"包裹标签"，行内也可能出现，
+                // 单独一条。删掉只是不让那串标记露出来 —— 我们不做 HTML 渲染，状态栏本身不会显示。
+                RegexScript(
+                    name = "内置 · 清理状态栏占位符",
+                    findRegex = "/<StatusPlaceHolderImpl\\s*\\/?>/gi",
                     replaceString = "",
                     placement = setOf(RegexPlacement.AiOutput),
                 ),

@@ -239,6 +239,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
+        /** top_p / 两个 penalty：空串 = 不指定（请求里不发）。用户 2026-11-25 第 2 条补齐五项。 */
+        val topPText: String = "",
+        val frequencyPenaltyText: String = "",
+        val presencePenaltyText: String = "",
         val messageStyle: MessageStyle = MessageStyle.Card,
         val themePreset: ThemePreset = ThemePreset.Violet,
         val themeMode: ThemeMode = ThemeMode.Follow,
@@ -314,6 +318,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             get() = sessionOverride.regexIds ?: cardOverride.regexIds
 
         /** 实际参与的正则脚本（显示与输入侧都读它，保证"看到的就是生效的"）。 */
+        // ---- 采样五项：会话 > 卡 > 预设 > 全局（用户 2026-11-25 第 2 条） ----
+        // 为什么预设排在全局前面：预设就是"这一份提示词配套的采样"，它比全局默认更具体。
+        val effectiveTemperature: Double
+            get() = sessionOverride.temperature ?: cardOverride.temperature
+                ?: presetSampling?.temperature ?: temperatureText.toDoubleOrNull() ?: 1.0
+
+        /** null = 不限（不往请求里放 max_tokens）。 */
+        val effectiveMaxTokens: Int?
+            get() = sessionOverride.maxTokens ?: cardOverride.maxTokens
+                ?: presetSampling?.maxTokens ?: maxTokensText.toIntOrNull()?.takeIf { it > 0 }
+
+        val effectiveTopP: Double?
+            get() = sessionOverride.topP ?: cardOverride.topP
+                ?: presetSampling?.topP ?: topPText.toDoubleOrNull()
+
+        val effectiveFrequencyPenalty: Double?
+            get() = sessionOverride.frequencyPenalty ?: cardOverride.frequencyPenalty
+                ?: presetSampling?.frequencyPenalty ?: frequencyPenaltyText.toDoubleOrNull()
+
+        val effectivePresencePenalty: Double?
+            get() = sessionOverride.presencePenalty ?: cardOverride.presencePenalty
+                ?: presetSampling?.presencePenalty ?: presencePenaltyText.toDoubleOrNull()
+
+        /**
+         * 生效的"关掉哪些内置规则"：**会话 > 卡 > 全局**（用户 2026-11-25 第 15 条）。
+         *
+         * 空集 ≠ null：空集 = 这一层明确全开（把上级关掉的重新打开），null = 跟随上级。
+         */
+        val effectiveBuiltinDisabled: Set<String>
+            get() = sessionOverride.builtinDisabled
+                ?: cardOverride.builtinDisabled
+                ?: builtinRegexDisabled
+
         val effectiveRegexScripts: List<RegexScript>
             get() {
                 val only = effectiveRegexIds ?: return regexScripts
@@ -327,7 +364,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          * 会话/卡级 `regexIds` 过滤（它们不是用户脚本，老会话里存的 id 集合里没有它们）。
          */
         val displayRegexScripts: List<RegexScript>
-            get() = effectiveRegexScripts + BuiltinRegex.rules(builtinRegexDisabled)
+            get() = effectiveRegexScripts + BuiltinRegex.rules(effectiveBuiltinDisabled)
     }
 
     /**
@@ -448,6 +485,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     profiles = profiles,
                     activeProfileId = active?.id,
                     temperatureText = saved.temperature.toString(),
+                    topPText = saved.topP?.toString().orEmpty(),
+                    frequencyPenaltyText = saved.frequencyPenalty?.toString().orEmpty(),
+                    presencePenaltyText = saved.presencePenalty?.toString().orEmpty(),
                     maxTokensText = saved.maxTokens.toString(),
                     // 外观已经由 applyAppearanceSync 摆好；这里以同一份偏好再写一次（幂等），
                     // 免得"预读"和"正式读"哪天不一致。
@@ -1177,6 +1217,131 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---- 采样三级（用户 2026-11-25 第 2 条） --------------------------------
+
+    /** 把一行输入写进 override：空串 = 跟随上级（null），解析不了也按跟随处理。 */
+    private fun ConfigOverride.withSampling(field: SamplingField, text: String): ConfigOverride {
+        val raw = text.trim().takeIf { it.isNotEmpty() }
+        return when (field) {
+            SamplingField.Temperature -> copy(temperature = raw?.toDoubleOrNull())
+            SamplingField.MaxTokens -> copy(maxTokens = raw?.toIntOrNull())
+            SamplingField.TopP -> copy(topP = raw?.toDoubleOrNull())
+            SamplingField.FrequencyPenalty -> copy(frequencyPenalty = raw?.toDoubleOrNull())
+            SamplingField.PresencePenalty -> copy(presencePenalty = raw?.toDoubleOrNull())
+        }
+    }
+
+    fun useSessionSampling(field: SamplingField, text: String) {
+        val sessionId = _state.value.sessionId ?: return
+        val next = _state.value.sessionOverride.withSampling(field, text)
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) {
+                it.copy(
+                    temperature = next.temperature,
+                    maxTokens = next.maxTokens,
+                    topP = next.topP,
+                    frequencyPenalty = next.frequencyPenalty,
+                    presencePenalty = next.presencePenalty,
+                )
+            }
+            _state.update {
+                it.copy(
+                    sessionOverride = it.sessionOverride.copy(
+                        temperature = next.temperature,
+                        maxTokens = next.maxTokens,
+                        topP = next.topP,
+                        frequencyPenalty = next.frequencyPenalty,
+                        presencePenalty = next.presencePenalty,
+                    ),
+                )
+            }
+            AppLog.i("config", "会话采样 ${field.name}=${text.ifBlank { "跟随" }}")
+        }
+    }
+
+    fun useCardSampling(field: SamplingField, text: String) {
+        val cardId = _state.value.detailCardId ?: return
+        val next = _state.value.cardOverride.withSampling(field, text)
+        viewModelScope.launch {
+            persistCardConfig(cardId) {
+                it.copy(
+                    temperature = next.temperature,
+                    maxTokens = next.maxTokens,
+                    topP = next.topP,
+                    frequencyPenalty = next.frequencyPenalty,
+                    presencePenalty = next.presencePenalty,
+                )
+            }
+            _state.update {
+                it.copy(
+                    cardOverride = it.cardOverride.copy(
+                        temperature = next.temperature,
+                        maxTokens = next.maxTokens,
+                        topP = next.topP,
+                        frequencyPenalty = next.frequencyPenalty,
+                        presencePenalty = next.presencePenalty,
+                    ),
+                )
+            }
+            AppLog.i("config", "卡级采样 card=${cardId.take(8)} ${field.name}=${text.ifBlank { "跟随" }}")
+        }
+    }
+
+    /** 采样这一层恢复默认 = 五项都清掉（跟随上级）。 */
+    fun clearSessionSampling() {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) {
+                it.copy(
+                    temperature = null,
+                    maxTokens = null,
+                    topP = null,
+                    frequencyPenalty = null,
+                    presencePenalty = null,
+                )
+            }
+            _state.update {
+                it.copy(
+                    sessionOverride = it.sessionOverride.copy(
+                        temperature = null,
+                        maxTokens = null,
+                        topP = null,
+                        frequencyPenalty = null,
+                        presencePenalty = null,
+                    ),
+                )
+            }
+            AppLog.i("config", "会话采样恢复默认（跟随上级）")
+        }
+    }
+
+    fun clearCardSampling() {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) {
+                it.copy(
+                    temperature = null,
+                    maxTokens = null,
+                    topP = null,
+                    frequencyPenalty = null,
+                    presencePenalty = null,
+                )
+            }
+            _state.update {
+                it.copy(
+                    cardOverride = it.cardOverride.copy(
+                        temperature = null,
+                        maxTokens = null,
+                        topP = null,
+                        frequencyPenalty = null,
+                        presencePenalty = null,
+                    ),
+                )
+            }
+            AppLog.i("config", "卡级采样恢复默认 card=${cardId.take(8)}")
+        }
+    }
+
     // ---- 会话级配置（三级继承的最内层） -------------------------------------
 
     /** 会话级换模型：只影响这一条会话。 */
@@ -1254,6 +1419,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** 会话级正则：null = 跟随（全部启用）；空集 = 全部关掉。 */
+    /** 会话级：用户脚本集合 + 内置开关一起写（选择页右上「全部开启/关闭/恢复默认」用）。 */
+    fun useSessionRegexAndBuiltin(ids: Set<String>?, builtin: Set<String>?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(regexIds = ids, builtinDisabled = builtin) }
+            _state.update {
+                it.copy(
+                    sessionOverride = it.sessionOverride.copy(regexIds = ids, builtinDisabled = builtin),
+                )
+            }
+            AppLog.i("config", "会话正则=${ids?.size ?: "跟随"} 内置关=${builtin?.size ?: "跟随"}")
+        }
+    }
+
+    /** 会话级：内置正则的开关（null = 跟随卡/全局）。 */
+    fun useSessionBuiltin(disabled: Set<String>?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(builtinDisabled = disabled) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(builtinDisabled = disabled)) }
+            AppLog.i("config", "会话内置正则=${disabled?.size ?: "跟随"} 项关掉")
+        }
+    }
+
     fun useSessionRegex(ids: Set<String>?) {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
@@ -1320,6 +1509,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             persistCardConfig(cardId) { it.copy(worldBookNames = names) }
             _state.update { it.copy(cardOverride = it.cardOverride.copy(worldBookNames = names)) }
             AppLog.i("config", "卡级世界书 card=${cardId.take(8)} ${names?.size ?: "跟随"} 本")
+        }
+    }
+
+    /** 卡级：用户脚本集合 + 内置开关一起写（批量菜单用）。 */
+    fun useCardRegexAndBuiltin(ids: Set<String>?, builtin: Set<String>?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(regexIds = ids, builtinDisabled = builtin) }
+            _state.update {
+                it.copy(cardOverride = it.cardOverride.copy(regexIds = ids, builtinDisabled = builtin))
+            }
+            AppLog.i("config", "卡级正则 card=${cardId.take(8)}=${ids?.size ?: "跟随"} 内置关=${builtin?.size ?: "跟随"}")
+        }
+    }
+
+    /** 卡级：内置正则的开关（null = 跟随全局）。 */
+    fun useCardBuiltin(disabled: Set<String>?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(builtinDisabled = disabled) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(builtinDisabled = disabled)) }
+            AppLog.i("config", "卡级内置正则 card=${cardId.take(8)} ${disabled?.size ?: "跟随"} 项关掉")
         }
     }
 
@@ -1693,6 +1904,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         persistSampling(_state.value.temperatureText, value)
     }
 
+    fun onTopPChange(value: String) {
+        _state.update { it.copy(topPText = value) }
+        persistSampling(_state.value.temperatureText, _state.value.maxTokensText)
+    }
+
+    fun onFrequencyPenaltyChange(value: String) {
+        _state.update { it.copy(frequencyPenaltyText = value) }
+        persistSampling(_state.value.temperatureText, _state.value.maxTokensText)
+    }
+
+    fun onPresencePenaltyChange(value: String) {
+        _state.update { it.copy(presencePenaltyText = value) }
+        persistSampling(_state.value.temperatureText, _state.value.maxTokensText)
+    }
+
     private fun persistSampling(temperatureText: String, maxTokensText: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -1700,6 +1926,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 settingsRepository.saveSampling(
                     temperature = temperatureText.toDoubleOrNull(),
                     maxTokens = maxTokensText.toIntOrNull(),
+                    topP = _state.value.topPText.toDoubleOrNull(),
+                    frequencyPenalty = _state.value.frequencyPenaltyText.toDoubleOrNull(),
+                    presencePenalty = _state.value.presencePenaltyText.toDoubleOrNull(),
                 )
             }
         }
@@ -2466,13 +2695,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val request = ChatRequest(
             model = snapshot.model,
             messages = messages,
-            temperature = snapshot.temperatureText.toDoubleOrNull() ?: 1.0,
-            // 0 = 不限：不往请求里放 max_tokens（以前硬编码 300，长回复会被截）
-            maxTokens = snapshot.maxTokensText.toIntOrNull()?.takeIf { it > 0 },
-            // 预设带来的 top_p / 两个 penalty：我们没有对应控件，但请求里该发就发
-            topP = snapshot.presetSampling?.topP,
-            frequencyPenalty = snapshot.presetSampling?.frequencyPenalty,
-            presencePenalty = snapshot.presetSampling?.presencePenalty,
+            // 五项统一走 effective*：会话 > 卡 > 预设 > 全局，别在这里再写一层 ?: 链
+            temperature = snapshot.effectiveTemperature,
+            maxTokens = snapshot.effectiveMaxTokens,
+            topP = snapshot.effectiveTopP,
+            frequencyPenalty = snapshot.effectiveFrequencyPenalty,
+            presencePenalty = snapshot.effectivePresencePenalty,
             stream = true,
             // 思考强度只有两级：会话 → 卡。都为 null 就不发这个字段；
             // `"off"` = 明确不发（档案级不再参与，用户 2026-11-25 第 2 条）。

@@ -231,6 +231,31 @@ private fun SamplingPage(state: ChatViewModel.UiState, viewModel: ChatViewModel)
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
+    // 以下三项留空 = 不指定（请求里就不发，交服务端默认）。用户 2026-11-25 第 2 条把采样补成五项。
+    OutlinedTextField(
+        value = state.topPText,
+        onValueChange = viewModel::onTopPChange,
+        label = { Text("top_p（留空 = 不指定）") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = state.frequencyPenaltyText,
+        onValueChange = viewModel::onFrequencyPenaltyChange,
+        label = { Text("frequency_penalty（留空 = 不指定）") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = state.presencePenaltyText,
+        onValueChange = viewModel::onPresencePenaltyChange,
+        label = { Text("presence_penalty（留空 = 不指定）") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 // ---- 外观 -----------------------------------------------------------------

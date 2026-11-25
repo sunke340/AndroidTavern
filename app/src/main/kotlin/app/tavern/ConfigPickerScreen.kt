@@ -9,18 +9,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import app.tavern.core.regex.BuiltinRegex
 
 /**
  * 三级配置的「选一项」页：模型 / 世界书 / 正则 / 预设。
@@ -68,6 +74,31 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 世界书/正则：全部开启 / 全部关闭 / 恢复默认（= 清覆盖 = 跟随上级）
         // 之前这三行占着列表前三格（用户 2026-11-25 第 4/5 条：挪到右上胶囊，列表只留条目）
         actions = when (target.kind) {
+            // 采样这一页的页面级动作：五项一起恢复默认（= 跟随上级）
+            ConfigKind.Sampling -> {
+                {
+                    var open by remember { mutableStateOf(false) }
+                    Box {
+                        CapsuleIcon(
+                            icon = Icons.Filled.MoreVert,
+                            contentDescription = "更多",
+                        ) { open = true }
+                        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                            DropdownMenuItem(
+                                text = { Text("恢复默认") },
+                                onClick = {
+                                    open = false
+                                    when (target.scope) {
+                                        ConfigScope.Session -> viewModel.clearSessionSampling()
+                                        ConfigScope.Card -> viewModel.clearCardSampling()
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
             ConfigKind.WorldBook -> {
                 {
                     PickerBulkMenu(
@@ -99,26 +130,32 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ConfigKind.Regex -> {
                 {
                     PickerBulkMenu(
+                        // 三个动作对"整页"生效：用户脚本 + 内置规则都算（用户 2026-11-25 第 15 条）
                         onAll = {
                             val all = state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
                             when (target.scope) {
-                                ConfigScope.Session -> viewModel.useSessionRegex(all)
-                                ConfigScope.Card -> viewModel.useCardRegex(all)
+                                ConfigScope.Session -> viewModel.useSessionRegexAndBuiltin(all, emptySet())
+                                ConfigScope.Card -> viewModel.useCardRegexAndBuiltin(all, emptySet())
                             }
                         },
                         onNone = {
+                            val allBuiltin = BuiltinRegex.features.map { it.id }.toSet()
                             when (target.scope) {
-                                ConfigScope.Session -> viewModel.useSessionRegex(emptySet())
-                                ConfigScope.Card -> viewModel.useCardRegex(emptySet())
+                                ConfigScope.Session ->
+                                    viewModel.useSessionRegexAndBuiltin(emptySet(), allBuiltin)
+
+                                ConfigScope.Card ->
+                                    viewModel.useCardRegexAndBuiltin(emptySet(), allBuiltin)
                             }
                         },
                         onFollow = {
                             when (target.scope) {
-                                ConfigScope.Session -> viewModel.useSessionRegex(null)
-                                ConfigScope.Card -> viewModel.useCardRegex(null)
+                                ConfigScope.Session -> viewModel.useSessionRegexAndBuiltin(null, null)
+                                ConfigScope.Card -> viewModel.useCardRegexAndBuiltin(null, null)
                             }
                         },
-                        enabled = state.regexScripts.isNotEmpty(),
+                        // 内置也有开关时要能按，所以不再只看用户脚本
+                        enabled = state.regexScripts.isNotEmpty() || BuiltinRegex.features.isNotEmpty(),
                     )
                 }
             }
@@ -140,6 +177,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         ) {
             when (target.kind) {
                 ConfigKind.Model -> ModelPickerPageBody(state, viewModel, target.scope)
+                ConfigKind.Sampling -> SamplingPickerBody(state, viewModel, target.scope)
                 ConfigKind.WorldBook -> WorldBookPickerBody(state, viewModel, target.scope)
                 ConfigKind.Regex -> RegexPickerBody(state, viewModel, target.scope)
                 ConfigKind.Preset -> PresetPickerBody(state, viewModel, target.scope)
@@ -171,6 +209,70 @@ private fun ModelPickerPageBody(
     )
     Spacer(Modifier.height(Space.xs))
     ModelPickerRows(state = state, viewModel = viewModel, scope = scope)
+}
+
+/**
+ * 采样三级（用户 2026-11-25 第 2 条）：五项都留空 = 跟随上级。
+ *
+ * 每格里**显示的是这一层的值**，占位符写"跟随上级：X"——否则用户看不出现在到底发的是几。
+ * 优先级：会话 > 卡 > 预设 > 全局（和 [ChatViewModel.UiState.effectiveTemperature] 那组 getter 一致）。
+ */
+@Composable
+private fun SamplingPickerBody(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    scope: ConfigScope,
+) {
+    val stored = when (scope) {
+        ConfigScope.Session -> state.sessionOverride
+        ConfigScope.Card -> state.cardOverride
+    }
+    // 本地草稿：输入 "0." 这种半截值不能立刻被解析成 null 把框清空（和全局采样页同一个理由）
+    val drafts = remember(scope) {
+        mutableStateMapOf<String, String>().apply {
+            put(SamplingField.Temperature.name, stored.temperature?.toString().orEmpty())
+            put(SamplingField.MaxTokens.name, stored.maxTokens?.toString().orEmpty())
+            put(SamplingField.TopP.name, stored.topP?.toString().orEmpty())
+            put(SamplingField.FrequencyPenalty.name, stored.frequencyPenalty?.toString().orEmpty())
+            put(SamplingField.PresencePenalty.name, stored.presencePenalty?.toString().orEmpty())
+        }
+    }
+
+    Text(
+        "留空 = 跟随上级（会话 > 卡 > 预设 > 全局）",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    SamplingField.entries.forEach { field ->
+        val effective = when (field) {
+            SamplingField.Temperature -> state.effectiveTemperature.toString()
+            SamplingField.MaxTokens -> state.effectiveMaxTokens?.toString() ?: "不限"
+            SamplingField.TopP -> state.effectiveTopP?.toString() ?: "不指定"
+            SamplingField.FrequencyPenalty -> state.effectiveFrequencyPenalty?.toString() ?: "不指定"
+            SamplingField.PresencePenalty -> state.effectivePresencePenalty?.toString() ?: "不指定"
+        }
+        OutlinedTextField(
+            value = drafts[field.name].orEmpty(),
+            onValueChange = { text ->
+                drafts[field.name] = text
+                when (scope) {
+                    ConfigScope.Session -> viewModel.useSessionSampling(field, text)
+                    ConfigScope.Card -> viewModel.useCardSampling(field, text)
+                }
+            },
+            label = { Text(field.label) },
+            placeholder = { Text("跟随上级：$effective") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (field == SamplingField.MaxTokens) {
+                    KeyboardType.Number
+                } else {
+                    KeyboardType.Decimal
+                },
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 /** 世界书多选：勾的是"哪些全局书参与"，书自己的启用开关是另一层。 */
@@ -259,6 +361,30 @@ private fun RegexPickerBody(
             "还没有导入正则脚本（设置 → 正则）",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    // 内置规则也能在这一层开关（用户 2026-11-25 第 15 条）：会话 > 卡 > 全局。
+    // 开关写的是**这一层**的覆盖（空集 = 明确全开，null = 跟随）；全局那两档在设置页里。
+    SectionLabel("内置")
+    val builtinDisabled = state.effectiveBuiltinDisabled
+    ListGroup(count = BuiltinRegex.features.size) { index, _ ->
+        val feature = BuiltinRegex.features[index]
+        ListRow(
+            title = feature.title,
+            subtitle = feature.description,
+            trailing = {
+                Switch(
+                    checked = feature.id !in builtinDisabled,
+                    onCheckedChange = { on ->
+                        val next = if (on) builtinDisabled - feature.id else builtinDisabled + feature.id
+                        when (scope) {
+                            ConfigScope.Session -> viewModel.useSessionBuiltin(next)
+                            ConfigScope.Card -> viewModel.useCardBuiltin(next)
+                        }
+                    },
+                )
+            },
         )
     }
 }

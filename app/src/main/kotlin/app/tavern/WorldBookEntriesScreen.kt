@@ -25,9 +25,15 @@ import androidx.compose.ui.unit.dp
  * `rowPieceAt(index, count)` 自己取片型（和预设编辑页同一个办法）。
  *
  * 开关只写"应用内覆盖"，不改导入的 `.json` —— 书还要能原样导回 PC 版。
+ *
+ * @param listState 由上层持有：从「条目全文」返回时不能回到顶部（用户 2026-11-25 报的）。
  */
 @Composable
-fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun WorldBookEntriesScreen(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+) {
     val book = state.worldBookView
 
     GlassDetailScaffold(
@@ -59,6 +65,7 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         }
         val count = book.entries.size
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
             contentPadding = PaddingValues(
                 start = Space.l,

@@ -33,9 +33,19 @@ enum class ConfigScope { Session, Card }
 /** 三级配置里"可以单独选一项"的四类东西。 */
 enum class ConfigKind(val title: String) {
     Model("模型"),
+    Sampling("采样"),
     WorldBook("世界书"),
     Regex("正则"),
     Preset("预设"),
+}
+
+/** 采样参数的五项（会话/卡三级覆盖共用；全局页也是这五项）。 */
+enum class SamplingField(val label: String) {
+    Temperature("temperature"),
+    MaxTokens("max_tokens（0 = 不限）"),
+    TopP("top_p"),
+    FrequencyPenalty("frequency_penalty"),
+    PresencePenalty("presence_penalty"),
 }
 
 /**

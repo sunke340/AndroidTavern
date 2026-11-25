@@ -138,10 +138,19 @@ fun GroupPiece(
     piece: RowPiece,
     modifier: Modifier = Modifier,
     dividerInset: Dp = RowToken.dividerInset,
+    /**
+     * 填充色（默认 `surface`）。置顶组传描边色 `cardBorder`，让那组和普通会话区分开
+     * （用户 2026-11-25）。
+     */
+    fill: Color? = null,
+    /** 片与片之间的分隔线（默认 `palette.divider`）；置顶组传 `surface` 当"白线"。 */
+    dividerColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val palette = LocalTavernPalette.current
     val corner = Radius.group
+    val background = fill ?: MaterialTheme.colorScheme.surface
+    val lineColor = dividerColor ?: palette.divider
     val shape = when (piece) {
         RowPiece.Single -> RoundedCornerShape(corner)
         RowPiece.Top -> RoundedCornerShape(topStart = corner, topEnd = corner)
@@ -153,7 +162,7 @@ fun GroupPiece(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(background)
             .drawWithContent {
                 drawContent()
                 drawGroupOutline(piece, palette.cardBorder, corner.toPx())
@@ -166,7 +175,7 @@ fun GroupPiece(
                     .fillMaxWidth()
                     .padding(start = dividerInset)
                     .height(1.dp)
-                    .background(palette.divider),
+                    .background(lineColor),
             )
         }
     }

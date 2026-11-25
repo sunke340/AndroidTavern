@@ -343,7 +343,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                         val cardPreset = state.cardOverride.presetName ?: state.activePreset ?: "内置默认"
                         val cardPresetSrc = if (state.cardOverride.presetName != null) "角色卡" else "全局"
 
-                        ListGroup(count = 7) { index, _ ->
+                        ListGroup(count = 8) { index, _ ->
                             when (index) {
                                 0 -> SettingLinkRow(
                                     title = "内嵌世界书",
@@ -361,19 +361,37 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Model)
                                 }
 
-                                2 -> SettingLinkRow("世界书", "参与 ${cardBooks.size} 本 · $cardBooksSrc") {
+                                2 -> {
+                                    val o = state.cardOverride
+                                    val local = listOf(
+                                        o.temperature,
+                                        o.maxTokens,
+                                        o.topP,
+                                        o.frequencyPenalty,
+                                        o.presencePenalty,
+                                    ).any { it != null }
+                                    SettingLinkRow(
+                                        "采样",
+                                        "temperature ${state.effectiveTemperature} · " +
+                                            if (local) "这张卡" else "跟随上级",
+                                    ) {
+                                        viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Sampling)
+                                    }
+                                }
+
+                                3 -> SettingLinkRow("世界书", "参与 ${cardBooks.size} 本 · $cardBooksSrc") {
                                     viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.WorldBook)
                                 }
 
-                                3 -> SettingLinkRow("正则", "参与 ${cardRegex.size} 条 · $cardRegexSrc") {
+                                4 -> SettingLinkRow("正则", "参与 ${cardRegex.size} 条 · $cardRegexSrc") {
                                     viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Regex)
                                 }
 
-                                4 -> SettingLinkRow("预设", "$cardPreset · $cardPresetSrc") {
+                                5 -> SettingLinkRow("预设", "$cardPreset · $cardPresetSrc") {
                                     viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Preset)
                                 }
 
-                                5 -> SettingLinkRow("对话样式", styleLabel) {
+                                6 -> SettingLinkRow("对话样式", styleLabel) {
                                     viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
                                 }
 

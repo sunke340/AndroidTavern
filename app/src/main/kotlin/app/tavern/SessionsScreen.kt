@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +90,17 @@ fun SessionsScreen(
                         piece = item.piece,
                         modifier = Modifier.padding(horizontal = Space.l),
                         dividerInset = RowToken.dividerInsetWithAvatar,
+                        // 置顶组：填充改成描边色、片间用底色当"白线"（用户 2026-11-25 第 3 点）
+                        fill = if (item.session.pinned) {
+                            LocalTavernPalette.current.cardBorder
+                        } else {
+                            null
+                        },
+                        dividerColor = if (item.session.pinned) {
+                            MaterialTheme.colorScheme.surface
+                        } else {
+                            null
+                        },
                     ) {
                         ListRow(
                             title = item.session.cardName,
@@ -204,11 +216,8 @@ private fun appendSessionRows(
                 session.lastMessage?.let { displayPlain(it, scripts) },
                 session.lastFromUser,
             ),
-            meta = if (session.pinned) {
-                "置顶 · ${sessionTimeLabel(session.updatedAt, now)}"
-            } else {
-                sessionTimeLabel(session.updatedAt, now)
-            },
+            // 行尾只写时间：是不是置顶由分组标题说了，行里再标一遍是噪音（用户 2026-11-25 第 2 点）
+            meta = sessionTimeLabel(session.updatedAt, now),
             piece = when {
                 rows.size == 1 -> RowPiece.Single
                 i == 0 -> RowPiece.Top

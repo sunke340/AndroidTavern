@@ -34,8 +34,33 @@ class BuiltinRegexTest {
         assertEquals("你好", display("你好</>"))
         assertEquals("AB", display("A</>B"))
         assertEquals("AB", display("A<>B"))
-        // 只清标签本身，不动换行（标签独占一行时那行会空出来，交给显示层渲染）
-        assertEquals("第一段\n\n第二段", display("第一段\n</>\n第二段"))
+        // 标签独占一行时**连这一行一起删**（用户 2026-11-25：空行也要删）
+        assertEquals("第一段\n第二段", display("第一段\n</>\n第二段"))
+        // 行内出现就只删标签本身
+        assertEquals("第一段\n第二段", display("第一段\n</>第二段"))
+    }
+
+    @Test
+    fun `整行只有标记时连行一起删`() {
+        assertEquals("A\nB", display("A\n</content>\nB"))
+        assertEquals("A\nB", display("A\n<output>\nB"))
+        // 前后有空白也算"整行只有标记"
+        assertEquals("A\nB", display("A\n  </message>  \nB"))
+    }
+
+    @Test
+    fun `别的空行不动`() {
+        // 正文自己的分段（连续空行）是内容，不许一起吃掉
+        assertEquals("A\n\nB", display("A\n\nB"))
+        assertEquals("A\n\nB", display("A\n</>\n\nB"))
+    }
+
+    @Test
+    fun `状态栏占位符被清掉`() {
+        // MVU / 酒馆助手那套变量卡的占位符：行内、整行两种都清（用户 2026-11-25）
+        assertEquals("正文", display("<StatusPlaceHolderImpl/>正文"))
+        assertEquals("A\nB", display("A\n<StatusPlaceHolderImpl/>\nB"))
+        assertEquals("正文", display("正文<StatusPlaceHolderImpl/>"))
     }
 
     @Test

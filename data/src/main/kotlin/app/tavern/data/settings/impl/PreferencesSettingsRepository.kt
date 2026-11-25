@@ -48,6 +48,9 @@ class PreferencesSettingsRepository(
         model = prefs.getString(KEY_MODEL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_MODEL,
         temperature = prefs.getFloat(KEY_TEMPERATURE, DEFAULT_TEMPERATURE.toFloat()).toDouble(),
         maxTokens = prefs.getInt(KEY_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+        topP = prefs.getDoubleOrNull(KEY_TOP_P),
+        frequencyPenalty = prefs.getDoubleOrNull(KEY_FREQUENCY_PENALTY),
+        presencePenalty = prefs.getDoubleOrNull(KEY_PRESENCE_PENALTY),
         messageStyle = prefs.getString(KEY_MESSAGE_STYLE, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_MESSAGE_STYLE,
         themePreset = prefs.getString(KEY_THEME_PRESET, null)?.takeIf { it.isNotBlank() }
@@ -84,12 +87,25 @@ class PreferencesSettingsRepository(
             .apply()
     }
 
-    override fun saveSampling(temperature: Double?, maxTokens: Int?) {
+    override fun saveSampling(
+        temperature: Double?,
+        maxTokens: Int?,
+        topP: Double?,
+        frequencyPenalty: Double?,
+        presencePenalty: Double?,
+    ) {
         prefs.edit().apply {
             temperature?.let { putFloat(KEY_TEMPERATURE, it.toFloat()) }
             maxTokens?.let { putInt(KEY_MAX_TOKENS, it) }
+            topP?.let { putFloat(KEY_TOP_P, it.toFloat()) }
+            frequencyPenalty?.let { putFloat(KEY_FREQUENCY_PENALTY, it.toFloat()) }
+            presencePenalty?.let { putFloat(KEY_PRESENCE_PENALTY, it.toFloat()) }
         }.apply()
     }
+
+    /** 没存过就是 null（= 不指定），不能拿 getFloat 的默认值顶替 —— 那会变成"发了一个 0"。 */
+    private fun android.content.SharedPreferences.getDoubleOrNull(key: String): Double? =
+        if (contains(key)) getFloat(key, 0f).toDouble() else null
 
     override fun saveMessageStyle(style: String) {
         prefs.edit().putString(KEY_MESSAGE_STYLE, style).apply()
@@ -161,6 +177,9 @@ class PreferencesSettingsRepository(
         const val KEY_MODEL = "model"
         const val KEY_API_KEY = "api_key"
         const val KEY_TEMPERATURE = "temperature"
+        const val KEY_TOP_P = "top_p"
+        const val KEY_FREQUENCY_PENALTY = "frequency_penalty"
+        const val KEY_PRESENCE_PENALTY = "presence_penalty"
         const val KEY_MAX_TOKENS = "max_tokens"
         const val KEY_MESSAGE_STYLE = "message_style"
         const val KEY_THEME_PRESET = "theme_preset"

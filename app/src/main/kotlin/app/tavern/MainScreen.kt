@@ -213,6 +213,13 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             // 状态留在 TabsRoot 里就会丢（真机上表现为"返回后列表回到顶部"）。
             val sessionsList = rememberLazyListState()
             val charactersGrid = rememberLazyGridState()
+            // 世界书条目页的滚动位置也放这一层：点条目进「条目全文」再返回时，
+            // 那一页会整棵离开组合树 —— 列表状态留在页里就会回到顶部（用户 2026-11-25 报的）。
+            val worldBookList = rememberLazyListState()
+            // 换一本书才回顶部；从「条目全文」返回同一本时保持位置（状态在这一层才活得过页面切换）
+            LaunchedEffect(worldBook?.name) {
+                if (worldBook != null) worldBookList.scrollToItem(0)
+            }
 
             // 导航打点：每次换页留一行。日志是唯一的真机证据来源，没这行就只能靠猜
             // （2026-11-22 那次导出的日志只有一行启动记录，什么都没法定位）。
@@ -285,7 +292,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
 
                         is Destination.WorldBookEntries -> {
                             if (live) BackHandler { viewModel.closeWorldBook() }
-                            WorldBookEntriesScreen(state = snap, viewModel = viewModel)
+                            WorldBookEntriesScreen(
+                                state = snap,
+                                viewModel = viewModel,
+                                listState = worldBookList,
+                            )
                         }
 
                         Destination.WorldBookEntry -> {
