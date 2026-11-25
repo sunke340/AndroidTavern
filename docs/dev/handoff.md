@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 10:20）
+# 接手卡（2026-11-25 10:50）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,12 +8,12 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `edffcb5`（tag `apk-m169`）/ 交付包 `artifacts/app-v138-edffcb5.apk`；
-  `artifacts/` 里 v118–v138 都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**仍是 `app-v117-0631bff.apk`。
+- **基线**：代码 `cc7ecd6`（tag `apk-m170`）/ 交付包 `artifacts/app-v139-cc7ecd6.apk`；
+  `artifacts/` 里 v118–v139 都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**仍是 `app-v117-0631bff.apk`。
 - **没有悬着的事**：10 条 UI 需求 + P0-6 + 后半夜第二批（装饰器/搜索/导入导出/卡编辑/system_prompt）
   + **M3 回执的 21 条修复**（2026-11-25 早上）都已落码出包，等真机复核。
-- **下一件事**：按 [device-verification.md](device-verification.md) 的 **M5** 表逐条点（M4 那一版里
-  配置还是抽屉、动作还是文字，都已改掉）。再往后是世界书 outlet、卡库分组。
+- **下一件事**：按 [device-verification.md](device-verification.md) 的 **M6** 表逐条点。
+  再往后是世界书 outlet、卡库分组。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**。
 
 ## 一、这一夜做了什么（10 条需求 + P0-6）
@@ -71,10 +71,10 @@
   `userText == null` = 不追加用户消息。**别再复制一份两百行的发送逻辑。**
 - 失败路径：`ReplaceTarget.append=false` 还原被撤下的那条；`append=true` 也是还原（继续不产生新行）。
 
-## 五、待真机验（M5，见 [device-verification.md](device-verification.md) 的 M5）
+## 五、待真机验（M6，见 [device-verification.md](device-verification.md) 的 M6）
 
-一句话版：抽屉阈值 1/3 → 输入区 320ms 形变 → 配置四行整页选（思考强度在模型页顶部）→
-消息图标行 + 撤回 + 长按选字 → 卡编辑 ✓ 后三选（新建/覆盖/取消）→ 保存不再串卡。
+一句话版：输入区 400/300ms 形变 + 键盘收起复原 → 配置页跟随行常驻 → 图标不被遮 →
+撤回删双方并重建列表 → 保存是玻璃确认框（取消/新建/覆盖）。
 
 
 1. **抽屉**：长按行 → 拖把手跟手、过半收回、否则弹回。
