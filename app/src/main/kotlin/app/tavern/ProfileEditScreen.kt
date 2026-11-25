@@ -60,13 +60,15 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ) { viewModel.saveProfileDraft() }
         },
     ) { padding ->
-
+        // 每个可滚动面都要挂橡皮筋（INV-06）：拉到头的回弹在这里也不能少
+        val overscroll = rememberRubberOverscroll()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 // 让位拆两半：底部留在外面，顶部挪进滚动层 —— 内容才能从页头底下穿过去，
                 // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
                 .padding(bottom = padding.calculateBottomPadding())
+                .rubberOverscroll(overscroll)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l),

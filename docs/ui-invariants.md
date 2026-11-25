@@ -41,11 +41,11 @@
 | INV-01 | 二级页页头的**材质 + 首项让位**只能由骨架决定，页面层**没有 API 可写** | `GlassDetailScaffold` 的 `DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`（见第五节的"第一批"） | 脚本（白名单只有 `DetailPage.kt`）：页面文件不得出现 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` / `DetailHeaderHeight` / `statusBarTop(` / `calculateTopPadding() +`；每处 `GlassDetailScaffold(` 必须显式传 `headerMode =`。真机：按 [device-verification.md](dev/device-verification.md)「M9 / M9.1 回执」A 组复验 | ✅ | `8ee1b72`（磨砂带→色罩）、`df71772`（首项多出 12dp）、`6f4dd53`（世界书列表少了 64dp；同提交把卡配置三页的分发写死成常量，另两页内容被顶掉 → M10） |
 | INV-02 | 聊天页气泡底板必须用 `MessagePanel`，**不许**用 Material3 `Surface` | `ChatScreen.MessagePanel` | 脚本：`ChatScreen.kt` 里裸 `Surface(` 只允许出现在 `RequestDialog` 内（注释先剔除） | ✅ | `1952a2b`：Surface 的 `clip(shape)` 让 18900px 高的气泡在约 8k px 之后收不到触摸 → 长按完全没反应 |
 | INV-03 | 选中文字**不许**拖动列表 | `ChatScreen` 的 `NoFocusScrollSpec` + `LocalBringIntoViewSpec` | 脚本：`ChatScreen.kt` 必须出现 `LocalBringIntoViewSpec provides NoFocusScrollSpec`；真机：反复长按，`偏移=` 不变 | ✅ | `f58ad0c`（修 `8ee1b72` 之后暴露的焦点滚动，跳动量 = `trailingEdge - containerSize`） |
-| INV-04 | 玻璃三铁律：不许 `Modifier.blur` / Haze；录图层只用 `record` 扩展；`renderEffect` 不许在 draw 块里"设了再清" | `GlassSurface`（`Glass.kt`） | 脚本：grep `Modifier.blur(`、`haze`、四参数 `record(`；（待做） | ⬜ | ADR 0005/0006：Haze 在 vivo sdk37 只给半透明；四参数 record 画出空图层 |
+| INV-04 | 玻璃三铁律：只有 `Glass.kt` 能碰模糊/折射；录图层只用 `record(size)` 扩展；`renderEffect` 不许在绘制时"设了再清" | `GlassSurface`（`Glass.kt`） | 脚本：除 `Glass.kt` 外不得出现 `.blur(` / `haze`；全仓不得出现 `renderEffect = null`；`.record(` 的参数里不得有 `density` / `layoutDirection` 或 ≥3 个顶层参数 | ✅ | ADR 0005/0006：Haze 在 vivo sdk37 只给半透明；四参数 `record` 画出空图层 |
 | INV-05 | 弹层只能走宿主：不许 `ModalBottomSheet`，页面不许自己 composed 弹层 | `SheetController` + `GlassSheetScaffold`（`ActionSheet.kt`、`MainScreen.kt`） | 脚本：全 app 不得出现 `ModalBottomSheet`；`GlassSheetScaffold(` 只许出现在这两个文件 | ✅ | `a4888f3`：`ModalBottomSheet` 是独立窗口，采不到内容层 |
-| INV-06 | 每个可滚动面都必须挂 `rubberOverscroll` | 各页 `Modifier.rubberOverscroll(...)`（在 `verticalScroll`/`LazyColumn` **之前**） | 脚本：出现 `verticalScroll(` / `LazyColumn(` 的文件必须同时出现 `rubberOverscroll`（待做，需排除骨架） | ⬜ | 2026-11-23 多次"某页拉到头没有回弹" |
+| INV-06 | 每个可滚动面都必须挂 `rubberOverscroll` | 各页 `Modifier.rubberOverscroll(...)`（在 `verticalScroll`/`LazyColumn` **之前**） | 脚本：出现 `verticalScroll(` / `LazyColumn(` 的文件必须同时出现 `rubberOverscroll`；白名单只有 `ActionSheet.kt`（弹层宿主：内容滚动与拖把手收回共用一个纵向手势，要加先真机验） | ✅ | 2026-11-23 多次"某页拉到头没有回弹"；2026-11-25 补判据时又抓到 3 处真漏（档案编辑、组件预览、`查看请求` 正文） |
 | INV-07 | 内容底部让位取**并集** `max(导航栏, 键盘)`，不许相加 | `GlassDetailScaffold` 的 `maxOf(navBottom, imeBottom)` | 脚本：不得出现 `navBottom + imeBottom` / `imeBottom + navBottom` | ✅ | 键盘弹出时多抬一个导航栏高度 |
-| INV-08 | 颜色只从 `Theme.kt` / `Style.kt` 取，页面里不许出现字面色值 | `TavernTheme` / `LocalTavernPalette` | 脚本：页面目录 grep `Color(0x` / `0xFF`（待做） | ⬜ | 深色模式下发灰（写死白踩过） |
+| INV-08 | 颜色只从 `Theme.kt` / `Style.kt` 取，页面里不许出现字面色值 | `TavernTheme` / `LocalTavernPalette` | 脚本：除白名单外不得出现 `Color(0x` / `0xFF…`；白名单 = `Theme.kt`（调色板本身）、`GalleryScreen.kt`（组件预览的色带底图，是演示内容） | ✅ | 深色模式下发灰（写死白踩过） |
 | INV-09 | 显示格式**只影响显示**；内置正则每条规则都有单测 | `core/regex/BuiltinRegex`、`InlineMarkup` | 已有：`tools/test-core.sh`（19 条）+ fixture `P1-12-inline-markup` | ✅ | 清标签规则漏了 `</>`（2026-11-25，已补单测） |
 | INV-10 | 词表（`docs/ui-map.md`）与枚举、代码名字一致 | `docs/ui-map.md` | 已有：`tools/check-ui-map.sh`（枚举页面都在、名字都能 grep 到） | ✅ | 页头规则写进 AGENTS 而代码没对应入口 → 文档反过来误导改动 |
 
@@ -125,10 +125,22 @@
 8. **验收**：与 v150 逐页一致（除了第 3 条那个已知小差）；三条脚本判据分别**自测会红**；
    `check-ui-map` / `check-ui-invariants` 绿。
 
-### 第二批（约 1 小时）—— 便宜的保险
+### 第二批（约 1 小时）—— 便宜的保险（**2026-11-25 晚完成**）
 
-INV-04 / INV-06 / INV-08 三条 grep 规则逐条加，每条都自测会红。需要处理骨架文件的白名单，
-避免一上来就误报。
+INV-04 / INV-06 / INV-08 三条 grep 规则逐条加，每条都自测会红。白名单都写进了脚本注释：
+`Glass.kt`（玻璃入口自己）、`ActionSheet.kt`（弹层宿主的滚动）、`Theme.kt` + `GalleryScreen.kt`（色值）。
+
+判据落地时踩到的三处坑（都记在脚本里，改判据前先看）：
+
+1. **INV-04 的 `record(` 不能数总逗号** —— `record(size = IntSize(w, h))` 里那两个逗号在嵌套括号里，
+   一数就把合法用法判成四参数（第一次写完当场误报 `Glass.kt:122`）。要数**顶层**逗号。
+2. **INV-04 的 `Modifier.blur` 只能判"除 `Glass.kt` 外"** —— 自研玻璃内部合法地用了 `.blur(...)`
+   （糊的是录好的图层，不是 backdrop），一刀切会把唯一入口自己判红。
+3. **INV-06 / INV-08 都只在"页面"上成立** —— 三个一级页合法地用 `statusBarTop()`、演示页要色带，
+   所以白名单必须按文件名写清理由，别用"模糊匹配目录"这种写法。
+
+**顺手修掉的真问题**（不是判据误报）：`ProfileEditScreen`、`GalleryScreen` 两页的可滚动面漏了
+`rubberOverscroll`；`查看请求` 弹层正文那段也没挂。三处都补上了 —— 这是本轮唯一会改变手感的改动。
 
 ### 第三批（约半小时）—— 闭环
 

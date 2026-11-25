@@ -5,9 +5,8 @@
 # 而本机编不了 :app、也没有模拟器 —— 只能靠**结构级/文本级**的检查兜底。
 # 判据不成立的条目**不许**写进表里（见 docs/ui-invariants.md 的验收规则）。
 #
-# 已完成：INV-01 / INV-02 / INV-03 / INV-05 / INV-07
-# 待做（在 docs/ui-invariants.md 里标着「未做」）：INV-04（玻璃三铁律的文本近似）、
-#   INV-06（可滚面都挂橡皮筋）、INV-08（页面里不许写字面色值）
+# 已完成：INV-01 / INV-02 / INV-03 / INV-04 / INV-05 / INV-06 / INV-07 / INV-08
+# 待做：无（INV-09 / INV-10 分别由 tools/test-core.sh 与 tools/check-ui-map.sh 管）
 #
 # 本机可跑：bash tools/check-ui-invariants.sh
 # 自测（判据会不会红）：把被测目录指到一份改坏的副本，例如
@@ -77,6 +76,49 @@ for p in sorted(APP.glob('*.kt')):
             f'（不许吃默认值：默认值会让页面在判据里变盲区）'
         )
 
+# ---- INV-04：玻璃三铁律（文本近似） ----
+# ① 只有 Glass.kt 能碰模糊/折射；② 录图层只许 DrawScope.record(size) 扩展（四参数成员版会把内容
+# 照旧画到主画布，图层是空的）；③ renderEffect 挂节点上，不许在 draw 时"设了再清"。
+GLASS_FILE = 'Glass.kt'
+for p in sorted(APP.glob('*.kt')):
+    full = read_code(p)
+    if p.name != GLASS_FILE:
+        if '.blur(' in full:
+            problems.append(
+                f'INV-04: {p.name}:{line_of(full, ".blur(")} 直接用了 Modifier.blur'
+                f'（玻璃只能走 GlassSurface，入口在 Glass.kt）'
+            )
+        if re.search(r'\bhaze\w*', full, re.I):
+            problems.append(f'INV-04: {p.name} 出现 haze（Haze 已弃用，见 ADR 0005）')
+    if 'renderEffect = null' in full:
+        problems.append(
+            f'INV-04: {p.name}:{line_of(full, "renderEffect = null")} 在绘制时清 renderEffect'
+            f'（等于没设；要挂到 graphicsLayer 节点上）'
+        )
+    for m in re.finditer(r'\.record\(', full):
+        i, depth, start = m.end(), 1, m.end()
+        while i < len(full) and depth:
+            if full[i] == '(':
+                depth += 1
+            elif full[i] == ')':
+                depth -= 1
+            i += 1
+        args = full[start:i - 1]
+        # 只数**顶层**逗号：record(size = IntSize(w, h)) 里那两个逗号在嵌套括号里，不算多参数
+        depth, commas = 0, 0
+        for ch in args:
+            if ch in '([{':
+                depth += 1
+            elif ch in ')]}':
+                depth -= 1
+            elif ch == ',' and depth == 0:
+                commas += 1
+        if 'density' in args or 'layoutDirection' in args or commas >= 2:
+            problems.append(
+                f'INV-04: {p.name}:{line_of(full, m.group())} 用了四参数的 GraphicsLayer.record'
+                f'（内容会照旧画到主画布、图层是空的；要用 layer.record(size) 那个扩展）'
+            )
+
 # ---- INV-02：聊天页气泡底板不是 Material3 Surface ----
 # Surface 的 clip(shape) 会让超高气泡的子树在约 8k px 之后收不到触摸（选字完全无反应、画面正常）。
 chat = APP / 'ChatScreen.kt'
@@ -113,6 +155,38 @@ for p in APP.glob('*.kt'):
     if 'GlassSheetScaffold(' in p.read_text(encoding='utf-8') and p.name not in allowed:
         problems.append(f'INV-05: {p.name} 直接画了 GlassSheetScaffold（页面只该 sheet.show(...)）')
 
+# ---- INV-06：每个可滚动面都要挂橡皮筋 ----
+# 顺序（rubberOverscroll 要排在 verticalScroll/LazyColumn 之前）没法可靠地用文本判，这里只判"有没有"。
+SCROLL_WHITELIST = {
+    # 弹层宿主：内容滚动和"拖把手收回"共用一个纵向手势，要挂先真机验（别顺手加）
+    'ActionSheet.kt',
+}
+for p in sorted(APP.glob('*.kt')):
+    if p.name in SCROLL_WHITELIST:
+        continue
+    full = read_code(p)
+    scrolls = full.count('verticalScroll(') + full.count('LazyColumn(')
+    if scrolls and 'rubberOverscroll' not in full:
+        problems.append(
+            f'INV-06: {p.name} 有 {scrolls} 处可滚动面但没挂 rubberOverscroll（拉到头没有回弹）'
+        )
+
+# ---- INV-08：颜色只从 Theme.kt / Style.kt 取 ----
+COLOR_WHITELIST = {
+    'Theme.kt',          # 调色板本身
+    'GalleryScreen.kt',  # 组件预览页的"色带底图"，是演示内容不是主题色
+}
+for p in sorted(APP.glob('*.kt')):
+    if p.name in COLOR_WHITELIST:
+        continue
+    full = read_code(p)
+    m = re.search(r'Color\(0x|0xFF[0-9A-Fa-f]{6}', full)
+    if m:
+        problems.append(
+            f'INV-08: {p.name}:{line_of(full, m.group())} 写了字面色值'
+            f'（只从 Theme.kt / Style.kt 取；深色模式会发灰）'
+        )
+
 # ---- INV-07：底部让位取并集，不许相加 ----
 for p in APP.glob('*.kt'):
     text = p.read_text(encoding='utf-8')
@@ -129,5 +203,5 @@ if problems:
     sys.exit(1)
 
 print('OK: 已实现的不变量都成立（INV-01 页头入口 / INV-02 消息底板 / INV-03 选字不拖列表 / '
-      'INV-05 弹层 / INV-07 让位并集）')
+      'INV-04 玻璃三铁律 / INV-05 弹层 / INV-06 橡皮筋 / INV-07 让位并集 / INV-08 颜色来源）')
 PY

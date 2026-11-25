@@ -1301,6 +1301,8 @@ private fun StreamingCursor() {
 private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val text = state.requestPreview.ifEmpty { "（还没发过请求）" }
+    // 每个可滚动面都要挂橡皮筋（INV-06）：请求正文这一段也一样
+    val overscroll = rememberRubberOverscroll()
 
     Dialog(
         onDismissRequest = onClose,
@@ -1333,6 +1335,7 @@ private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .rubberOverscroll(overscroll)
                         .verticalScroll(rememberScrollState())
                         .padding(Space.l),
                 ) {
