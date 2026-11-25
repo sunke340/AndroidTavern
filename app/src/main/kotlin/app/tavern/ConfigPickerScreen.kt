@@ -33,13 +33,18 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = if (target.scope == ConfigScope.Session) "本会话" else "这张卡",
         onBack = viewModel::closeConfigPicker,
         glass = glass,
+        contentTopInset = 0.dp,
+
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                // 让位拆两半：底部留在外面，顶部挪进滚动层 —— 内容才能从页头底下穿过去，
+                // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
+                .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(rememberRubberOverscroll())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.l),
         ) {

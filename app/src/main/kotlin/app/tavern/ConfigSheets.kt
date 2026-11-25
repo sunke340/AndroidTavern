@@ -82,12 +82,7 @@ internal fun ModelPickerRows(
             val profile = state.profiles[index - 1]
             ListRow(
                 title = profile.name,
-                subtitle = buildString {
-                    append(profile.model)
-                    profile.reasoningEffort?.takeIf { it.isNotBlank() }?.let {
-                        append(" · 思考 ").append(it)
-                    }
-                },
+                subtitle = profile.model,
                 leading = { ActiveMark(!following && profile.id == effectiveId) },
                 onClick = {
                     when (scope) {
@@ -106,10 +101,15 @@ internal fun ModelPickerRows(
  * 为什么还留抽屉：这是"边说边换"的快速入口，按一下就到；真要逐项配置去「会话配置」页。
  * 条目点完**不收抽屉**（用户 2026-11-25 第 3 条），勾选圈原地挪过去，方便连着比较。
  */
-internal fun showModelSheet(sheet: SheetController, viewModel: ChatViewModel) {
+internal fun showModelSheet(
+    sheet: SheetController,
+    viewModel: ChatViewModel,
+    onDismiss: (() -> Unit)? = null,
+) {
     sheet.show(
         title = "模型",
         actions = emptyList(),
+        onDismiss = onDismiss,
         extra = {
             // 抽屉的 spec 是打开那一刻的快照：这里自己订阅读最新状态，勾选与滑块才跟手
             val live by viewModel.state.collectAsStateWithLifecycle()
@@ -118,6 +118,8 @@ internal fun showModelSheet(sheet: SheetController, viewModel: ChatViewModel) {
                     current = live.sessionOverride.reasoningEffort,
                     effective = live.effectiveReasoningEffort,
                     onSelect = viewModel::useSessionReasoning,
+                    // 抽屉贴着屏幕底部，键盘会盖掉一半：自定义值去「会话配置 → 模型」里改
+                    showCustomField = false,
                 )
                 Spacer(Modifier.height(Space.m))
                 ModelPickerRows(state = live, viewModel = viewModel, scope = ConfigScope.Session)

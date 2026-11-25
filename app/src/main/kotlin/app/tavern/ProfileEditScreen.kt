@@ -48,6 +48,8 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         title = if (draft.isNew) "新建档案" else "编辑档案",
         onBack = viewModel::closeProfileEditor,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        contentTopInset = 0.dp,
+
         confirmController = confirm,
         actions = {
             CapsuleIcon(
@@ -61,8 +63,11 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                // 让位拆两半：底部留在外面，顶部挪进滚动层 —— 内容才能从页头底下穿过去，
+                // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
+                .padding(bottom = padding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
                 .padding(horizontal = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
@@ -97,36 +102,6 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            SectionLabel("思考强度")
-            SegmentedRow(
-                options = EFFORT_OPTIONS,
-                selected = draft.effortPreset,
-                label = { option -> effortLabel(option) },
-                onSelect = { option ->
-                    viewModel.editProfileDraft { current ->
-                        if (option == null) {
-                            current.copy(
-                                effortPreset = null,
-                                effortCustom = current.effortCustom.ifBlank { "max" },
-                            )
-                        } else {
-                            current.copy(effortPreset = option)
-                        }
-                    }
-                },
-            )
-            if (draft.effortPreset == null) {
-                OutlinedTextField(
-                    value = draft.effortCustom,
-                    onValueChange = { value ->
-                        viewModel.editProfileDraft { it.copy(effortCustom = value) }
-                    },
-                    label = { Text("自定义值（例如 DeepSeek 的 max）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
 
             SectionLabel("自定义请求头")
             OutlinedTextField(
@@ -176,13 +151,4 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 }
 
-/** 思考强度选项：null = 自定义（下面会出现输入框）。 */
-private val EFFORT_OPTIONS: List<String?> = listOf("", "low", "medium", "high", null)
 
-private fun effortLabel(option: String?): String = when (option) {
-    null -> "自定义"
-    "" -> "不设"
-    "low" -> "低"
-    "medium" -> "中"
-    else -> "高"
-}

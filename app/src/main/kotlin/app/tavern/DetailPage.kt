@@ -59,6 +59,15 @@ val DetailHeaderHeight: Dp = 56.dp
 /** 页头圆形返回钮的直径。 */
 val DetailBackSize: Dp = 40.dp
 
+/**
+ * 内容要**从页头底下穿过去**时，滚动内容首部要补的留白。
+ *
+ * 半透明页头的观感来自"内容在它下面滚"：页面传 `contentTopInset = 0.dp`，骨架给的
+ * `padding.calculateTopPadding()` 就只剩状态栏，页头那 64dp 由页面自己补在滚动内容里面
+ * （补在外面的话内容会被页头盖住，而且永远露不出来）。
+ */
+val DetailScrollUnderTop: Dp = DetailHeaderHeight + Space.l
+
 /** 页头玻璃胶囊的高度（比一级页的 44dp 矮一档）。 */
 val DetailActionHeight: Dp = 40.dp
 

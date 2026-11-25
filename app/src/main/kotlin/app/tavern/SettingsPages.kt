@@ -74,6 +74,8 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         title = page.title,
         onBack = viewModel::closeSettingsPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        contentTopInset = 0.dp,
+
         actions = when (page) {
             SettingsPage.Model -> {
                 { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建档案") { viewModel.openProfileEditor(null) } }
@@ -98,9 +100,12 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                // 让位拆两半：底部留在外面，顶部挪进滚动层 —— 内容才能从页头底下穿过去，
+                // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
+                .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(overscroll)
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
                 .padding(horizontal = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
@@ -149,12 +154,7 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         val profile = state.profiles[index]
         ListRow(
             title = profile.name,
-            subtitle = buildString {
-                append(profile.model)
-                profile.reasoningEffort?.takeIf { it.isNotBlank() }?.let {
-                    append(" · 思考 ").append(it)
-                }
-            },
+            subtitle = profile.model,
             leading = { ActiveMark(profile.isDefault) },
             onClick = { viewModel.setDefaultProfile(profile.id) },
             onLongClick = {

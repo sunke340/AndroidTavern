@@ -15,11 +15,6 @@ public data class ModelProfile(
     public val name: String,
     public val baseUrl: String,
     public val model: String,
-    /**
-     * 思考强度（OpenAI 兼容的 `reasoning_effort`：`minimal` / `low` / `medium` / `high`）。
-     * null = 不往请求里放这个字段（大多数 provider 默认就用不着）。
-     */
-    public val reasoningEffort: String? = null,
     /** 额外请求头（中转站常用的 `X-Title`、`HTTP-Referer` 之类）。 */
     public val headers: Map<String, String> = emptyMap(),
     public val isDefault: Boolean = false,

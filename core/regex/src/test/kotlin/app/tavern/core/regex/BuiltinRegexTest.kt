@@ -28,9 +28,22 @@ class BuiltinRegexTest {
     }
 
     @Test
+    fun `空白标签也清掉（单行的裸斜杠）`() {
+        // 模型常把 `</>` 当分隔符写在段落之间：它没有标签名，原来那条"必须有标签名"的规则匹配不到
+        // （用户 2026-11-25 第 4 条）。
+        assertEquals("你好", display("你好</>"))
+        assertEquals("AB", display("A</>B"))
+        assertEquals("AB", display("A<>B"))
+        // 只清标签本身，不动换行（标签独占一行时那行会空出来，交给显示层渲染）
+        assertEquals("第一段\n\n第二段", display("第一段\n</>\n第二段"))
+    }
+
+    @Test
     fun `白名单之外的标签不动`() {
         assertEquals("<foo>bar</foo>", display("<foo>bar</foo>"))
         assertEquals("<div>x</div>", display("<div>x</div>"))
+        // 只是少了标签名的那两种要清；带名字的仍按白名单判断
+        assertEquals("<span></span>", display("<span></span>"))
     }
 
     @Test

@@ -31,9 +31,9 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
     val cardId = state.detailCardId ?: return
     val detail = state.detail
 
-    // 世界书这页和全局世界书条目页**同一套**：页头半透明、列表从它底下滑过。
-    // 另外两页（对话样式 / 关于这张卡）内容短，保持"内容在页头下面开始"。
-    val scrollUnderHeader = page == CardConfigPage.WorldBook
+    // 三页都和全局世界书条目页同一套：页头半透明、内容从它底下滑过（用户 2026-11-25 第 7 条：
+    // 二级页的页头不该是一条纯色）。
+    val scrollUnderHeader = true
 
     GlassDetailScaffold(
         title = page.title,
@@ -66,9 +66,10 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(bottom = padding.calculateBottomPadding())
                     .rubberOverscroll(overscroll)
                     .verticalScroll(rememberScrollState())
+                    .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
                     .padding(horizontal = Space.l),
                 verticalArrangement = Arrangement.spacedBy(Space.m),
             ) {

@@ -186,8 +186,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
-    // 选字诊断（2026-11-25 临时）：按下点到底落在列表 / 气泡正文的哪个矩形上，见 SelectionProbe.kt
-    val listProbe = remember { ProbeBounds() }
 
     // 撤回会把列表削短：视口可能停在中段、下面留一片空白。这里收到一次性信号就贴底。
     // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
@@ -448,17 +446,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         0f
                     }
                 }
-                .rubberOverscroll(overscroll)
-                .trackProbe(listProbe)
-                .selectionProbe(
-                    tag = "列表",
-                    ref = listProbe,
-                    extra = {
-                        "atBottom=$atBottom 下标=${listState.firstVisibleItemIndex} " +
-                            "偏移=${listState.firstVisibleItemScrollOffset} " +
-                            "轴移=${streamHeight - smoothHeight.value} 输入区高=$inputBarHeightPx"
-                    },
-                ),
+                .rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
                 // 8 → 16：磨砂页头下面再多留一点，首条消息不贴着头（用户 2026-11-24）
@@ -486,7 +474,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             style = state.effectiveMessageStyle,
                             showCursor = true,
                             displayText = displayText,
-                            probeTag = "气泡[串流]",
                             // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
                             // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
                             modifier = Modifier
@@ -522,15 +509,20 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             fadeOutSpec = tween(Motion.Fast),
                         )
                     val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
+                    // 「这条是不是开场白」和「能不能翻页」是两件事（用户 2026-11-25：
+                    // 单开场白的会话里开场白气泡底下还挂着动作行，多开场白时才没有 —— 前后不一致）。
+                    // 判据只看"这条是不是那张卡的开场白"：会话第一条 + 还没人说过话 + 内容对得上。
+                    val isGreetingMessage = index == state.transcript.lastIndex &&
+                        shownGreeting >= 0 &&
+                        state.transcript.none { it.role == ChatRole.User }
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
-                    val showSwipeBar = !isGreetingSlot && isLast && isAssistant &&
+                    val showSwipeBar = !isGreetingMessage && isLast && isAssistant &&
                         state.lastSwipes.size > 1
                     Column(modifier = itemAnim.fillMaxWidth()) {
                         MessageRow(
                             message = message,
                             style = state.effectiveMessageStyle,
                             displayText = displayText,
-                            probeTag = "气泡[i=$index ${if (isAssistant) "助手" else "用户"}]",
                         )
                         if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
@@ -556,8 +548,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 modifier = Modifier.align(Alignment.End),
                             )
                         }
-                        // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）
-                        if (!isGreetingSlot) {
+                        // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）；
+                        // 判据用 isGreetingMessage，和"有几条开场白"无关。
+                        if (!isGreetingMessage) {
                             MessageActionRow(
                                 isUser = !isAssistant,
                                 canRegenerate = isAssistant && isLast,
@@ -645,24 +638,25 @@ private fun ChatInputBar(
     var lastLoggedHeight by remember { mutableIntStateOf(0) }
     // 生效档案：会话指定 → 卡指定 → 全局默认（三级继承的解析在 UiState 里）
     val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
-    // 选字诊断（临时）：如果按下点落在输入区这块矩形里，日志会明说是"输入区"而不是气泡
-    val barProbe = remember { ProbeBounds() }
 
     val openModelSheet = {
         // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘
         focusManager.clearFocus()
-        showModelSheet(sheet, viewModel)
+        showModelSheet(
+            sheet = sheet,
+            viewModel = viewModel,
+            onDismiss = {
+                // 收回后把输入栏叫回来：恢复成弹出态并呼出键盘（用户 2026-11-25 第 3 条）。
+                // 先 requestFocus 再 show()：焦点到位后键盘才会真的弹出来。
+                focusRequester.requestFocus()
+                keyboard?.show()
+            },
+        )
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .trackProbe(barProbe)
-            .selectionProbe(
-                tag = "输入区",
-                ref = barProbe,
-                extra = { "展开=$expanded 键盘=$imeVisible" },
-            )
             .padding(horizontal = Space.m, vertical = Space.s)
             // 列表底部让位跟着**实测高度**走：聚焦翻倍后若还用常量 80dp，最后一条会被盖住。
             // 高度也记一行：真机上"最后一条被盖住/列表跳"这类问题，第一件事就是看这个数
@@ -850,7 +844,13 @@ private fun SendStopButton(
             // 高光最多叠到 250 左右，还是压不过底色，两次都"看不出来"（2026-11-23 用户连报）。
             // 32% 时内部 ≈ (202,192,229)，亮带 (234,229,244) 高出 30 级，才真的读成"边缘受光"。
             // 停止态仍是原来的浅色面。
-            fillColor = if (isStreaming) null else MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+            // 停止用**淡红**（用户 2026-11-25 第 6 条）：红色在这里不是"危险"，是"正在跑、可以打断"。
+            // 浓度和发送态的主色 20% 对齐，两颗钮才不会一颗重一颗轻。
+            fillColor = if (isStreaming) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.20f)
+            } else {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+            },
             // 高光环走**纯白**（默认值）。用户指出得对：这颗钮外面包着一圈投影，
             // 边缘的"环境色"是被压暗的灰蓝(≈240)，不是页面底色(250) —— 纯白细线在那里就是亮的。
             // 之前"白高光压不过底色"的判断错在拿页面底色当了背景。
@@ -871,7 +871,7 @@ private fun SendStopButton(
                         modifier = Modifier
                             .size(12.dp)
                             .background(
-                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                MaterialTheme.colorScheme.error,
                                 RoundedCornerShape(2.dp),
                             ),
                     )
@@ -913,6 +913,9 @@ private fun ModelButton(
         shadowScale = 0.5f,
         interactionSource = press,
         liquid = LiquidGlassSpec.Default,
+        // 和发送钮同一套配色、低一档浓度（用户 2026-11-25 第 5 条：原来是透明的，太弱）：
+        // 发送 20% 主色 = 主操作；模型 12% 主色 = 次操作。两颗钮并排时才读成一组。
+        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
     ) {
         Box(
             modifier = Modifier
@@ -923,7 +926,8 @@ private fun ModelButton(
             Text(
                 text = badge,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+                // 满色：底色已经是淡紫，字再压到 72% 就只剩一层灰
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
@@ -975,11 +979,9 @@ private fun MessageRow(
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
     displayText: (String) -> String = { it },
-    /** 选字诊断用：日志里认得出是哪一条（见 SelectionProbe.kt）。 */
-    probeTag: String = "",
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, probeTag)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
         MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
     }
 }
@@ -1179,15 +1181,11 @@ private fun MessagePanel(
     contentColor: Color,
     shape: Shape,
     border: BorderStroke?,
-    probe: ProbeBounds,
-    probeTag: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier = modifier
-            .trackProbe(probe)
-            .selectionProbe(tag = probeTag, ref = probe)
             .background(backgroundColor, shape)
             .then(if (border == null) Modifier else Modifier.border(border, shape)),
     ) {
@@ -1203,30 +1201,10 @@ private fun BubbleRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
-    probeTag: String = "",
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
-    // 选字诊断（临时）：气泡矩形 + 正文（Text）矩形分别记下来，按下时一起打一行日志。
-    // 正文的矩形比气泡小一圈（气泡有 12dp/10dp 内边距），"按到气泡但没按到正文"就是选不中的死法之一。
-    val bubbleProbe = remember { ProbeBounds() }
-    val textProbe = remember { ProbeBounds() }
-    val selProbe = remember { ProbeBounds() }
-    val panelProbe = remember { ProbeBounds() }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .trackProbe(bubbleProbe)
-            .selectionProbe(
-                tag = probeTag.ifEmpty { "气泡" },
-                ref = bubbleProbe,
-                extra = {
-                    val r = textProbe.inWindow
-                    "正文窗口=(${r.left.toInt()},${r.top.toInt()})-(${r.right.toInt()},${r.bottom.toInt()})"
-                },
-            ),
-    ) {
+    Row(modifier = modifier.fillMaxWidth()) {
         if (isUser) Spacer(Modifier.weight(0.14f))
         Box(
             modifier = Modifier
@@ -1243,22 +1221,13 @@ private fun BubbleRow(
                     bottomEnd = if (isUser) 5.dp else Radius.bubble,
                 ),
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
-                probe = panelProbe,
-                probeTag = "气泡面板",
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
                     // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
-                    SelectionContainer(
-                        modifier = Modifier
-                            .trackProbe(selProbe)
-                            .selectionProbe(tag = "选区容器", ref = selProbe),
-                    ) {
+                    SelectionContainer {
                         Text(
                             markupText(displayText(message.content)),
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier
-                                .trackProbe(textProbe)
-                                .selectionProbe(tag = "正文", ref = textProbe),
                         )
                     }
                     if (showCursor) StreamingCursor()
@@ -1277,14 +1246,11 @@ private fun CardRow(
     displayText: (String) -> String,
 ) {
     val palette = LocalTavernPalette.current
-    val panelProbe = remember { ProbeBounds() }
     MessagePanel(
         backgroundColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(Radius.card),
         border = BorderStroke(1.dp, palette.cardBorder),
-        probe = panelProbe,
-        probeTag = "卡片面板",
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(Space.m)) {

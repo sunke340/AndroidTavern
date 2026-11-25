@@ -35,11 +35,14 @@ public object BuiltinRegex {
         BuiltinRegexFeature(
             id = CLEAN_TAGS,
             title = "清理包裹标签",
-            description = "去掉正文里单独出现的 </content>、<output> 等包裹标签",
+            description = "去掉正文里单独出现的 </content>、<output>、</> 等包裹标签",
             rules = listOf(
+                // 标签名那一组是**可选**的：`</>`、`<>` 这种"空标签"（模型常把它当分隔符写）
+                // 也要清掉，而 `<foo>` 之类不在白名单里的仍然原样保留（用户 2026-11-25：
+                // 只清白名单，但单行的 `</>` 之前漏了 —— 它原来匹配不到，因为要求有标签名）。
                 RegexScript(
                     name = "内置 · 清理包裹标签",
-                    findRegex = "/<\\/?(?:content|output|response|message|text|answer)>/gi",
+                    findRegex = "/<\\/?(?:content|output|response|message|text|answer)?>/gi",
                     replaceString = "",
                     placement = setOf(RegexPlacement.AiOutput),
                 ),

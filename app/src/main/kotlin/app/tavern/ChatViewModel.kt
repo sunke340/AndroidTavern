@@ -130,15 +130,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val baseUrl: String = ModelProfiles.FALLBACK_BASE_URL,
         val model: String = ModelProfiles.FALLBACK_MODEL,
         val apiKey: String = "",
-        /**
-         * 思考强度预设：`""` = 不设，`low` / `medium` / `high`；**null = 自定义**（用 [effortCustom]）。
-         *
-         * 拆成两段是因为各家的值不统一（DeepSeek 认 `max`），用一个下拉框穷举不完，
-         * 又不想让"自定义"变成一个用户看不懂的自由文本框。
-         */
-        val effortPreset: String? = "",
-        /** 「自定义」时真正发给 provider 的字符串。 */
-        val effortCustom: String = "",
         /** 「一行一条 Name: value」的原始文本。 */
         val headersText: String = "",
         val isDefault: Boolean = false,
@@ -1511,10 +1502,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         baseUrl = existing?.baseUrl ?: ModelProfiles.FALLBACK_BASE_URL,
                         model = existing?.model ?: ModelProfiles.FALLBACK_MODEL,
                         apiKey = key,
-                        effortPreset = presetOf(existing?.reasoningEffort),
-                        effortCustom = existing?.reasoningEffort
-                            ?.takeIf { it.isNotBlank() && it !in ModelProfiles.EFFORTS }
-                            .orEmpty(),
                         headersText = existing?.headers
                             ?.let { headers -> ModelProfiles.formatHeaders(headers) }
                             .orEmpty(),
@@ -1529,11 +1516,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun closeProfileEditor() = _state.update { it.copy(profileDraft = null) }
 
     /** 库里存的原始值 → 界面上的预设；认不出来的（`max` 等）落到「自定义」。 */
-    private fun presetOf(effort: String?): String? = when {
-        effort.isNullOrBlank() -> ""
-        effort in ModelProfiles.EFFORTS -> effort
-        else -> null
-    }
 
     /** 改草稿里的某个字段（界面上每个输入框都调这一条，不再各开一个 setter）。 */
     fun editProfileDraft(transform: (ProfileDraft) -> ProfileDraft) = _state.update { current ->
@@ -1554,9 +1536,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 name = draft.name.trim(),
                 baseUrl = draft.baseUrl.trim(),
                 model = draft.model.trim(),
-                reasoningEffort = (if (draft.effortPreset == null) draft.effortCustom else draft.effortPreset)
-                    .trim()
-                    .takeIf { it.isNotBlank() },
                 headers = ModelProfiles.parseHeaders(draft.headersText),
                 isDefault = draft.isDefault || _state.value.profiles.isEmpty(),
             )
@@ -1573,7 +1552,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             AppLog.i(
                 "profile",
                 "保存 id=$id name=${profile.name} 默认=${profile.isDefault} " +
-                    "头=${profile.headers.size} 思考=${profile.reasoningEffort ?: "无"}",
+                    "头=${profile.headers.size}",
             )
             refreshProfiles()
             _state.update { it.copy(profileDraft = null) }
@@ -2377,10 +2356,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             frequencyPenalty = snapshot.presetSampling?.frequencyPenalty,
             presencePenalty = snapshot.presetSampling?.presencePenalty,
             stream = true,
-            // 思考强度：会话级覆盖优先（"off" = 明确关掉，不发这个字段），否则跟随档案
+            // 思考强度只有两级：会话 → 卡。都为 null 就不发这个字段；
+            // `"off"` = 明确不发（档案级不再参与，用户 2026-11-25 第 2 条）。
             extraBody = when (val effort = snapshot.effectiveReasoningEffort) {
-                null -> activeProfile?.reasoningEffort
-                "off" -> null
+                null, "off" -> null
                 else -> effort
             }
                 ?.takeIf { it.isNotBlank() }

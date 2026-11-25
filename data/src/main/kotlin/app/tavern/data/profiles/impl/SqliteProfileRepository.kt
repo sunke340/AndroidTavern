@@ -27,7 +27,7 @@ class SqliteProfileRepository(
     private val table = TavernDatabase.TABLE_PROFILES
 
     override fun list(): List<ModelProfile> {
-        val sql = "SELECT id, name, base_url, model, reasoning_effort, headers, is_default " +
+        val sql = "SELECT id, name, base_url, model, headers, is_default " +
             "FROM $table ORDER BY rowid"
         return helper.readableDatabase.rawQuery(sql, null).use { cursor ->
             buildList {
@@ -38,9 +38,8 @@ class SqliteProfileRepository(
                             name = cursor.getString(1),
                             baseUrl = cursor.getString(2),
                             model = cursor.getString(3),
-                            reasoningEffort = cursor.getString(4)?.takeIf { it.isNotBlank() },
-                            headers = ModelProfiles.parseHeaders(cursor.getString(5).orEmpty()),
-                            isDefault = cursor.getInt(6) != 0,
+                            headers = ModelProfiles.parseHeaders(cursor.getString(4).orEmpty()),
+                            isDefault = cursor.getInt(5) != 0,
                         ),
                     )
                 }
@@ -56,7 +55,6 @@ class SqliteProfileRepository(
             put("name", profile.name)
             put("base_url", profile.baseUrl)
             put("model", profile.model)
-            put("reasoning_effort", profile.reasoningEffort)
             put("headers", ModelProfiles.formatHeaders(profile.headers))
             put("is_default", if (profile.isDefault) 1 else 0)
         }

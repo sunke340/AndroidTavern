@@ -86,6 +86,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         onBack = viewModel::closeCardEditor,
         glass = glass,
         confirmController = confirm,
+        contentTopInset = 0.dp,
         actions = {
             // 右上角用 ✓ 而不是"保存"两个字（用户 2026-11-25 第 19 条）
             CapsuleIcon(
@@ -98,9 +99,11 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                // 让位拆两半：底部留在外面，顶部挪进滚动层（内容从页头底下穿过去）
+                .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(rememberRubberOverscroll())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {

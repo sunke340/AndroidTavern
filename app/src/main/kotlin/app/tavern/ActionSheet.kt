@@ -74,6 +74,14 @@ class SheetSpec(
     val title: String,
     val actions: List<SheetAction>,
     val extra: (@Composable () -> Unit)? = null,
+    /**
+     * 收起来之后要做什么（可选）。
+     *
+     * 聊天页的快速换模型抽屉用它把输入栏叫回来（用户 2026-11-25 第 3 条：
+     * 抽屉收回后应恢复成弹出状态并呼出键盘）。点动作也会走 `dismiss()`，所以只有
+     * 真正需要"收起来之后"的调用方传它。
+     */
+    val onDismiss: (() -> Unit)? = null,
 )
 
 /**
@@ -100,15 +108,19 @@ class SheetController {
         title: String,
         actions: List<SheetAction>,
         extra: (@Composable () -> Unit)? = null,
+        onDismiss: (() -> Unit)? = null,
     ) {
         if (!attached) {
             AppLog.w("ui", "抽屉请求没有宿主：$title（页面要传 sheetController 或读骨架内的 Local）")
         }
-        spec = SheetSpec(title, actions, extra)
+        spec = SheetSpec(title, actions, extra, onDismiss)
     }
 
     fun dismiss() {
+        val hook = spec?.onDismiss
         spec = null
+        // 先清状态再回调：收尾里可能会重新请求焦点/弹键盘，别让它看到"抽屉还开着"
+        hook?.invoke()
     }
 }
 

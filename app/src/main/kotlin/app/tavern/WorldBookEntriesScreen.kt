@@ -34,6 +34,8 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         subtitle = book?.let { "${it.entries.size} 条" },
         onBack = viewModel::closeWorldBook,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        // 列表从页头底下穿过去：它的 contentPadding 顶部已经按 `padding` 算过，这里只要让开
+        contentTopInset = 0.dp,
         actions = {
             if (book != null) {
                 WorldBookBulkMenu { mode -> viewModel.setAllWorldBookEntries(book.name, mode) }
