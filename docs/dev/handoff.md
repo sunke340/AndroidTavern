@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 03:35）
+# 接手卡（2026-11-25 09:10）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,28 +8,26 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `25112b2`（tag `apk-m165`）/ 交付包 `artifacts/app-v134-25112b2.apk`；
-  这一夜的包 v118–v134 都在 `artifacts/`（每个都验过签名与 dex `BUILD_ID`）。
-- **没有悬着的事**：用户 2026-11-25 列出的 10 条需求 + P0-6 消息操作 + 后半夜的
-  `@@` 装饰器 / 搜索与标签 / 聊天导入导出 / 卡编辑 / system_prompt 顶替，**全部落码并出包**。
-  **但全部还没有真机验收** —— 上一轮（串流跟随/转场/橡皮筋）才是验过的。
-  21 条待验清单在 [device-verification.md](device-verification.md) 的 M3 一节。
-- **下一件事**：按 [status.md](status.md)「待真机验」那张表从上到下点一遍；再往后是世界书剩余、
-  卡编辑（写回 PNG）。P0-6 的余项：`继续` 的裸拼在真实模型上是否粘字（夹具里是 `ok ok`）。
+- **基线**：代码见 `git log -1`（M4 第一包）；`artifacts/` 里的 v118–v136 是 2026-11-25 两夜的产物，
+  每个都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**是 `app-v117-0631bff.apk`。
+- **没有悬着的事**：10 条 UI 需求 + P0-6 + 后半夜第二批（装饰器/搜索/导入导出/卡编辑/system_prompt）
+  + **M3 回执的 21 条修复**（2026-11-25 早上）都已落码出包，等真机复核。
+- **下一件事**：按 [device-verification.md](device-verification.md) 的 **M4** 表逐条点（M3 旧清单
+  有一半已过时：抽屉阈值、长按入口、卡头版式都改了）。再往后是世界书 outlet、卡库分组。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**。
 
 ## 一、这一夜做了什么（10 条需求 + P0-6）
 
 | 需求 | 实现要点 | 关键决策 / 依据 |
 |---|---|---|
-| 1 抽屉把手拖拽 | 把手区整宽 28dp 可拖，跟手用 `translationY`；松手按"位移 > 弹层高 1/4 或下甩 > 800dp/s"收回，否则临界阻尼弹回 | 不改高度（拖动中重排会换行）；共享组件，全 App 生效 |
+| 1 抽屉把手拖拽 | 把手区整宽 28dp 可拖，跟手用 `translationY`；松手按"位移 > 弹层高 **1/2** 或下甩 > 800dp/s"收回，否则临界阻尼弹回 | 不改高度（拖动中重排会换行）；共享组件，全 App 生效。1/4 → 1/2 是用户 2026-11-25 早上定的（之前太容易误关） |
 | 5–8 输入区 | 一个玻璃胶囊：收起=单行（发送在胶囊内右端），聚焦=向上加一行（左模型右发送），文字最多 5 行，发送后收起 | 底部让位从常量 80dp 改成**实测高度**，否则翻倍后最后一条被盖 |
-| 9 模型钮 | 左下 40dp 玻璃圆钮，显示当前档案首字；抽屉列档案 + 思考强度（跟随/关/低/中/高） | 写**会话级**覆盖，不动全局默认 |
+| 9 模型钮 | 左下 40dp 玻璃圆钮，显示当前档案首字；抽屉列档案，顶部是**思考强度滑块** | 写**会话级**覆盖，不动全局默认；滑块同款也在会话配置页与卡配置 tab（卡级可再盖一层） |
 | 2 三级配置 | `ConfigOverride`（null=跟随）+ `session:<id>` / `card:<id>` 存 SharedPreferences；会话配置页从聊天 ⋮ 进，卡配置在详情「配置」tab | 解析只在 `UiState.effective*` 这几个 getter；发送/世界书/正则/连接参数全读它们 |
-| 3 开场白 | 卡的全部开场白进 `UiState.greetings`；聊天页在"没说过话 + 不止一条"时于气泡**上沿**放 `‹ N/M ›`，选中=改写第一条消息；详情页 tab 用同款箭头翻页、非默认时出「设为默认」 | 用户要的形态（箭头贴气泡、不要页头按钮）；B 策略=只有空会话能换 |
-| 4 详情页 | 保留 TabRow，卡头改 200dp 大图 + 底部渐变压名字/元信息 | 用户明确"只重做卡头与信息" |
+| 3 开场白 | 卡的全部开场白进 `UiState.greetings`；聊天页在"没说过话 + 不止一条"时于气泡**下沿右侧**放 `‹ N/M ›`，选中=改写第一条消息；详情页 tab 同款箭头翻页，默认那条也占一个「当前默认」灰胶囊 | 用户要的形态（箭头贴气泡、不要页头按钮）；B 策略=只有空会话能换；下沿是因为反排锚点在底部 |
+| 4 详情页 | 保留 TabRow，卡头改**海报版式** 260dp：磨砂底（`CardFrost` 拉满）+ 完整竖图 `Fit` + 渐变压名字/元信息（`CardHero`） | 用户明确"只重做卡头与信息"；卡是竖图，横条 `Crop` 一定截（2026-11-25 真机报的） |
 | 10 玻璃确认框 | `AlertDialog`（独立窗口采不到内容层）→ 控制器 + 骨架宿主 + `LiquidGlassSpec.Sheet` | 8 处调用点签名不变，内部换实现 |
-| P0-6 | 长按气泡：复制/编辑/删除；最后一条助手消息还有重新生成、继续；swipe `‹ N/M ›` 翻页 | 重新生成=新增 swipe 备选；继续=末尾加原版那条 system 提示；备选存 `message_swipes`（DB v3） |
+| P0-6 | **气泡底下一排按钮**（长按改为选字）：助手=复制/编辑/[重新生成]/[继续]/删除，用户=撤回/复制/编辑/删除；swipe `‹ N/M ›` 翻页 | 重新生成=新增 swipe 备选；继续=末尾加原版那条 system 提示；撤回=`rewindToMessage`（删这条及之后、正文回输入框）；备选存 `message_swipes`（DB v3） |
 | 世界书 `@@` 装饰器 | `@@activate` 不看关键字、`@@dont_activate` 一律不激活；解析照抄原版（未知装饰器行也剥掉、`@@@` 转义跳过） | fixture:P1-3-decorators 逐字相等 |
 | sticky / cooldown 落库 | 计时状态按会话存（`LorebookScanStateCodec`） | 原版存在 `chat_metadata.timedWorldInfo` |
 | 卡库搜索 + 标签筛选 | 名字/简介/标签过滤；标签进卡列表缓存，不再解 PNG | P0-8 |
@@ -50,8 +48,9 @@
 ## 三、聊天输入区几何（用户定的，别再改）
 
 - 收起：单行，文字 + 发送（发送**在胶囊里**）。
-- 聚焦：高度翻倍 → 上行只放输入，下行左模型右发送（`AnimatedVisibility` 只淡入，不加高度动画：
-  玻璃着色器随节点尺寸重建，每帧重建代价高）。
+- 聚焦：高度翻倍 → 上行只放输入，下行左模型右发送；展开/收起用
+  `expandVertically`/`shrinkVertically` + 淡入（用户 2026-11-25 要"形变"，不再瞬变）。
+  玻璃着色器会随节点尺寸重建，所以只允许这种**一次性**过渡；拖拽/连续改尺寸仍然禁止。
 - 文字超过一行继续长高，最多 5 行；发送后清焦点收起。
 - 列表底部让位读**实测像素高度**（`onHeightChanged` → `contentPadding`），不是常量。
 
@@ -63,15 +62,16 @@
 | 继续 | 请求末尾追加 system `[Continue your last message without repeating its original content.]`，结果接在原消息后面 | `fixtures/expected/P0-6-continue.json`（落盘 `ok ok`） |
 | swipe | 只对最后一条助手消息（原版 `isMessageSwipeable`）；备选 = `message_swipes` 表 | 同上，原始 chat 在 `fixtures/chats/` |
 | 编辑 / 删除 | 编辑同步改当前 swipe 那一份；删除走玻璃确认框，备选级联删 | 手工 |
+| 撤回（新） | `rewindToMessage`：删掉这条用户消息及之后全部消息，正文放回输入框（rewind） | 手工 |
 
 - `send()` 与上面三件事共用 `beginCompletion(history, userText, replacing, continuation)`；
   `userText == null` = 不追加用户消息。**别再复制一份两百行的发送逻辑。**
 - 失败路径：`ReplaceTarget.append=false` 还原被撤下的那条；`append=true` 也是还原（继续不产生新行）。
 
-## 五、待真机验（21 条，见 [device-verification.md](device-verification.md) 的 M3）
+## 五、待真机验（M4，见 [device-verification.md](device-verification.md) 的 M4）
 
-一句话版：抽屉拖拽 → 输入区双行 → 模型抽屉 → 会话配置 → 卡配置 → 开场白切换 → 详情卡头 →
-玻璃确认框 → 消息动作单（含重新生成/继续/swipe）→ 卡库搜索与标签 → 导出/导入 → 卡编辑。
+一句话版：抽屉阈值 1/2 → 输入区形变 → 会话配置五行 + 滑块（这次必须点得开）→ 卡配置 →
+开场白在气泡右下 → 详情卡头竖图完整 → 消息按钮行 + 撤回 + 长按选字 → 卡编辑 ✓。
 
 
 1. **抽屉**：长按行 → 拖把手跟手、过半收回、否则弹回。
@@ -129,6 +129,8 @@
 | 开场白 | `GreetingSwitch.kt`（箭头与 `‹ N/M ›`）、`CharacterDetailScreen.kt`（`GreetingTab`）、`ChatScreen` 的 greeting item |
 | 抽屉把手拖拽 | `ActionSheet.kt`（`GlassSheetPlate`） |
 | 玻璃确认框 | `ConfirmDeleteDialog.kt`（控制器 + `GlassConfirmHost`）、两个骨架里各挂一次 |
+| 思考强度滑块 | `ThinkingEffort.kt`（`ThinkingEffortSlider`）、`ConfigSheets.kt`（抽屉顶部）、`SessionConfigScreen.kt`、卡配置 tab |
+| 卡头大图 | `CardAvatar.kt` 的 `CardHero`（磨砂底 + 竖图 Fit）、`CharacterDetailScreen.kt` 卡头 |
 | swipe 备选表 | `TavernDatabase.kt`（v3）、`SqliteChatRepository.kt`（`swipes` / `setSwipes`） |
 | 卡库搜索 / 标签 | `CharactersScreen.kt`（`CardSearchField` / `TagFilterRow`）、`CardStore` 的 `.meta` 缓存 |
 | 卡编辑（写回 PNG） | `CardEditScreen.kt`、`CardRepository.saveCard` / `CardStore.saveCard` |
@@ -150,3 +152,8 @@
    `Unresolved reference`（导出聊天就这么栽过一次）。
 7. **提示（Snackbar）要挂在页面栈之上**：TabsRoot 会作为离场页留在组合树里，它那里的
    SnackbarHost 会把二级页的提示"吃掉"（画在被盖住的层上）。
+8. **CompositionLocal 不能在提供者之前读**：页面在 `GlassDetailScaffold(...)` 之前读
+   `LocalSheetController` 拿到的是没宿主的默认实例，`show()` / `ask()` 静默落空 ——
+   2026-11-25 真机上一批"点不进去/长按没反应/确认框不弹"全是这一条。页面要在顶层发请求就自己
+   `remember { SheetController() }` / `ConfirmController()` 传进骨架；缺宿主现在会打
+   `ui …请求没有宿主` 日志（见 pitfalls）。
