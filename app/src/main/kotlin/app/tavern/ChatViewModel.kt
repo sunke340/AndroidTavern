@@ -69,6 +69,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 世界书条目页右上角菜单的三个批量动作（全局书与卡内嵌书共用）。 */
 enum class BookBulkMode(
@@ -407,7 +408,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     private var detailRaw: CharacterCard? = null
     private var detailRawId: String? = null
-    private var job: Job? = null
+
+    /**
+     * 当前这一轮流式任务**归谁**（审计 P1-1）。
+     *
+     * 以前只有一个 `job: Job?`：谁都可以覆盖它，旧流就成了"停不掉的孤儿"——
+     * 离开聊天页后它继续跑、继续往库里写，而新会话又能再起一轮，两路并发。
+     * 现在带 `sessionId` 与"这一轮是否已经落过盘"的原子标记：
+     * - 起新流前先取消上一轮（一个会话只能有一路）；
+     * - 切会话时取消上一轮，返回同一会话时**保留**生成中的状态；
+     * - [stop] 与 `finish` 用同一个 [AtomicBoolean] 抢"谁写库"，只有一方能写。
+     */
+    private class StreamingTask(
+        val sessionId: String,
+        val job: Job,
+        /** true = 这一轮的回复已经落库（finish 或 stop 先到先得）。 */
+        val written: AtomicBoolean = AtomicBoolean(false),
+    )
+
+    private var streaming: StreamingTask? = null
     private var keySaveJob: Job? = null
 
     init {
@@ -947,6 +966,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun openSessionInternal(id: String, navigate: Boolean = true) {
+        // 切到另一条会话时把上一轮的流停掉：否则它会继续往**旧会话**落库，而这边又能再发一条，
+        // 两路并发（审计 P1-1）。切回**同一条**会话则保留生成态（下面 isStreaming 会按归属算）。
+        streaming?.let { active ->
+            if (active.sessionId != id) {
+                active.job.cancel()
+                AppLog.i("chat", "切会话：取消上一轮流 ${active.sessionId.take(8)} → ${id.take(8)}")
+                streaming = null
+            }
+        }
         val session = withContext(Dispatchers.IO) {
             chatRepository.sessions().firstOrNull { it.id == id }
         } ?: run {
@@ -1006,8 +1034,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         content = message.content,
                     )
                 },
-                streamingText = "",
-                isStreaming = false,
+                // 生成中状态按**归属**算：切回还在跑的那条会话时别把"生成中"清成 false
+                // （以前一律 false → 用户能再发一条，`job` 被覆盖，旧流永远停不掉）
+                streamingText = if (streaming?.sessionId == id) it.streamingText else "",
+                isStreaming = streaming?.sessionId == id,
                 chatOpen = navigate,
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
@@ -1866,8 +1896,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { if (it.notice?.id == id) it.copy(notice = null) else it }
     }
 
-    fun closeChat() = _state.update {
-        it.copy(chatOpen = false, sessionConfigOpen = false, configPicker = null)
+    fun closeChat() {
+        // 离开聊天页时流**照常跑完**（用户可能只是回去看一眼列表），但它归 [streaming] 管：
+        // 回到同一会话能看到"生成中"，切到别的会话会被取消（审计 P1-1）。
+        _state.update { it.copy(chatOpen = false, sessionConfigOpen = false, configPicker = null) }
+        streaming?.let { AppLog.i("chat", "离开聊天页：流仍在跑 session=${it.sessionId.take(8)}") }
     }
 
     /** 打开会话配置（三级继承最内层的那一页）。 */
@@ -1979,30 +2012,54 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 停止生成。已收到的半截内容**保留**并落库——原版就是这样，
      * 用户按停止往往是因为"已经够用了，别再烧 token"。
+     *
+     * 与收尾的 `finish()` 抢同一个 [StreamingTask.written]：谁先抢到谁写库，
+     * 另一方只把界面收干净。以前两边各写一次，停止晚于 Completed 一点点就会
+     * 同一条回复落两行（审计 P1-2）。
      */
     fun stop() {
-        val snapshot = _state.value
-        val sessionId = snapshot.sessionId
-        val partial = snapshot.streamingText
-        job?.cancel()
-        job = null
+        val active = streaming ?: return
+        streaming = null
+        active.job.cancel()
+        val partial = _state.value.streamingText
 
+        if (!active.written.compareAndSet(false, true)) {
+            // 收尾那一侧已经在写 / 已经写完：界面收干净，绝不再落一条
+            _state.update {
+                it.copy(
+                    streamingText = "",
+                    isStreaming = false,
+                    status = "已停止",
+                )
+            }
+            AppLog.i("chat", "停止：本轮已由收尾落库，只收界面")
+            return
+        }
+
+        // 半截内容只能进**它自己那条会话**：切换会话时流已被取消，这里再兜一层
+        val sameSession = _state.value.sessionId == active.sessionId
         _state.update {
             it.copy(
-                transcript = if (partial.isBlank()) it.transcript
-                else it.transcript + ChatMessage(ChatRole.Assistant, partial),
+                transcript = if (partial.isBlank() || !sameSession) {
+                    it.transcript
+                } else {
+                    it.transcript + ChatMessage(ChatRole.Assistant, partial)
+                },
                 streamingText = "",
                 isStreaming = false,
                 status = if (partial.isBlank()) "已停止" else "已停止（保留了 ${partial.length} 字）",
             )
         }
 
-        if (partial.isNotBlank() && sessionId != null) {
+        if (partial.isNotBlank()) {
             viewModelScope.launch {
-                withContext(Dispatchers.IO) { chatRepository.append(sessionId, isUser = false, content = partial) }
+                withContext(Dispatchers.IO) {
+                    chatRepository.append(active.sessionId, isUser = false, content = partial)
+                }
                 refreshSessions()
             }
         }
+        AppLog.i("chat", "停止：保留 ${partial.length} 字 session=${active.sessionId.take(8)}")
     }
 
     /**
@@ -2536,13 +2593,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      *
      * 传给扫描器的聊天串要带名字前缀（原版 `chatForWI` 就是 `${name}: ${mes}`），
      * 否则 `matchPersonaDescription` 这类开关、以及"人类说话里点名"的条目会匹配不到。
+     *
+     * **纯函数**（审计 P0-2）：计时状态与全局书条目都从参数传进来，函数里不碰
+     * [worldInfoStates] / [globalBookEntries] 这两张 HashMap，也不写偏好 ——
+     * 这样它可以安全地在后台线程跑，调用方回到主线程再落状态、在 IO 里落盘。
      */
     private fun scanWorldInfo(
         card: CharacterCard,
         snapshot: UiState,
         history: List<ChatMessage>,
+        state: LorebookScanState,
+        globalEntriesByBook: Map<String, List<LorebookEntry>>,
     ): LorebookScanResult {
-        val sessionKey = snapshot.sessionId ?: return LorebookScanResult()
         val cardEntries = card.lorebookEntries()
             .filter { it.uid !in snapshot.bookDisabled }
             // 强制开启的条目在解析时被标成 disabled（卡里没写 enabled 的那些），这里翻回来
@@ -2552,12 +2614,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val only = snapshot.effectiveWorldBookNames
         val globalEntries = snapshot.worldBooks
             .filter { if (only != null) it.name in only else it.enabled }
-            .flatMap { globalBookEntries[it.name].orEmpty() }
+            .flatMap { globalEntriesByBook[it.name].orEmpty() }
         val entries = cardEntries + globalEntries
-        if (entries.isEmpty()) {
-            worldInfoStates.remove(sessionKey)
-            return LorebookScanResult()
-        }
+        if (entries.isEmpty()) return LorebookScanResult()
 
         val userName = "User"
         val settings = LorebookScanSettings(
@@ -2577,19 +2636,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             scenario = card.scenario,
         )
 
-        val result = LorebookScanner().scan(
+        return LorebookScanner().scan(
             entries = entries,
             chat = chat,
             settings = settings,
-            state = worldInfoStates[sessionKey] ?: LorebookScanState(),
+            state = state,
             global = global,
         )
-        worldInfoStates[sessionKey] = result.state
-        // 每轮都落一份：进程被杀也不会丢"正在生效的 sticky"
-        runCatching {
-            sessionScanStates.save(sessionKey, LorebookScanStateCodec.encode(result.state))
-        }
-        return result
     }
 
     fun send() {
@@ -2651,20 +2704,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
             return
         }
-        // 世界书：卡内嵌书扫一遍再拼提示词。没有条目时是空结果，不会多出一条消息。
-        val worldInfo = scanWorldInfo(characterCard, snapshot, history)
-        val built = PromptBuilder().build(
-            characterCard,
-            userName = "User",
-            history = history,
-            worldInfo = worldInfo,
-            // 顺序与提示词内容都跟着当前预设走；没选预设时是原版默认预设那张表
-            order = snapshot.promptOrder.ifEmpty { PresetDefaults.ORDER },
-            prompts = snapshot.presetPrompts,
-        )
-        // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
-        val messages = if (continuation) built + continueHint else built
+        // 一个会话只能有一路流：起新流前先把上一轮取消（审计 P1-1）。
+        // 以前 `job` 是谁都能覆盖的单字段，旧流就成了停不掉的孤儿。
+        streaming?.let { active ->
+            active.job.cancel()
+            AppLog.i("chat", "起新流：取消上一轮 session=${active.sessionId.take(8)}")
+            streaming = null
+        }
 
+        // 点下去**立刻**进"准备中"：分词与世界书扫描已经挪到后台（审计 P0-2），
+        // 但再快也得先有反馈，否则长会话里点发送像没反应
         _state.update {
             it.copy(
                 // 继续：最后一条留在 history 里（提示词要用），界面上先撤下来，
@@ -2673,52 +2722,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 streamingText = "",
                 isStreaming = true,
                 input = "",
-                status = "已发 ${messages.size} 条消息（${snapshot.model}）",
-                requestPreview = messages.joinToString("\n\n") { message ->
-                    "[${message.role.wire}] ${message.content}"
-                },
+                status = "准备请求…",
+                requestPreview = "",
             )
         }
 
-        AppLog.i(
-            "chat",
-            "发送 model=${snapshot.model} messages=${messages.size} repeat=${history.count { it.role == ChatRole.User }} " +
-                "wi=${worldInfo.activated.size}(before=${worldInfo.beforeChar.length}字 after=${worldInfo.afterChar.length}字)",
-        )
-        // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
-        val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }
-        val client = OpenAiCompatibleClient(
-            baseUrl = snapshot.baseUrl,
-            apiKey = snapshot.apiKey,
-            extraHeaders = activeProfile?.headers.orEmpty(),
-        )
-        val request = ChatRequest(
-            model = snapshot.model,
-            messages = messages,
-            // 五项统一走 effective*：会话 > 卡 > 预设 > 全局，别在这里再写一层 ?: 链
-            temperature = snapshot.effectiveTemperature,
-            maxTokens = snapshot.effectiveMaxTokens,
-            topP = snapshot.effectiveTopP,
-            frequencyPenalty = snapshot.effectiveFrequencyPenalty,
-            presencePenalty = snapshot.effectivePresencePenalty,
-            stream = true,
-            // 思考强度只有两级：会话 → 卡。都为 null 就不发这个字段；
-            // `"off"` = 明确不发（档案级不再参与，用户 2026-11-25 第 2 条）。
-            extraBody = when (val effort = snapshot.effectiveReasoningEffort) {
-                null, "off" -> null
-                else -> effort
-            }
-                ?.takeIf { it.isNotBlank() }
-                ?.let { mapOf("reasoning_effort" to JsonPrimitive(it)) }
-                .orEmpty(),
-        )
+        // 这一轮"谁写库"的抢票：stop() 与 finish() 共用（审计 P1-2）
+        val written = AtomicBoolean(false)
+        // 两张 HashMap（世界书计时状态 / 全局书条目）在主线程取值，后台只读快照 ——
+        // 后台扫描因此不碰任何共享可变状态
+        val scanState = worldInfoStates[sessionId] ?: LorebookScanState()
+        val globalEntries = HashMap(globalBookEntries)
 
-        job = viewModelScope.launch {
+        val task = viewModelScope.launch {
             val buffer = StringBuilder()
             // 用户消息落库后的行号：失败时要撤回，所以得在下面的本地函数之前声明
             var userMessageId: Long? = null
 
+            /** 这一轮收尾：只把归属位让给"自己"，别踩到已经起跑的新一轮。 */
+            fun release() {
+                if (streaming?.written === written) streaming = null
+            }
+
             suspend fun finish(text: String, status: String) {
+                // 停止与收尾抢同一张票：哪边先抢到哪边写库（审计 P1-2）。
+                // 以前两边各写一次 —— 点"停止"晚于 Completed 一点点，同一条回复就落两行。
+                if (!written.compareAndSet(false, true)) return
                 if (replacing != null) {
                     // 重新生成/继续：都不新增一行，改写原来那一行。
                     // 继续是把新文本接在后面（原版落盘结果就是 "ok ok" 这种拼接）
@@ -2857,10 +2886,90 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             status = "写库失败：这条消息没有发出去",
                         )
                     }
+                    release()
                     return@launch
                 }
                 refreshSessions()
             }
+
+            // 世界书扫描 + 提示词组装 + 逐条分词：整块在后台跑（审计 P0-2）。
+            // 以前它在 `viewModelScope.launch` **之前**，也就是点发送那一下的主线程里；
+            // 长会话下 `Tokens.countAsMessage` 要按历史逐条编码，卡顿几百毫秒是常态。
+            val worldInfo: LorebookScanResult
+            val messages: List<ChatMessage>
+            try {
+                val prepared = withContext(Dispatchers.Default) {
+                    val scan = scanWorldInfo(characterCard, snapshot, history, scanState, globalEntries)
+                    val built = PromptBuilder().build(
+                        characterCard,
+                        userName = "User",
+                        history = history,
+                        worldInfo = scan,
+                        // 顺序与提示词内容都跟着当前预设走；没选预设时是原版默认预设那张表
+                        order = snapshot.promptOrder.ifEmpty { PresetDefaults.ORDER },
+                        prompts = snapshot.presetPrompts,
+                    )
+                    // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
+                    scan to if (continuation) built + continueHint else built
+                }
+                worldInfo = prepared.first
+                messages = prepared.second
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLog.e("chat", "准备请求失败", error)
+                release()
+                fail("准备请求失败：${error.message ?: error::class.simpleName}")
+                return@launch
+            }
+            // 计时状态回主线程落（HashMap 只在主线程碰），存盘走 IO
+            worldInfoStates[sessionId] = worldInfo.state
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    sessionScanStates.save(sessionId, LorebookScanStateCodec.encode(worldInfo.state))
+                }
+            }
+            _state.update {
+                it.copy(
+                    status = "已发 ${messages.size} 条消息（${snapshot.model}）",
+                    requestPreview = messages.joinToString("\n\n") { message ->
+                        "[${message.role.wire}] ${message.content}"
+                    },
+                )
+            }
+            AppLog.i(
+                "chat",
+                "发送 model=${snapshot.model} messages=${messages.size} " +
+                    "repeat=${history.count { it.role == ChatRole.User }} " +
+                    "wi=${worldInfo.activated.size}(before=${worldInfo.beforeChar.length}字 after=${worldInfo.afterChar.length}字)",
+            )
+            // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
+            val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }
+            val client = OpenAiCompatibleClient(
+                baseUrl = snapshot.baseUrl,
+                apiKey = snapshot.apiKey,
+                extraHeaders = activeProfile?.headers.orEmpty(),
+            )
+            val request = ChatRequest(
+                model = snapshot.model,
+                messages = messages,
+                // 五项统一走 effective*：会话 > 卡 > 预设 > 全局，别在这里再写一层 ?: 链
+                temperature = snapshot.effectiveTemperature,
+                maxTokens = snapshot.effectiveMaxTokens,
+                topP = snapshot.effectiveTopP,
+                frequencyPenalty = snapshot.effectiveFrequencyPenalty,
+                presencePenalty = snapshot.effectivePresencePenalty,
+                stream = true,
+                // 思考强度只有两级：会话 → 卡。都为 null 就不发这个字段；
+                // `"off"` = 明确不发（档案级不再参与，用户 2026-11-25 第 2 条）。
+                extraBody = when (val effort = snapshot.effectiveReasoningEffort) {
+                    null, "off" -> null
+                    else -> effort
+                }
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { mapOf("reasoning_effort" to JsonPrimitive(it)) }
+                    .orEmpty(),
+            )
 
             try {
                 var settled = false
@@ -2905,7 +3014,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 AppLog.e("chat", "客户端异常", error)
                 fail("客户端异常：${error.message ?: error::class.simpleName}")
             }
+            release()
         }
+        // 归属位在**这里**登记：先有 job 才有所有权。这一行之后 stop/切会话才找得到它。
+        streaming = StreamingTask(sessionId, task, written)
     }
 
     // ---- 消息操作（P0-6 的一部分：重新生成 / 编辑 / 删除）---------------------
