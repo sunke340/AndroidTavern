@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 10:50）
+# 接手卡（2026-11-25 11:50）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,8 +8,8 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `cc7ecd6`（tag `apk-m170`）/ 交付包 `artifacts/app-v139-cc7ecd6.apk`；
-  `artifacts/` 里 v118–v139 都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**仍是 `app-v117-0631bff.apk`。
+- **基线**：代码 `d9fb458`（tag `apk-m171`）/ 交付包 `artifacts/app-v140-d9fb458.apk`；
+  `artifacts/` 里 v118–v140 都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**仍是 `app-v117-0631bff.apk`。
 - **没有悬着的事**：10 条 UI 需求 + P0-6 + 后半夜第二批（装饰器/搜索/导入导出/卡编辑/system_prompt）
   + **M3 回执的 21 条修复**（2026-11-25 早上）都已落码出包，等真机复核。
 - **下一件事**：按 [device-verification.md](device-verification.md) 的 **M6** 表逐条点。
