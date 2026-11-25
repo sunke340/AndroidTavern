@@ -908,3 +908,18 @@ Seraphina 的。日志里还有一个更怪的名字：`写回卡 …（备份 s
 - `awaitFirstDown` / `awaitLongPressOrCancellation` / `awaitEachGesture` 都在
   **`androidx.compose.foundation.gestures`**，不在 `ui.input.pointer`；
 - `PointerEventPass`、`pointerInput` 在 `ui.input.pointer`。
+
+## 2026-11-25 · Material3 `Surface` 的裁剪层会让超高子树按不到
+
+一条 **18900px 高**的消息气泡里，手指按在正文上却完全不响应（连选中高亮都没有），
+而画面照旧有字 —— 因为 `Surface` 内部有 `Modifier.clip(shape)`，那层裁剪在超高节点上
+把**命中测试**截断了（离节点上沿约 8k px 之后整棵子树收不到事件），渲染不受影响。
+
+怎么定位的（值得复用）：给每一层挂一个**只读**的 pointerInput 探针（`SelectionProbe.kt`），
+每次按下打「按下窗口坐标 / 节点真实上沿 / 节点真实尺寸 / 按下点的本节点局部坐标 / 自洽差」。
+自洽差 = `(窗口 y − 上沿 y) − 局部 y`，它不为 0 就是坐标空间错位。这次全为 0，
+所以问题不在坐标而在**命中路径**：看哪几层打了「按下」就能定位到具体那一个 modifier。
+
+结论文本条：**消息底板不要用 `Surface`**，用 `MessagePanel`（background + border）。
+以后要加投影/抬升，别退回 `Surface`；任何会生成本地渲染层的 modifier，都要先想
+"这条消息可能有多高"。
