@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | P0-1 | 角色卡导入：PNG（`tEXt` `chara`/`ccv3`） | 🟨 | 单测 + 真机（assets 里的卡）；SAF 导入与卡列表已实现，**待真机验收**（[步骤](dev/device-verification.md)） | `src/character-card-parser.js` |
 | P0-2 | 角色卡导入：V2/V3 JSON、charx(zip) | 🟨 | V2/V3/V1 JSON 已通（单测）；charx 未做 | `src/charx.js`、`src/types/spec-v2.d.ts` |
-| P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3；App 侧**卡编辑**已接（详情 ⋮ →「编辑卡片」，改名字/简介/人格/场景/开场白/示例对话，写前留 `.bak.png`、临时文件原子替换），**待真机** | 同上 |
+| P0-3 | 角色卡导出（PNG 写回，保留其他 chunk） | ✅ | 单测：IDAT 逐字节相同 + 回读一致 + 同时写 chara/ccv3；App 侧**卡编辑**已接（详情 ⋮ →「编辑卡片」，改名字/简介/人格/场景/开场白/示例对话；保存三选**新建 / 覆盖 / 取消**，覆盖写前留 `.bak.png`、临时文件原子替换，新建走 `saveCardAs`），**待真机** | 同上 |
 | P0-4 | 单聊生成（OpenAI 兼容 + SSE 流式） | ✅ | 单测 + [真机验证](dev/device-verification.md)：真连 provider，回复为卡内角色设定 | `public/scripts/openai.js` |
 | P0-5 | 提示词组装（顺序 + 宏替换 + names_behavior） | 🟨 | fixture:P0-5-prompt（9 条）/ P0-5-prompt-history（12 条，多轮）逐字相等；**卡级 `system_prompt` / `post_history_instructions` 顶替 main / jailbreak**（fixture:P0-5-sysprompt，顺序与原版一致）；names_behavior 仅覆盖默认值 DEFAULT | `public/script.js`、`PromptManager.js` |
 | P0-6 | 消息操作：swipe / 重新生成 / 继续 / 编辑 / 删除 / 撤回 | 🟨 | 动作入口是气泡底下的**按钮行**（用户 2026-11-25 第 11 条：长按改为选字）：助手＝复制/编辑/[重新生成]/[继续]/删除，用户＝撤回/复制/编辑/删除。「撤回」= `rewindToMessage`：删这条及之后、正文放回输入框（rewind 语义）。重新生成 = 追加新的 swipe 备选（旧的可翻回）；继续 = 请求末尾加原版那条 system 提示、结果接在原消息后面（夹具 `P0-6-swipes` / `P0-6-continue`）。`swipe` 翻页只对最后一条（原版 `isMessageSwipeable`），备选存 `message_swipes`（DB v3）。**待真机** | `public/script.js` |

@@ -830,3 +830,23 @@ v116 加了"起动画前先预热新页"（`PageStack` 的 `warming`）。真机
 Local，拿到的是同一个实例。另外给两个控制器加了 `attached` 标记：没宿主的请求会打
 `ui 抽屉请求没有宿主：<标题>` / `ui 确认框请求没有宿主：<标题>`，以后这类问题不用再猜。
 （一级页没这个问题：`TabsRoot` 把 provider 包在整页内容外面，SessionsScreen 等页面读到的就是真的。）
+
+## 2026-11-25 · 卡编辑把别的卡的世界书写进去了（"串卡"）
+
+真机现象：改 Synthetic 的简介并保存，保存后的 Synthetic 内嵌世界书变成 4 条 —— 那是
+Seraphina 的。日志里还有一个更怪的名字：`写回卡 …（备份 synthetic.bak.bak.png）`。
+
+两个根因叠在一起：
+
+1. **保存的底本用错了对象**。`saveCardFields` 读的是 ViewModel 的 `card` 字段（"当前会话那张卡"
+   的原始 JSON），而 `loadDetail`（详情页读卡）从来不更新它。于是「先聊 Seraphina → 打开
+   Synthetic 详情 → 编辑保存」时，应用把 **Seraphina 的整份 JSON** 套上 Synthetic 的字段写进
+   Synthetic 的文件：世界书、扩展字段全跟着过来了。修法：详情单独记 `detailRaw + detailRawId`，
+   保存前核对 id；`card` 只给发请求用，详情浏览绝不覆盖它。
+2. **`.bak.png` 被当成了卡**。`CardStore.list()` 只按 `.png` 后缀过滤，而每次保存都会写
+   `<名字>.bak.png` 备份 —— 于是卡库里每次保存都多一张同名卡。用户点到那张备份再编辑，
+   写回就落在 `.bak.png` 上，备份又变成 `.bak.bak.png`（日志里那个名字就是这么来的）。
+   修法：`isCardFile()` 排除 `.bak.png` / `.tmp`；删卡时连带删备份。
+
+顺带加的：卡编辑保存改成「新建 / 覆盖 / 取消」三选，新建走 `CardRepository.saveCardAs`
+（以原卡 IDAT 为基础写一张新文件，名字冲突加 `-2`）。

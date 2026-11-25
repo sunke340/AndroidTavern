@@ -1,4 +1,4 @@
-# 接手卡（2026-11-25 09:10）
+# 接手卡（2026-11-25 10:20）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -8,12 +8,12 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码见 `git log -1`（M4 第一包）；`artifacts/` 里的 v118–v137 是 2026-11-25 两夜的产物，
-  每个都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**是 `app-v117-0631bff.apk`。
+- **基线**：代码 `edffcb5`（tag `apk-m169`）/ 交付包 `artifacts/app-v138-edffcb5.apk`；
+  `artifacts/` 里 v118–v138 都验过签名与 dex `BUILD_ID`。**真机验收过的最后一个**仍是 `app-v117-0631bff.apk`。
 - **没有悬着的事**：10 条 UI 需求 + P0-6 + 后半夜第二批（装饰器/搜索/导入导出/卡编辑/system_prompt）
   + **M3 回执的 21 条修复**（2026-11-25 早上）都已落码出包，等真机复核。
-- **下一件事**：按 [device-verification.md](device-verification.md) 的 **M4** 表逐条点（M3 旧清单
-  有一半已过时：抽屉阈值、长按入口、卡头版式都改了）。再往后是世界书 outlet、卡库分组。
+- **下一件事**：按 [device-verification.md](device-verification.md) 的 **M5** 表逐条点（M4 那一版里
+  配置还是抽屉、动作还是文字，都已改掉）。再往后是世界书 outlet、卡库分组。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**。
 
 ## 一、这一夜做了什么（10 条需求 + P0-6）
@@ -43,7 +43,9 @@
 - 解析：`UiState.effectiveProfileId / effectiveReasoningEffort / effectivePresetName /
   effectiveWorldBookNames / effectiveRegexIds / effectiveRegexScripts`。**别在别处再写 `x ?: y ?: z`。**
 - 切换会话：`openSessionInternal` 按覆盖重放连接参数（baseUrl/model/apiKey）与预设（promptOrder/提示词/采样）。
-- 界面：`ConfigSheets.kt` 四个抽屉构造器（模型/预设/世界书/正则），单选直接选，多选点了不关、✓ 原地刷新。
+- 界面：会话配置 / 卡配置的四行点进去是**整页**（`ConfigPickerScreen` + `Destination.ConfigPicker`），
+  单选/多选都在原地生效、不自动返回，当前项用 `ActiveMark`；**不再有配置抽屉**。
+  唯一抽屉是聊天页左下角快速换模型（设置页同款列表 + 思考强度滑块，选中不关）。
 
 ## 三、聊天输入区几何（用户定的，别再改）
 
@@ -63,15 +65,16 @@
 | swipe | 只对最后一条助手消息（原版 `isMessageSwipeable`）；备选 = `message_swipes` 表 | 同上，原始 chat 在 `fixtures/chats/` |
 | 编辑 / 删除 | 编辑同步改当前 swipe 那一份；删除走玻璃确认框，备选级联删 | 手工 |
 | 撤回（新） | `rewindToMessage`：删掉这条用户消息及之后全部消息，正文放回输入框（rewind） | 手工 |
+| 入口 | 气泡底下**一排图标**（无文字）；长按 = 选字；开场白气泡不挂 | 用户 2026-11-25 |
 
 - `send()` 与上面三件事共用 `beginCompletion(history, userText, replacing, continuation)`；
   `userText == null` = 不追加用户消息。**别再复制一份两百行的发送逻辑。**
 - 失败路径：`ReplaceTarget.append=false` 还原被撤下的那条；`append=true` 也是还原（继续不产生新行）。
 
-## 五、待真机验（M4，见 [device-verification.md](device-verification.md) 的 M4）
+## 五、待真机验（M5，见 [device-verification.md](device-verification.md) 的 M5）
 
-一句话版：抽屉阈值 1/2 → 输入区形变 → 会话配置五行 + 滑块（这次必须点得开）→ 卡配置 →
-开场白在气泡右下 → 详情卡头竖图完整 → 消息按钮行 + 撤回 + 长按选字 → 卡编辑 ✓。
+一句话版：抽屉阈值 1/3 → 输入区 320ms 形变 → 配置四行整页选（思考强度在模型页顶部）→
+消息图标行 + 撤回 + 长按选字 → 卡编辑 ✓ 后三选（新建/覆盖/取消）→ 保存不再串卡。
 
 
 1. **抽屉**：长按行 → 拖把手跟手、过半收回、否则弹回。
@@ -123,7 +126,7 @@
 
 | 想改什么 | 去哪 |
 |---|---|
-| 三级配置（数据/抽屉/页面） | `data/config/ConfigOverrideRepository.kt`、`app/.../ConfigSheets.kt`、`SessionConfigScreen.kt` |
+| 三级配置（数据/页面） | `data/config/ConfigOverrideRepository.kt`、`SessionConfigScreen.kt`、`ConfigPickerScreen.kt`、`ConfigSheets.kt`（共用行） |
 | 输入区 / 模型钮 / 消息操作入口 | `ChatScreen.kt`（`ChatInputBar` / `SendStopButton` / `ModelButton` / `EditMessageDialog`） |
 | 消息操作与发送 | `ChatViewModel.kt`（`beginCompletion` / `ReplaceTarget` / `regenerateLast` / `continueLast` / `selectSwipe`） |
 | 开场白 | `GreetingSwitch.kt`（箭头与 `‹ N/M ›`）、`CharacterDetailScreen.kt`（`GreetingTab`）、`ChatScreen` 的 greeting item |
@@ -152,7 +155,10 @@
    `Unresolved reference`（导出聊天就这么栽过一次）。
 7. **提示（Snackbar）要挂在页面栈之上**：TabsRoot 会作为离场页留在组合树里，它那里的
    SnackbarHost 会把二级页的提示"吃掉"（画在被盖住的层上）。
-8. **CompositionLocal 不能在提供者之前读**：页面在 `GlassDetailScaffold(...)` 之前读
+8. **卡编辑保存要认"详情那张卡"的原始 JSON**：以前用 ViewModel 的 `card`（**会话**那张），
+   而 `loadDetail` 不刷新它 → 改 A 卡会把 B 卡的内嵌世界书写进去。现在 `detailRaw + id` 校验；
+   另外卡目录扫描要排除 `.bak.png`（否则每次保存都多一张同名卡）。见 status 的「串卡 bug」。
+9. **CompositionLocal 不能在提供者之前读**：页面在 `GlassDetailScaffold(...)` 之前读
    `LocalSheetController` 拿到的是没宿主的默认实例，`show()` / `ask()` 静默落空 ——
    2026-11-25 真机上一批"点不进去/长按没反应/确认框不弹"全是这一条。页面要在顶层发请求就自己
    `remember { SheetController() }` / `ConfirmController()` 传进骨架；缺宿主现在会打
