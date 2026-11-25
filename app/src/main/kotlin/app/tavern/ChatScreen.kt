@@ -89,6 +89,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
@@ -152,13 +153,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 离场页还在组合树里（转场需要），但输入框光标与"选文字"手柄是**独立弹层**，
     // 不会跟 graphicsLayer 一起位移 —— 页面滑走了它们还钉在屏幕上（用户 2026-11-25 报的）。
-    // 离场那一帧收焦点、并把气泡正文切回不可选，弹层就立刻消失。
+    //
+    // 处理：离场时收焦点，并把消息列表**整体重建一次**（key 变化）。SelectionContainer 被销毁时
+    // 会连带清掉选区与手柄；不能用"给每个气泡传 selectable=false"的办法 —— 那样列表项会拿到
+    // 陈旧的 false，返回后最新一条气泡一直不可选（用户 2026-11-25 报的"要划走最新气泡才能选字"）。
     val pageIsCurrent = LocalPageIsCurrent.current
     val focusManager = LocalFocusManager.current
+    var selectionEpoch by remember { mutableIntStateOf(0) }
     LaunchedEffect(pageIsCurrent) {
         if (!pageIsCurrent) {
             focusManager.clearFocus(force = true)
-            AppLog.i("ui", "离场：收掉输入焦点与选区")
+            selectionEpoch++
+            AppLog.i("ui", "离场：收掉输入焦点与选区 epoch=$selectionEpoch")
         }
     }
     // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
@@ -390,6 +396,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 顶部/底部让位一律用 contentPadding —— 它不裁内容，滚动时会从玻璃底下过。
         // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
         // 完全不需要滚动跟随——串流时也就不再有"每 60ms 跳一次"造成的整屏抽动。
+        //
+        // key(selectionEpoch)：离场时 epoch +1，这一整层重建 —— SelectionContainer 随旧组合销毁，
+        // 选文字手柄/工具栏立刻消失（它们是窗口级弹层，不跟页面滑动）。
+        key(selectionEpoch) {
         LazyColumn(
             reverseLayout = true,
             state = listState,
@@ -477,7 +487,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             message = message,
                             style = state.effectiveMessageStyle,
                             displayText = displayText,
-                            selectable = pageIsCurrent,
                         )
                         if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
@@ -522,9 +531,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                 }
         }
+        }
     }
 
-    // 编辑这条：文本编辑弹层（不是玻璃 —— 玻璃只给"确认/动作"，编辑要塞键盘与长文本）
     // 删除这条：走统一的玻璃确认框（和删会话/删卡同一个材质与措辞规则）
     deletingIndex?.let { index ->
         ConfirmDeleteDialog(
@@ -886,12 +895,10 @@ private fun MessageRow(
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
     displayText: (String) -> String = { it },
-    /** 离场页要传 false：选文字手柄是独立弹层，不跟着页面滑走，会钉在屏幕上。 */
-    selectable: Boolean = true,
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, selectable)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText, selectable)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
+        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
     }
 }
 
@@ -1028,7 +1035,6 @@ private fun BubbleRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
-    selectable: Boolean,
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
@@ -1052,13 +1058,8 @@ private fun BubbleRow(
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
-                    // 长按气泡现在是"选文字"（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
-                    // 离场页切成普通 Text：SelectionContainer 的手柄在独立弹层，不跟着页面滑。
-                    if (selectable) {
-                        SelectionContainer {
-                            Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    } else {
+                    // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
+                    SelectionContainer {
                         Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                     }
                     if (showCursor) StreamingCursor()
@@ -1075,7 +1076,6 @@ private fun CardRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
-    selectable: Boolean,
 ) {
     val palette = LocalTavernPalette.current
     Surface(
@@ -1091,11 +1091,7 @@ private fun CardRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row {
-                if (selectable) {
-                    SelectionContainer {
-                        Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
-                    }
-                } else {
+                SelectionContainer {
                     Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                 }
                 if (showCursor) StreamingCursor()

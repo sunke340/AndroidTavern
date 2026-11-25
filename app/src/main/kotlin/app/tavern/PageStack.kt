@@ -19,7 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
@@ -57,8 +57,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  * 离场页为了转场会留在组合树里（`PageStack` 的既定做法），但它在视觉上已经开始滑走。
  * 这时页面里的"浮在窗口上的东西"（输入框光标、选文字手柄、系统键盘）**不会跟着 graphicsLayer 位移**，
  * 会钉在原处直到转场结束（用户 2026-11-25 报的）。页面可以读这个值，在离场那一帧把它们收掉。
+ *
+ * ⚠️ 必须用**动态**的 [compositionLocalOf]，不能用 `staticCompositionLocalOf`：
+ * 静态 local 的读者不会被单独标记失效，而页面（`ChatScreen`）参数没变时会被跳过 ——
+ * 结果是从别的页返回聊天后，页面还拿着离场时的 `false`，气泡一直不可选、直到别的原因
+ * 触发一次重组（用户 2026-11-25 报的"滑动一下才能长按选字"）。
  */
-val LocalPageIsCurrent = staticCompositionLocalOf { true }
+val LocalPageIsCurrent = compositionLocalOf { true }
 
 @Composable
 internal fun <S> PageStack(
