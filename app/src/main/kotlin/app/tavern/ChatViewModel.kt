@@ -2761,7 +2761,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     lastSwipes = emptyList(),
                     lastSwipeId = 0,
                     // 列表削短后要回到最底部（用户 2026-11-25：撤回后停在半空）
-                    scrollToBottomSignal = it.scrollToBottomSignal + 1,
+                    scrollToBottomSignal = current.scrollToBottomSignal + 1,
                 )
             }
             refreshSessions()
