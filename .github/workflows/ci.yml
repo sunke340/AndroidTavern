@@ -35,6 +35,10 @@ jobs:
       - name: Kotlin 没有重复 import
         run: bash tools/check-kotlin-imports.sh
 
+      # 词表是"用户和 AI 说同一个东西"的唯一依据：漂了就会出现"说了名字、代码里没有"。
+      - name: UI 词表与代码一致
+        run: bash tools/check-ui-map.sh
+
       - name: 文档相对链接必须可解析
         run: |
           python3 - <<'PY'

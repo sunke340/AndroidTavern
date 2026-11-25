@@ -94,6 +94,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | **接手卡（压缩上下文 / 换人时先读这个）** | [docs/dev/handoff.md](docs/dev/handoff.md)（正在悬着的事、待验清单、出包循环） |
 | **当前状态与下一步** | [docs/dev/status.md](docs/dev/status.md)（**只写现状，每次整篇重写**；不是规则，别当硬性要求引用） |
 | 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
+| **UI 地图与词表**（用户怎么叫、代码叫什么；对不上就问，不猜） | [docs/ui-map.md](docs/ui-map.md) |
 | **历史踩坑与细节**（为什么是这个数字、试过哪几条路） | [docs/dev/pitfalls.md](docs/dev/pitfalls.md) |
 | 夜间那一轮的计划与结果（历史） | [docs/plan-overnight.md](docs/plan-overnight.md) |
 | 决策与理由 | [docs/adr/](docs/adr/) |
