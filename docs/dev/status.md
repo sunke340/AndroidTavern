@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-26 00:40）
+# 项目状态快照（2026-11-26 00:52）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -11,9 +11,9 @@
 
 | | |
 |---|---|
-| 代码 | `3f7e38c`（需求批 D：采样三级 / 默认正则 / 内置正则三级 + 三处修正；tag `apk-m189`）；上游 `e13c004` / v157 已真机验（M15 通过） |
+| 代码 | `3f7e38c`（需求批 D；tag `apk-m189`）；其后只有文档提交（`9c280b4` 定版 + 本页） |
 | 最新交付 | `artifacts/app-v158-3f7e38c.apk`（从 tag `apk-m189` 的 release 取；BUILD_ID 已验 = `3f7e38c…`，签名一致） |
-| 真机确认到哪 | `v157`（2026-11-25 夜，M15 通过）；**v158 待验**（M16） |
+| 真机确认到哪 | `v157`（2026-11-25 夜，M15 通过）；**v158 待验**（M16，5 组） |
 | CI | 铁律（含 `check-ui-map.sh` / `check-ui-invariants.sh`）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个模块，98 条）+ `check-core-purity` / `check-kotlin-comments` / `check-kotlin-imports` / `check-ui-map` / `check-ui-invariants` |
 | 规模 | `app` 约 41 个 kt 文件 / 约 11k 行；`data` 有 config + message_swipes（DB v3） |
@@ -44,8 +44,9 @@
 
 1. **v158 待真机复验（M16）**：① 条目页进全文再返回**保持位置**；② 置顶组配色 + 行尾只有时间；
    ③ 默认正则整行删/占位符/其它空行不动；④ 采样五项三级（会话/卡/全局）；⑤ 内置正则三级开关。
-2. **需求批还剩 5 条**（E/F 两批）：口径与排期见
-   [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)。下一批是 **E（胶囊→玻璃菜单动画，先做两处原型）**。
+   （清单在 `device-verification.md` 的 M16。）
+2. **需求批还剩 E / F 两批**（#12 胶囊→玻璃菜单、#3 用户人设）：口径见
+   [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)。E 先做聊天页 ⋮ 与卡详情 ⋮ 两处原型；F 必须先补夹具。
 3. **十条不变量里 INV-09 / INV-10 由单测与词表脚本管**，脚本都在 CI 里，没有待做项。
 4. **角色详情页页头**保持"内容在页头下面开始"（卡头是常驻海报），是唯一具名例外；
    要不要也让它穿过 → 单独一轮（卡头 + TabRow 要一起重排）。
@@ -66,6 +67,10 @@
 - 词表里"一句话外观"这类人写的描述仍会过期：它只用来**对词**，不用来判断"现在是不是这个样子"。
 - **列表底部让位是"IME 让位 + 输入区高度"两笔之和**：只冻输入区，抽屉收起键盘那一下照样让列表掉
   （2026-11-25 真机日志 301px→198px→键盘=false 才定位到）。`frozenListBottom` 冻的是整笔。
+- **本机编不了 → 缺 import 只能由 CI 抓**：本轮两次 `Unresolved reference`（`dp`、`fillMaxWidth`）。
+  加 UI 代码后，用"常见 layout 修饰符 × import"扫一遍（本次已扫出唯一一处并修掉）。
+- **CI 交付面自己会坏**：失败日志与 `apk-latest` 都栽在"同名资产覆盖"。前者已改成
+  `::error::` annotation + `build-<sha7>.log`；后者兜底是打 `apk-mN` tag 走 tag release 取包。
 - **CI 失败时日志要真的能看**：`action-gh-release` 上传固定名 `build.log` 会因同名资产失败，导致
   "失败时公开日志"这一步自己红（2026-11-26 踩过）。现在改成关键错误行打 `::error::` annotation +
   `gh release upload build-<sha7>.log --clobber`；`apk-latest` 的同名资产发布也可能失败，

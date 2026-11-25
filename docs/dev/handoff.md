@@ -1,154 +1,136 @@
-# 接手卡（2026-11-25 18:40）
+# 接手卡（2026-11-26 00:50）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
+> 需求批的口径与排期 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)；
 > 词表（怎么称呼界面上每个东西）→ [ui-map.md](../ui-map.md)；
-> 必须成立什么 + 待做的防回归计划 → [ui-invariants.md](../ui-invariants.md)；
-> 历史与踩坑 → [pitfalls.md](pitfalls.md)。
+> 必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
+> 真机验证记录 → [device-verification.md](device-verification.md)；历史细节 → [pitfalls.md](pitfalls.md)。
 
 ## 30 秒
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **基线**：代码 `3f7e38c`（tag `apk-m189`）/ 交付包 `artifacts/app-v158-3f7e38c.apk`；
-  上游 `e13c004` / `v157`（M15 通过）。
-- **在做的活**：用户 2026-11-25 晚提的 **16 条需求批**，口径与排期全在
-  [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)。**A 批（离场与手感）已实现，待 M13 验**；
-  A / B / C 批已真机确认；D 批（采样三级 / 默认正则 / 内置正则三级 + 三处修正）已实现，待 M16。
-  下一批 E（胶囊→玻璃菜单动画，先做两处原型）。
-- **真机验过的最后一段**：`v153`（2026-11-25 晚，M12 通过：三处补挂的橡皮筋）。
-  页头材质与首项留白那一系列（`8ee1b72` → `df71772`）已在 v150 结案。
+- **代码基线**：`3f7e38c`（tag `apk-m189`）/ 交付包 `artifacts/app-v158-3f7e38c.apk`。
+  其后只有文档提交（`9c280b4` 及本页）。
+- **真机确认到**：`v157`（M15）。**`v158` 还没回执**（M16，5 组）。
+- **在做的活**：用户 2026-11-25 晚一次提的 **16 条需求 + 2 条补充**，口径/排期全在
+  [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)。**A / B / C 批已真机确认；D 批已实现待验；
+  E（胶囊→玻璃菜单动画）与 F（用户人设）未开工。**
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**；
-  **说界面上东西时用 `docs/ui-map.md` 的名字，对不上就先问、不许猜**。
+  **说界面上的东西用 `docs/ui-map.md` 的名字，对不上就先问、不许猜**。
 
-## 一、这个会话（2026-11-25 下午—傍晚）做了什么
+## 一、这个会话（2026-11-25 下午 → 深夜）做了什么
 
-### 1. 选字 bug 查到底（四轮，前三个判断都是错的）
+按实际交付顺序，**每批都有真机回执才往下走**：
 
-用户报"气泡内文字不能长按选择"。**先记结论，别再走回头路**：
-
-| 轮次 | 我当时的判断 | 真相 |
-|---|---|---|
-| 1 | v142 给气泡传了 `selectable = pageIsCurrent`，静态 `CompositionLocal` 留了陈旧 false | **错**（v143 把开关整个删了仍然不行） |
-| 2 | 加诊断探针，量"按下落在哪个矩形" | 得到事实：**最新那条消息高约 18900px**（≈5400dp ≈269 行，两套数据交叉验证） |
-| 3 | 探针下沉到 `SelectionContainer` / `Text` | 事实：局部 y≈17k 处**只有气泡这一层收到按下**，容器与正文都没收到 → 命中测试被截断 |
-| 4 | 真因 | **Material3 `Surface` 内部的 `Modifier.clip(shape)`**：18900px 高的节点上，这层裁剪让子树在约 8k px 之后收不到触摸。渲染正常，所以"画面有字但按不动" |
-
-修法：`MessagePanel`（`background` + `border` + `LocalContentColor`）替掉 `Surface`；`CardRow` 同步。
-**然后**又暴露第二个问题：能选字了，但长按会让列表跳 427px —— 焦点 `bringIntoView` 的默认算法对
-"比视口高、一端在视口内"的节点取 `trailingEdge - containerSize`。修法：聊天列表给
-`LocalBringIntoViewSpec provides NoFocusScrollSpec`（恒返回 0）。**日志里 `偏移 0 → 427` 就是它。**
-
-诊断探针（`SelectionProbe.kt` + `tag=sel`）已在 `6f4dd53` **整文件删除**；真机上不应再看到 `sel`。
-
-### 2. 六条体验修正 + 页头（`6f4dd53` → `a5a568d` → `df71772`）
-
-- 思考强度**只留会话 / 角色卡两级**，两级滑块都加了「自定义」第六格（默认串 `max`，
-  判断靠"不在预设集合里"）；**档案（全局）层整项移除**（`ModelProfile.reasoningEffort` 字段、
-  档案表读写、编辑页那一段、两处行副标题、请求回落全删）。
-- 模型抽屉收回后把输入栏叫回来：`SheetSpec.onDismiss` → `dismiss()` 里回调 → 聊天页
-  `requestFocus()` + `keyboard.show()`。
-- 默认正则的清标签规则，标签名改成可选 → `</>` / `<>` 也清（补了 3 条单测）。
-- 模型钮：淡紫 12% 主色底 + **满色**主色字（原透明）；流式停止钮：淡红 20% 底 + 红方块。
-- **二级页页头恢复半透明**：观感来自"内容在它下面滚" → `contentTopInset = 0.dp` + 让位挪进滚动容器。
-  随后用户报两处问题，`df71772` 还原：`DetailScrollUnderTop` **就是** `DetailHeaderHeight`（不再夹带
-  呼吸值），列表页补回 `+ DetailHeaderHeight + Space.l`。**改之前的数值：Column 页 = 页头底边；
-  列表页 = 页头底边 + 16dp。**
-- 开场白气泡的动作行改为按 `isGreetingMessage` 隐藏（原来只有"多开场白"时才消失）。
-
-### 3. 词表与规格（本轮最后一段）
-
-- `docs/ui-map.md`：使用协议（对不上就问、不猜）· 维护规则（出现第二次才命名）· 页面树 ·
-  区域词表（12）· 材质与共用组件表（约 35 行，含行系统 7 行）· 别名表 · 日志 tag。
-- `tools/check-ui-map.sh`（**已进 CI**）：枚举页面都在词表里、词表里的名字都能 grep 到、
-  40 个核心组件不许删行。
-- `tools/gen-ui-map.sh`：从代码抽页面树/组件索引，改词表时照着抄。
-- `docs/ui-invariants.md` + `tools/check-ui-invariants.sh`（**已覆盖 INV-02/03/05/07**）：
-  十条不变量，第一批计划是把页头决定收成 `DetailHeaderMode`。
+| 交付 | 批次 | 内容 | 回执 |
+|---|---|---|---|
+| v150 | 页头结案 | 二级页首项留白还原、世界书列表补回 64dp（`8ee1b72` → `df71772` 这一系列收尾） | M9 / M9.1 全过 |
+| v151 | 回归修复 | 卡配置「对话样式」「关于这张卡」被内嵌世界书顶掉（`6f4dd53` 把分发写成常量） | M10 全过 |
+| v152 | INV-01 第一批 | 页头收口：`DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`，骨架交出最终 top；删 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop`；12 处调用对齐；脚本 INV-01 三条判据 | M11 全过 |
+| v153 | 不变量第二批 | INV-04（玻璃三铁律）/ INV-06（每个可滚面挂橡皮筋）/ INV-08（页面不许写字面色值）进脚本；补掉 3 处真漏 | M12 全过 |
+| v154→v155 | 需求批 A | 聊天页离场不闪、二级页光标不残留、抽屉期间列表静止、删开场白底部文案 | M13 全过 |
+| v156 | 需求批 B | 世界书/正则选择页三个动作进右上胶囊、开场白走显示正则、斜体改主色 | M14 全过 |
+| v157 | 需求批 C | 条目全文页、会话置顶（DB v4）、两处搜索、会话预览与卡简介走正则 | M15 全过 |
+| v158 | 需求批 D | 采样五项三级、默认正则整行删 + 占位符、内置正则三级；外加三处修正 | **待 M16** |
 
 ## 二、现在的状态
 
-**真机已确认**：`v150`（M9/M9.1 三组全过）→ `v152`（M11：页头收口）→ `v153`（M12：三处橡皮筋）。
-明细见 [device-verification.md](device-verification.md)。**页头材质与首项留白那一系列
-（`8ee1b72` → `df71772`）已在 v150 结案**。
+**真机已确认**：`v150`（M9/M9.1）→ `v151`（M10）→ `v152`（M11）→ `v153`（M12）→ `v155`（M13）→
+`v156`（M14）→ `v157`（M15）。
 
-**待真机确认（v158）** —— 见 [device-verification.md](device-verification.md) 的 **M16**：
-1. 条目页进全文再返回保位；2. 置顶组配色 + 行尾时间；3. 默认正则整行删 + 占位符；
-4. 采样五项三级；5. 内置正则三级开关。
+**待真机确认（v158 / M16）** —— 见 [device-verification.md](device-verification.md) 的 M16：
+1. 世界书条目页点进「条目全文」再返回，**列表保持原位置**；
+2. 置顶组填充是描边色、片间是"白线"，行尾**只写时间**；
+3. 默认正则：标签独占一行时**连那一行一起删**（其它空行不动），`<StatusPlaceHolderImpl/>` 也清；
+4. 采样五项三级（会话 → 卡 → 预设 → 全局，留空跟随），全局采样页五项都在；
+5. 内置正则三级开关（卡/会话正则页的「内置」分组 + 胶囊批量动作含内置）。
 
-**已知未做**
-- 十条不变量里 **八条已由 `check-ui-invariants.sh` 守**（INV-01/02/03/04/05/06/07/08），
-  INV-09 走 `test-core.sh` 单测、INV-10 走 `check-ui-map.sh` —— 没有待做项。
-- **角色详情页页头**没动：它的卡头是"常驻海报"（260dp 图 + TabRow），结构与其他二级页不同。
-  要不要让它也从页头底下过，需要用户拍（要动就是单独一轮）。
-- 世界书 **outlet**：还没做，且**缺夹具**（原版只有预设里出现 `{{outlet::名字}}` 宏才展开，
-  现有预设里一个都没有；要做得先给 capture 加"选预设"并造带 outlet 的预设）。
-- 卡库**分组**（原版文件夹）未做。
-- `forbid_overrides`、"按角色禁用某段"未做（现在顶替是无条件生效的）。
+**已知未做（按优先级）**
+- **E 批**：右上胶囊点开**变形成液态玻璃菜单**（需求 #12）。现在 4 处用 Material3 `DropdownMenu`，
+  它是独立窗口、采不到内容层 → 做不成玻璃；要新写菜单宿主。口径：**先做聊天页 ⋮ 与卡详情 ⋮ 两处原型**，
+  看过观感再铺开。新组件要同步 `ui-map.md` + INV-05 白名单。
+- **F 批**：**用户人设**（需求 #3）。多人设、三级（会话 > 卡 > 全局默认）、`{{user}}` = 生效人设名、
+  描述按原版位置进提示词（原版是当一条 system 消息）。**夹具先行**：`capture.mjs` 要能设人设，
+  没有 fixture 不许开工（AGENTS 铁律 #2/#4）。
+- 计划外的老账：世界书 **outlet**（缺夹具：原版只有预设里出现 `{{outlet::名字}}` 才展开）、
+  卡库**分组**、`forbid_overrides` / "按角色禁用某段"、**角色详情页页头要不要穿**（卡头是常驻海报，
+  要动就是单独一轮）。
+- **明确不做**：MVU / 酒馆助手的**状态栏渲染**（HTML/JS 界面）——无 WebView（ADR 0002）。
+  这轮只把 `<StatusPlaceHolderImpl/>` 清掉。
 
 ## 三、下一步优先级
 
-1. **v158 真机复验（M16）**：条目页返回保位 / 置顶组配色 / 默认正则整行与占位符 / 采样三级 / 内置正则三级。
-2. **需求批 E 批**：胶囊点开变形成菜单 + 液态玻璃（先做聊天页 ⋮ 与卡详情 ⋮ 两处原型）。
-3. 之后 F 批：用户人设（夹具先行）。
-4. 计划外的老账：世界书 outlet（夹具先行）、卡库分组、角色详情页头要不要穿。
+1. **收 v158 的 M16 回执**；有不一致按条修，别顺手改别的。
+2. **E 批**：胶囊→玻璃菜单（先两处原型）。
+3. **F 批**：用户人设（夹具先行）。
+4. 老账：outlet（夹具先行）→ 卡库分组 → 角色详情页头。
 
-## 四、这台机器与出包（每次都要用）
+## 四、这台机器与出包（比上一版更长的教训，每次都看）
 
-- **本机编不了 `:app` / `:data`**：只能跑 `tools/test-core.sh` 和 `tools/check-*.sh`。
+- **本机编不了 `:app` / `:data`**，只能跑 `tools/test-core.sh` 与 `tools/check-*.sh`。
+  提交前至少跑：`check-core-purity` / `check-kotlin-comments` / `check-kotlin-imports` /
+  `check-ui-map` / `check-ui-invariants` + `test-core.sh`。
 - **出包循环**：
   1. `git commit`（消息里有引号/反引号就写文件 + `-F`）→ `git push`；
-  2. `bash tools/poll-ci.sh <sha>`，**但要等 run 真的 `completed success`**；
-  3. 下载 `releases/download/apk-latest/app-debug.apk`；
-  4. **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`；没有 `unzip` 就用 python `zipfile`）；
-  5. `tools/verify-apk.sh <apk> 55:E0:C6:E2:19:20:61:92:51:12:04:E8:F8:AC:80:C6:19:44:91:54:26:5B:50:FA:D3:3A:B4:72:8B:96:0B:E7`；
+  2. 等 CI：**优先用 release 页面判断**（`https://github.com/sunke340/AndroidTavern/releases/tag/apk-latest`
+     里 grep 提交 sha），API 只在额度内用（见下）；
+  3. 下载 `releases/download/apk-latest/app-debug.apk`（**加 `?cb=时间戳` 免缓存**）；
+  4. **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`，用 python `zipfile`）——**唯一判据**；
+  5. `tools/verify-apk.sh <apk> 55:E0:…:0B:E7>`（完整指纹见脚本历史/CI 日志）；
   6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk`，打 tag `apk-mN`，`git push origin <tag>`。
-- ⚠️ **`poll-ci.sh` 会假 READY**：它只看 release body 里的 sha。**唯一判据是下载后的 `BUILD_ID`**。
-- **CI 失败日志**：本机没有 `gh`；失败日志由 CI 发到 release ——
-  `ci-log-android`（`:app` 编译错误）/ `ci-log-jvm`（纯 JVM 单测），取其中的 `build.log`：
-  `curl -sL https://github.com/sunke340/AndroidTavern/releases/download/ci-log-android/build.log -o /tmp/ci.log`
-- **真机日志**：设置 → 关于 → 导出日志（SAF）。插件/journald 无关，AppLog 只写应用内。
+- ⚠️ **`apk-latest` 的发布步骤可能失败**（同一 release 里覆盖同名资产 `app-debug.apk` 会撞名，
+  2026-11-26 踩过）：现象是「构建 success、测试 success，只有『公开 APK（apk-latest）』这一步红」。
+  **处理：给同一个 commit 打 `apk-mN` tag 再 push**，走 tag release 取包（v158 就是这么出的）。
+- ⚠️ **CI 失败日志**：`ci-log-android` / `ci-log-jvm` 两个 release，**现在按 `build-<sha7>.log` 命名**
+  （固定名 `build.log` 会因为同名资产上传失败——失败日志那一步自己红，等于没日志）。
+  直接下 `releases/download/ci-log-android/build-<sha7>.log` 看 `^e:` 行；
+  CI 也把关键错误行打成 run 页面上的 annotation。
+- ⚠️ **GitHub API 每小时 60 次**：`poll-ci.sh` 一轮两次、连跑就会打满（现象：脚本输出空、exit 3）。
+  限流时**别再用它**，改「release 页面 grep sha」+「下载验 BUILD_ID」；要看 run 状态等重置。
+- ⚠️ **`poll-ci.sh` 会假 READY**：它只看 release body 里的 sha，run 可能还没跑完。
+- **真机日志**：设置 → 关于 → 导出日志（SAF）。AppLog 只写应用内，journald 里没有。
 
 ## 五、日志 tag 速查
 
 | tag | 看什么 |
 |---|---|
 | `nav` | `转场预热 … 新页首帧 Xms`、`转场 … 帧 N，最长帧 Mms`、页面移除间隔 |
-| `scroll` | 串流跟随模式 A/B/C、补偿落地、**`焦点滚动被拦下 …`**（选字不拖动列表的判据） |
-| `config` | 三级配置写入：会话/卡级模型、思考强度、预设 |
-| `chat` | 发送 / 完成 / 失败、换开场白、重新生成、swipe、继续 |
-| `ui` | 输入区展开、确认框显示、离场收焦点与选区 epoch |
+| `scroll` | 串流跟随模式、补偿落地、**`焦点滚动被拦下 …`**（选字不拖列表的判据） |
+| `config` | 三级配置写入：会话/卡级模型、思考强度、预设、**采样五项**、**内置正则** |
+| `chat` | 发送 / 完成 / 失败、换开场白、重新生成、swipe、继续、置顶 |
+| `ui` | 输入区展开、离场收焦点与选区 epoch、**`抽屉打开：冻结列表底部让位 …`** |
+| `wi` | 世界书：开书耗时、条目数、看条目全文 |
 | `rubber` / `glass` | 橡皮筋回弹；玻璃档参数与逐像素校验 |
-| `sel` | **已删除**（选字诊断用完即撤）；再看到说明装的是 v146 及更早 |
 
-## 六、文件地图（这个会话动过的）
+## 六、文件地图（这轮动过的）
 
 | 想改什么 | 去哪 |
 |---|---|
-| 消息底板 / 气泡 / 动作行 / 输入区 / 两个圆钮 | `ChatScreen.kt`（`MessagePanel` / `BubbleRow` / `CardRow` / `MessageActionRow` / `ChatInputBar` / `SendStopButton` / `ModelButton`） |
-| 选字不拖动列表 | `ChatScreen.kt` 的 `NoFocusScrollSpec` + 列表上的 `LocalBringIntoViewSpec` |
-| 页头材质与让位 | `DetailPage.kt`（`GlassDetailScaffold` / `DetailHeaderMode` / `contentSpacing` / `DetailHeader`） |
-| 思考强度 | `ThinkingEffort.kt`（滑块 + 自定义）、`ConfigSheets.kt`（抽屉）、`ConfigPickerScreen.kt`（卡/会话的模型页）、`ChatViewModel.useSessionReasoning/useCardReasoning` |
-| 抽屉收回回调 | `ActionSheet.kt`（`SheetSpec.onDismiss` → `dismiss()`） |
-| 内置正则 | `core/regex/BuiltinRegex.kt`、`core/regex/InlineMarkup.kt`、单测 `BuiltinRegexTest` |
+| 页头材质与首项让位 | `DetailPage.kt`（`DetailHeaderMode` / `contentSpacing` / `DetailHeader`） |
+| 离场清理、抽屉期间列表静止 | `ChatScreen.kt`（`suppressItemFade` / `keepExpanded` / `frozenListBottom`） |
+| 选择页（模型/采样/世界书/正则/预设） | `ConfigPickerScreen.kt`（`PickerBulkMenu`、`SamplingPickerBody`、内置分组） |
+| 三级配置的生效值 | `ChatViewModel.UiState.effective*`（采样五项、`effectiveBuiltinDisabled` 等） |
+| 会话列表（置顶/预览） | `SessionsScreen.kt`、`SessionTime.kt`；置顶字段在 `ChatRepository` / `SqliteChatRepository` / `TavernDatabase`（DB v4） |
+| 世界书条目 / 全文 / 搜索 | `WorldBookEntriesScreen.kt`、`WorldBookEntryScreen.kt`、`WorldBookEntryRow.kt`、`CardConfigPageScreen.kt`、`SearchField.kt` |
+| 显示管线（正则 → 样式） | `DisplayText.kt`（`markupText` / `displayPlain`）、`core/regex/BuiltinRegex.kt` |
+| 采样与内置正则的存储 | `data/config/ConfigOverrideRepository.kt`（+ `impl/PreferencesConfigOverrideRepository`）、`data/settings/*` |
 | 词表 / 不变量 | `docs/ui-map.md`、`docs/ui-invariants.md`、`tools/check-ui-map.sh`、`tools/check-ui-invariants.sh` |
 
-## 七、这个会话踩的坑（一句话）
+## 七、这轮踩的坑（一句话一条）
 
-1. **"先改再验"代价很大**：选字那件事连着两轮改错方向；改成"先挂探针取数据、再动手"之后一轮就中了。
-   探针只要**不 consume 事件**，是零风险的。
-2. **渲染正常 ≠ 命中正常**：`Surface` 的 clip 只影响命中测试。判据是"某几层收不到 `按下`"，
-   不是"画面有没有字"。
-3. **超高节点是个雷**：单条消息能有 18900px（≈269 行）。任何会生成本地渲染层的 modifier、
-   任何"整段正文一个节点"的做法，都要先想高度上限。
-4. **焦点会自己滚动**：`SelectionContainer` 拿焦点 → `bringIntoView` → 列表跳
-   （量 = `trailingEdge - containerSize`）。滚动容器里放会拿焦点的子节点时，先决定"焦点滚动要不要"。
-5. **文档写错会反过来误导改动**：`app/AGENTS.md` 早写着"列表类二级页页头半透明、内容从底下穿过"，
-   但代码里 11 个页面各传 `contentTopInset`、设置页用的是默认值 —— 我照着文档以为已经穿过。
-   **这就是词表 + 不变量 + 脚本的由来。**
-6. 其它照旧：`poll-ci.sh` 假 READY；引号/反引号会撕提交消息（用 `-F`）；
-   `awaitFirstDown` 在 `foundation.gestures`；`positionInWindow` 是扩展函数要单独 import；
-   页面里传 `0.dp` 要确认那个文件 import 了 `dp`（CI 报 `Unresolved reference 'dp'`）。
-7. **一个常量能让整页内容静默消失**：`if (常量) A else B` 里常量一翻，另一支就成了死代码 ——
-   编译不报、脚本看不见、回执也没点那两行（v149 / v150 卡配置两页，见 [pitfalls.md](pitfalls.md) 末条）。
-   分发条件直接写页面判据，别先抽中转布尔。
+1. **列表底部让位 = IME 让位 + 输入区高度**，两笔都直接进 `contentPadding.bottom`；只冻输入区，
+   抽屉收起时键盘那一下照样让气泡整片往下掉（真机日志 301px→198px→键盘=false 才定位到）。
+2. **宿主实例只能在骨架内部读**：页面顶层读 `LocalSheetController.current` 拿到的是没有宿主的默认实例，
+   `spec` 永远是 null —— 拿它判断"抽屉开没开"会永远为假。
+3. **列表滚动状态要提到 `MainScreen`**：二级页整棵会离开组合树，状态留在页里，从更深的一页返回就回顶部。
+4. **CI 的交付面本身会坏**：失败日志与 `apk-latest` 都栽在"同名资产覆盖"；前者已改成
+   annotation + `build-<sha7>.log`，后者的兜底是打 `apk-mN` tag。
+5. **本机编不了 → 缺 import 只能由 CI 抓**：这轮两次都是 `Unresolved reference`（`dp`、`fillMaxWidth`）。
+   加新 UI 代码后，用脚本把"常见 layout 修饰符 vs import"扫一遍再推（见 status.md 的风险段）。
+6. **判据要按"它约束谁"划范围**：`Modifier.blur` 只在 `Glass.kt` 外违规（自研玻璃内部合法地糊录好的图层）；
+   `.record(` 要数**顶层**逗号（嵌套括号里的逗号会误判成四参数）。
+7. **`if (常量) A else B` 会静默杀死一支**：编译、脚本、回执三套防线都看不见（v149/v150 卡配置两页）。
+8. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；`positionInWindow` 是扩展函数要单独 import；
+   页面里用 `0.dp` 要确认该文件 import 了 `dp`。
