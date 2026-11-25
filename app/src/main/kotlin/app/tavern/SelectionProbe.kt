@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -14,6 +15,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
 import app.tavern.data.log.AppLog
 
 /**
@@ -32,13 +34,23 @@ import app.tavern.data.log.AppLog
  */
 class ProbeBounds {
     var coords: LayoutCoordinates? = null
+
+    /** 窗口矩形（`boundsInWindow` 默认会裁到根），只能看出"哪些部分在屏幕上"。 */
     var inWindow: Rect = Rect.Zero
+
+    /** 真实左上角（**不裁**）。它和事件里算出来的局部坐标必须能互相还原，否则就是坐标空间错位。 */
+    var topInWindow: Offset = Offset.Zero
+
+    /** 节点真实尺寸（不受任何裁剪影响）。 */
+    var size: IntSize = IntSize.Zero
 }
 
 /** 记下这个节点的窗口矩形（不触发重组）。 */
 fun Modifier.trackProbe(ref: ProbeBounds): Modifier = this.onGloballyPositioned {
     ref.coords = it
     ref.inWindow = it.boundsInWindow()
+    ref.topInWindow = it.positionInWindow()
+    ref.size = it.size
 }
 
 /**
@@ -62,12 +74,24 @@ fun Modifier.selectionProbe(
             } else {
                 "-"
             }
+            // 真实上沿 + 尺寸 + 按下点的**本节点局部**坐标：三者必须自洽 ——
+            // 真实上沿 + 局部 y 应该等于按下点的窗口 y。对不上就是坐标空间错位（选区会被建到别处）。
+            val top = ref.topInWindow
+            val localInside =
+                if (ref.coords != null && win != null && win.isSpecified) {
+                    (win.y - top.y).let { expect ->
+                        kotlin.math.abs(expect - down.position.y).let { diff ->
+                            "自洽差=${diff.toInt()}"
+                        }
+                    }
+                } else {
+                    "-"
+                }
             AppLog.i(
                 "sel",
-                "$tag 按下 窗口=$winText 节点窗口=" +
-                    "(${ref.inWindow.left.toInt()},${ref.inWindow.top.toInt()})-(" +
-                    "${ref.inWindow.right.toInt()},${ref.inWindow.bottom.toInt()}) " +
-                    "已消耗=${down.isConsumed} ${latestExtra.value()}",
+                "$tag 按下 窗口=$winText 局部=(${down.position.x.toInt()},${down.position.y.toInt()}) " +
+                    "上沿=(${top.x.toInt()},${top.y.toInt()}) 尺寸=${ref.size.width}x${ref.size.height} " +
+                    "已消耗=${down.isConsumed} $localInside ${latestExtra.value()}",
             )
             val startedAt = SystemClock.elapsedRealtime()
             val longPress = awaitLongPressOrCancellation(down.id)

@@ -1112,6 +1112,7 @@ private fun BubbleRow(
     // 正文的矩形比气泡小一圈（气泡有 12dp/10dp 内边距），"按到气泡但没按到正文"就是选不中的死法之一。
     val bubbleProbe = remember { ProbeBounds() }
     val textProbe = remember { ProbeBounds() }
+    val selProbe = remember { ProbeBounds() }
 
     Row(
         modifier = modifier
@@ -1145,11 +1146,17 @@ private fun BubbleRow(
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
                     // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
-                    SelectionContainer {
+                    SelectionContainer(
+                        modifier = Modifier
+                            .trackProbe(selProbe)
+                            .selectionProbe(tag = "选区容器", ref = selProbe),
+                    ) {
                         Text(
                             markupText(displayText(message.content)),
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.trackProbe(textProbe),
+                            modifier = Modifier
+                                .trackProbe(textProbe)
+                                .selectionProbe(tag = "正文", ref = textProbe),
                         )
                     }
                     if (showCursor) StreamingCursor()
