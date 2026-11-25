@@ -11,7 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * 强调语义与原版对齐：夹具 `P1-6-inline-markup.json` 是**原版 SillyTavern 1.19.1** 的
+ * 强调语义与原版对齐：夹具 `P1-12-inline-markup.json` 是**原版 SillyTavern 1.19.1** 的
  * `showdown` + `showdown-underscore` 对同一段文本渲染出的 HTML（`tools/fixture` 之外的
  * 一次性录制，来源写在夹具的"来源"字段里）。
  *
@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
 class InlineMarkupFixtureTest {
 
     private val cases: List<Pair<String, String>> by lazy {
-        val file = repoRoot.resolve("fixtures/expected/P1-6-inline-markup.json")
+        val file = repoRoot.resolve("fixtures/expected/P1-12-inline-markup.json")
         require(Files.exists(file)) { "夹具不存在：$file" }
         val root = Json.parseToJsonElement(Files.readString(file)).jsonObject
         root["cases"]!!.jsonArray.map { element ->

@@ -66,7 +66,7 @@ public object BuiltinRegex {
                     placement = setOf(RegexPlacement.AiOutput),
                 ),
                 // 下划线斜体：前后都不能是下划线。**不加 `\b`** —— 原版 showdown 对
-                // `foo_bar_baz` 也渲染成 foo<em>bar</em>baz（夹具 P1-6 里那条就是它）
+                // `foo_bar_baz` 也渲染成 foo<em>bar</em>baz（夹具 P1-12 里那条就是它）
                 RegexScript(
                     name = "内置 · 强调：下划线斜体",
                     findRegex = "/(?<!_)_(?!_)([^_\\n]+?)(?<!_)_(?!_)/g",

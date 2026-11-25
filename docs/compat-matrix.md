@@ -50,6 +50,7 @@
 | P1-7 | 作者注（深度注入、role、间隔、参与扫描） | ⬜ | fixture:P1-7-an | `public/scripts/authors-note.js` |
 | P1-8 | 人设 / 用户名 / 名称宏 | ⬜ | fixture:P1-8-persona | `public/scripts/personas.js` |
 | P1-9 | 聊天导入导出（含群聊），与 PC 版互转 | ⬜ | fixture:P1-9-io | `src/endpoints/chats.js` |
+| P1-12 | 消息显示格式：Markdown 强调 + 包裹标签清洗 | ✅ | **只影响显示**（存档/导出/请求/提示词都是原文）。两组**只读内置正则**（设置→正则「内置」，可关，关掉=原文）：① 白名单包裹标签（`</content>` / `<output>` / `<response>` / `<message>` / `<text>` / `<answer>`）；② 强调：`**粗**` / `*斜*` / `_斜_`。强调语义用 fixture:P1-12-inline-markup 对齐（同一文本先过原版 `showdown` + `showdown-underscore` 渲染，再比 `<em>`/`<strong>`/`<br>` 的位置）。渲染只认 `<i> <em> <b> <strong> <br>`，其他标签原样显示；不渲染列表/标题等完整 Markdown | `public/script.js`（messageFormatting）、`public/scripts/showdown-underscore.js` |
 | P1-11 | 正则脚本（脚本数组 + placement + 捕获组替换） | 🟨 | fixture:P1-11-regex（7 条输入输出直接抄自原版 `getRegexedString()`）：全局/首次替换、`$1`/`$<name>`/`{{match}}`、trimStrings、disabled、promptOnly/markdownOnly、AI_OUTPUT。**不做的**：脚本编辑 UI（只在 PC 版写）、preset/scoped 脚本、`runOnEdit` 的编辑路径 | `public/scripts/extensions/regex/engine.js` |
 
 ## P2 · 加分项
