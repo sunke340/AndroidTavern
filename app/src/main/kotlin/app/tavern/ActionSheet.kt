@@ -50,7 +50,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.tavern.data.log.AppLog
 import kotlin.math.roundToInt
@@ -200,7 +199,6 @@ private fun GlassSheetPlate(
     // 拖到一半内容就换行了。位移只落在绘制上，最便宜也最像"纸片被拖下去"。
     // 收紧的判据取**弹层自身高度**的 1/2（不是屏高，用户 2026-11-25 第 1 条把 1/4 改成 1/2：
     // 之前手一抖就收，想"拉下来看看"根本停不住）。往下甩得够快仍然直接收。
-    val density = LocalDensity.current
     var dragY by remember { mutableFloatStateOf(0f) }
     var plateHeightPx by remember { mutableFloatStateOf(0f) }
     val dragState = rememberDraggableState { delta ->
@@ -237,9 +235,11 @@ private fun GlassSheetPlate(
                         state = dragState,
                         orientation = Orientation.Vertical,
                         onDragStopped = { velocity ->
+                            // 只看"拖了多远"，**不再看速度**（用户 2026-11-25：改成超过自身高度
+                            // 1/2 才收回）。以前下甩 800dp/s 就能收，比一半低得多 —— 那还是
+                            // "手一抖就没了"。速度现在只写进日志，供排障。
                             val closeByDrag = dragY > plateHeightPx * 0.5f
-                            val closeByFling = velocity > with(density) { 800.dp.toPx() }
-                            if (closeByDrag || closeByFling) {
+                            if (closeByDrag) {
                                 AppLog.i(
                                     "ui",
                                     "抽屉拖拽关闭 位移=${dragY.roundToInt()}px 速度=${velocity.roundToInt()}px/s",
