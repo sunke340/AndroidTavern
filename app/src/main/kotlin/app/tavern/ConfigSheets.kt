@@ -41,6 +41,7 @@ internal fun ModelPickerRows(
         ConfigScope.Card -> state.cardOverride.profileId
     }
     val effectiveId = state.effectiveProfileId
+    // 这一层没设 = 跟随上级（勾在「跟随上级」那一行）
     val followName = when (scope) {
         // 会话"跟随上级"跟到卡级（卡级没设就是全局默认档案）
         ConfigScope.Session -> state.cardOverride.profileId
@@ -60,13 +61,16 @@ internal fun ModelPickerRows(
         return
     }
 
-    val hasFollow = thisLevel != null
-    ListGroup(count = state.profiles.size + if (hasFollow) 1 else 0, modifier = modifier) { index, _ ->
-        if (hasFollow && index == 0) {
+    // 「跟随上级」**常驻**（用户 2026-11-25 第 4 条）：以前只在"这一层已经有覆盖"时才出现，
+    // 于是选中第一个模型后它突然插到列表最上面，整列往下挪一格 —— 手正指着的那一行就换人了。
+    // 常驻之后行数不变，点哪行就是哪行。
+    val following = thisLevel == null
+    ListGroup(count = state.profiles.size + 1, modifier = modifier) { index, _ ->
+        if (index == 0) {
             ListRow(
                 title = "跟随上级",
                 subtitle = followName,
-                leading = { ActiveMark(false) },
+                leading = { ActiveMark(following) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.clearSessionProfile()
@@ -75,7 +79,7 @@ internal fun ModelPickerRows(
                 },
             )
         } else {
-            val profile = state.profiles[index - if (hasFollow) 1 else 0]
+            val profile = state.profiles[index - 1]
             ListRow(
                 title = profile.name,
                 subtitle = buildString {
@@ -84,7 +88,7 @@ internal fun ModelPickerRows(
                         append(" · 思考 ").append(it)
                     }
                 },
-                leading = { ActiveMark(profile.id == effectiveId) },
+                leading = { ActiveMark(!following && profile.id == effectiveId) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.useSessionProfile(profile.id)

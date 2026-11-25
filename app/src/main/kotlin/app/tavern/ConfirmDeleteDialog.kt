@@ -52,6 +52,16 @@ class ConfirmSpec(
     val confirmLabel: String,
     val onConfirm: () -> Unit,
     val onDismiss: () -> Unit,
+    /**
+     * 可选的第三个按钮（放在"确认"左边）。
+     *
+     * 用在"保存角色卡：新建 / 覆盖 / 取消"这种**两个正事**的场合 —— 和删除确认共用同一个
+     * 玻璃框，而不是另做一套弹窗（用户 2026-11-25 第 7 条：保存不要用抽屉，要像删除确认）。
+     */
+    val secondaryLabel: String? = null,
+    val onSecondary: (() -> Unit)? = null,
+    /** 确认按钮用红（删除类）还是主色（保存类）。 */
+    val destructive: Boolean = true,
 )
 
 /** 确认框的"请求"入口：页面只 ask，由页面骨架渲染（[LocalConfirmController]）。 */
@@ -75,6 +85,14 @@ class ConfirmController {
         spec = null
         AppLog.i("ui", "确认框取消：${current.title}")
         current.onDismiss()
+    }
+
+    /** 第三个按钮（如"新建"）：先摘掉弹层，再执行动作。 */
+    internal fun secondary() {
+        val current = spec ?: return
+        spec = null
+        AppLog.i("ui", "确认框第三选：${current.secondaryLabel}")
+        current.onSecondary?.invoke()
     }
 
     /** 确认：先摘掉弹层（它会播退出动画），再执行动作。 */
@@ -184,9 +202,20 @@ fun GlassConfirmHost(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         TextButton(onClick = { controller.dismiss() }) { Text("取消") }
+                        val secondary = shown.secondaryLabel
+                        if (secondary != null) {
+                            TextButton(onClick = { controller.secondary() }) { Text(secondary) }
+                        }
                         // 不可逆操作里，这是唯一需要眼睛停一下的地方
                         TextButton(onClick = { controller.confirm() }) {
-                            Text(shown.confirmLabel, color = MaterialTheme.colorScheme.error)
+                            Text(
+                                shown.confirmLabel,
+                                color = if (shown.destructive) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                            )
                         }
                     }
                 }
@@ -227,6 +256,42 @@ fun ConfirmDeleteDialog(
                 confirmLabel = confirmLabel,
                 onConfirm = { latestConfirm() },
                 onDismiss = { latestDismiss() },
+            ),
+        )
+    }
+}
+
+/**
+ * 两个正事 + 取消的确认框（磨砂玻璃，和删除确认同一个框）。
+ *
+ * 用在「保存角色卡」：确认 = 覆盖原卡，第三个按钮 = 另存为新卡。
+ * 参数**全部写名字**：这里有两个 lambda，位置写反编译器不报。
+ */
+@Composable
+fun ConfirmChoiceDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    secondaryLabel: String,
+    onSecondary: () -> Unit,
+    onDismiss: () -> Unit,
+    controller: ConfirmController = LocalConfirmController.current,
+) {
+    val latestConfirm by rememberUpdatedState(onConfirm)
+    val latestSecondary by rememberUpdatedState(onSecondary)
+    val latestDismiss by rememberUpdatedState(onDismiss)
+    LaunchedEffect(title, message, confirmLabel, secondaryLabel) {
+        controller.ask(
+            ConfirmSpec(
+                title = title,
+                message = message,
+                confirmLabel = confirmLabel,
+                onConfirm = { latestConfirm() },
+                onDismiss = { latestDismiss() },
+                secondaryLabel = secondaryLabel,
+                onSecondary = { latestSecondary() },
+                destructive = false,
             ),
         )
     }

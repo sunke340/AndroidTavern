@@ -152,7 +152,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val baseUrl: String = "https://api.deepseek.com/v1",
         val apiKey: String = "",
         val model: String = "deepseek-chat",
-        val input: String = "你好，自我介绍一下？",
+        val input: String = "",
         val transcript: List<ChatMessage> = emptyList(),
         val streamingText: String = "",
         val isStreaming: Boolean = false,
@@ -1142,7 +1142,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             AppLog.i("config", "会话模型 id=$profileId model=${profile.model}")
-            notify("本会话用「${profile.name}」")
         }
     }
 
@@ -1154,7 +1153,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val snapshot = _state.value
             applySessionProfileOverride(snapshot.cardOverride.profileId)
             AppLog.i("config", "会话模型回到跟随默认")
-            notify("模型跟随默认档案")
         }
     }
 
@@ -2721,23 +2719,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun rewindToMessage(index: Int) {
         val snapshot = _state.value
         val sessionId = snapshot.sessionId ?: return
+        val target = snapshot.transcript.getOrNull(index) ?: return
+        // 先把"点了哪一个"记下来：真机上这类操作看不出到底走了哪条分支
+        AppLog.i("chat", "撤回请求 index=$index role=${target.role} streaming=${snapshot.isStreaming}")
         if (snapshot.isStreaming) {
-            notify("正在生成，等它写完再撤回")
+            notify("正在生成：先点停止，再撤回")
             return
         }
-        val target = snapshot.transcript.getOrNull(index) ?: return
         if (target.role != ChatRole.User) {
             notify("只能撤回到自己发的消息")
             return
         }
         viewModelScope.launch {
             val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            val removed = stored.drop(index)
-            withContext(Dispatchers.IO) { removed.forEach { chatRepository.deleteMessage(it.id) } }
+            val cut = index.coerceIn(0, stored.size)
+            // 删的是"这条用户消息 + 它之后的所有消息"（**双方都算**：角色回复一起撤）
+            val removed = stored.drop(cut)
+            withContext(Dispatchers.IO) {
+                removed.asReversed().forEach { chatRepository.deleteMessage(it.id) }
+            }
+            // 以库里剩下的为准重建 transcript：删完之后界面和库不可能再对不上
+            val remaining = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
             _state.update { current ->
                 if (current.sessionId != sessionId) current
                 else current.copy(
-                    transcript = current.transcript.take(index),
+                    transcript = remaining.map { message ->
+                        ChatMessage(
+                            role = if (message.isUser) ChatRole.User else ChatRole.Assistant,
+                            content = message.content,
+                        )
+                    },
                     input = target.content,
                     // 被删掉的那批里可能有最后一条助手消息，它的 swipe 备选也跟着没了
                     lastSwipes = emptyList(),
@@ -2745,8 +2756,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             refreshSessions()
-            AppLog.i("chat", "撤回到 index=$index，删 ${removed.size} 条")
-            notify("已回退到这条，改完再发")
+            AppLog.i(
+                "chat",
+                "撤回到 index=$index：删 ${removed.size} 条（我方的这条 + 之后双方全部），剩 ${remaining.size} 条",
+            )
+            notify("已撤回 ${removed.size} 条消息，正文回到输入框")
         }
     }
 

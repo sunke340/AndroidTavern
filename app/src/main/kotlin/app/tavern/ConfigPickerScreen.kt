@@ -91,15 +91,19 @@ private fun WorldBookPickerBody(
     }
     val current = effectiveBookNames(state)
     val all = state.worldBooks.map { it.name }.toSet()
-    // 没有书时别摆"全部开启/关闭"两行空动作
-    val extras = (if (stored != null) 1 else 0) + if (state.worldBooks.isEmpty()) 0 else 2
+    // 「跟随上级」常驻（用户 2026-11-25 第 4 条：它一出现就把整列往下挤，点错行）；
+    // 没有书时不摆"全部开启/关闭"两行空动作
+    val following = stored == null
+    val bulk = if (state.worldBooks.isEmpty()) 0 else 2
+    val extras = 1 + bulk
     val count = state.worldBooks.size + extras
 
     ListGroup(count = count) { index, _ ->
         when {
-            stored != null && index == 0 -> ListRow(
+            index == 0 -> ListRow(
                 title = "跟随上级",
                 subtitle = null,
+                leading = { ActiveMark(following) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.useSessionWorldBooks(null)
@@ -108,7 +112,7 @@ private fun WorldBookPickerBody(
                 },
             )
 
-            index == (if (stored != null) 1 else 0) -> ListRow(
+            bulk > 0 && index == 1 -> ListRow(
                 title = "全部开启",
                 subtitle = "这本书单里的 ${all.size} 本都参与",
                 onClick = {
@@ -119,7 +123,7 @@ private fun WorldBookPickerBody(
                 },
             )
 
-            index == (if (stored != null) 2 else 1) -> ListRow(
+            bulk > 0 && index == 2 -> ListRow(
                 title = "全部关闭",
                 subtitle = null,
                 onClick = {
@@ -170,13 +174,16 @@ private fun RegexPickerBody(
     }
     val current = effectiveRegexNames(state)
     val all = state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
-    val extras = (if (stored != null) 1 else 0) + if (state.regexScripts.isEmpty()) 0 else 2
+    val following = stored == null
+    val bulk = if (state.regexScripts.isEmpty()) 0 else 2
+    val extras = 1 + bulk
     val count = state.regexScripts.size + extras
 
     ListGroup(count = count) { index, _ ->
         when {
-            stored != null && index == 0 -> ListRow(
+            index == 0 -> ListRow(
                 title = "跟随上级",
+                leading = { ActiveMark(following) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.useSessionRegex(null)
@@ -185,7 +192,7 @@ private fun RegexPickerBody(
                 },
             )
 
-            index == (if (stored != null) 1 else 0) -> ListRow(
+            bulk > 0 && index == 1 -> ListRow(
                 title = "全部开启",
                 subtitle = "${all.size} 条都参与",
                 onClick = {
@@ -196,7 +203,7 @@ private fun RegexPickerBody(
                 },
             )
 
-            index == (if (stored != null) 2 else 1) -> ListRow(
+            bulk > 0 && index == 2 -> ListRow(
                 title = "全部关闭",
                 onClick = {
                     when (scope) {
@@ -246,15 +253,16 @@ private fun PresetPickerBody(
         ConfigScope.Card -> state.cardOverride.presetName
     }
     val effective = state.effectivePresetName
-    val hasFollow = stored != null
-    val count = state.presets.size + if (hasFollow) 1 else 0
+    val following = stored == null
+    // 常驻「跟随上级」（同上：避免插入一行后整列挪位）
+    val count = state.presets.size + 1
 
     ListGroup(count = count) { index, _ ->
-        if (hasFollow && index == 0) {
+        if (index == 0) {
             ListRow(
                 title = "跟随上级",
                 subtitle = state.activePreset ?: "内置默认",
-                leading = { ActiveMark(false) },
+                leading = { ActiveMark(following) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.useSessionPreset(null)
@@ -263,11 +271,11 @@ private fun PresetPickerBody(
                 },
             )
         } else {
-            val preset = state.presets[index - if (hasFollow) 1 else 0]
+            val preset = state.presets[index - 1]
             ListRow(
                 title = preset.name,
                 subtitle = if (preset.disabledCount > 0) "关 ${preset.disabledCount} 段" else null,
-                leading = { ActiveMark(preset.name == effective) },
+                leading = { ActiveMark(!following && preset.name == effective) },
                 onClick = {
                     when (scope) {
                         ConfigScope.Session -> viewModel.useSessionPreset(preset.name)

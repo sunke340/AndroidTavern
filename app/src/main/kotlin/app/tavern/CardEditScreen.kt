@@ -62,8 +62,9 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var greetings by remember(detail.id) { mutableStateOf(detail.alternateGreetings.toList()) }
 
     // 保存要走一个选择：覆盖原卡 / 新建一张 / 取消（用户 2026-11-25 第 9 条）。
-    // 抽屉由本页骨架渲染（液态玻璃），所以控制器在这里建再传进去。
-    val sheet = remember { SheetController() }
+    // 用**和删除确认同一个玻璃框**（第 7 条：不要抽屉），控制器由本页创建再传进骨架。
+    val confirm = remember { ConfirmController() }
+    var showSaveChoice by remember { mutableStateOf(false) }
 
     fun save(asNew: Boolean) {
         viewModel.saveCardFields(
@@ -84,22 +85,13 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         title = "编辑角色卡",
         onBack = viewModel::closeCardEditor,
         glass = glass,
-        sheetController = sheet,
+        confirmController = confirm,
         actions = {
             // 右上角用 ✓ 而不是"保存"两个字（用户 2026-11-25 第 19 条）
             CapsuleIcon(
                 icon = Icons.Filled.Check,
                 contentDescription = "保存",
-                onClick = {
-                    sheet.show(
-                        title = "保存角色卡",
-                        actions = listOf(
-                            SheetAction("新建一张角色卡") { save(asNew = true) },
-                            SheetAction("覆盖原卡（自动备份）") { save(asNew = false) },
-                            SheetAction("取消") { },
-                        ),
-                    )
-                },
+                onClick = { showSaveChoice = true },
             )
         },
     ) { padding ->
@@ -154,6 +146,25 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             TextButton(onClick = { greetings = greetings + "" }) { Text("＋ 加一条备选开场白") }
         }
+    }
+
+    if (showSaveChoice) {
+        ConfirmChoiceDialog(
+            controller = confirm,
+            title = "保存角色卡？",
+            message = "覆盖原卡会先把当前文件备份为 .bak.png；新建会以这张卡的图另存一张新卡。",
+            confirmLabel = "覆盖原卡",
+            onConfirm = {
+                showSaveChoice = false
+                save(asNew = false)
+            },
+            secondaryLabel = "新建一张",
+            onSecondary = {
+                showSaveChoice = false
+                save(asNew = true)
+            },
+            onDismiss = { showSaveChoice = false },
+        )
     }
 }
 

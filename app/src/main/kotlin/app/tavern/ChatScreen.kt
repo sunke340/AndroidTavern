@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.offset
@@ -67,6 +69,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
@@ -398,7 +401,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         with(density) { inputBarHeightPx.toDp() }
                     } else {
                         ChatInputAreaHeight
-                    },
+                    } +
+                    // 再让 12dp：输入胶囊的投影会往上铺一点，最后一条消息底下那排图标
+                    // 会"少一截"贴在胶囊边上（用户 2026-11-25 第 5 条）
+                    12.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
@@ -560,8 +566,19 @@ private fun ChatInputBar(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    // 键盘收起后输入框会缩回一行（但焦点还在），再点它要能**主动把键盘叫回来**
+    val keyboard = LocalSoftwareKeyboardController.current
     val sheet = LocalSheetController.current
     var focused by remember { mutableStateOf(false) }
+    // 键盘是否真的在：只靠 focus 不行 —— 按返回键收起键盘后输入框仍然有焦点，
+    // 于是它会一直停在两行的高度（用户 2026-11-25 第 9 条）。
+    // 规则：有焦点 且（键盘在 或 已经有字）才展开；键盘收起且没字就回到一行（带动画）。
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val expanded = focused && (imeVisible || state.input.isNotEmpty())
+    // 真机上"键盘收了但输入框没缩"这类问题只能靠日志判断：展开条件三个量都记上
+    LaunchedEffect(expanded, imeVisible) {
+        AppLog.i("ui", "输入区展开=$expanded 键盘=$imeVisible 字数=${state.input.length}")
+    }
     // 展开/收起现在是逐帧动画：高度日志按"变了这么多才记一行"节流，
     // 否则一次展开刷十几行，把真正有用的日志挤掉。
     var lastLoggedHeight by remember { mutableIntStateOf(0) }
@@ -604,7 +621,11 @@ private fun ChatInputBar(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                    ) { focusRequester.requestFocus() },
+                    ) {
+                        focusRequester.requestFocus()
+                        // 焦点还在、但键盘是被用户收起来的：requestFocus 不会重新弹键盘
+                        keyboard?.show()
+                    },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(
@@ -641,7 +662,7 @@ private fun ChatInputBar(
                     // 用淡出而不是直接摘掉：聚焦时它要"变"成下面那一行的发送钮，
                     // 硬切会让这一格突然空一块（用户 2026-11-25 第 2 条要求的形变动画）。
                     AnimatedVisibility(
-                        visible = !focused,
+                        visible = !expanded,
                         enter = fadeIn(tween(Motion.Fast)),
                         exit = fadeOut(tween(Motion.Fast)),
                     ) {
@@ -665,8 +686,8 @@ private fun ChatInputBar(
                 // 现在让**高度**一起过渡（expand/shrink），胶囊才是"长出来"而不是"换了个尺寸"。
                 // 这是用户明确要的一次性形变；玻璃面逐帧重建着色器的开销，只在点输入框那 200ms 里。
                 AnimatedVisibility(
-                    visible = focused,
-                    // 用户 2026-11-25：180ms 太快，看不见"变形"。展开 320ms、收起 240ms。
+                    visible = expanded,
+                    // 用户 2026-11-25：180ms 太快，看不见"变形"；320 仍嫌快，现在 400 / 300。
                     enter = expandVertically(
                         animationSpec = tween(Motion.InputExpand, easing = Motion.Decelerate),
                         expandFrom = Alignment.Bottom,
@@ -890,19 +911,19 @@ private fun MessageActionRow(
             MessageActionIcon("撤回", onRewind) { tint -> UndoGlyph(tint) }
             MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
             MessageActionIcon("编辑", onEdit) { tint ->
-                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
             MessageActionIcon("删除", onDelete) { tint ->
-                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
         } else {
             MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
             MessageActionIcon("编辑", onEdit) { tint ->
-                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
             if (canRegenerate) {
                 MessageActionIcon("重新生成", onRegenerate) { tint ->
-                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
                 }
             }
             if (canContinue) {
@@ -916,13 +937,13 @@ private fun MessageActionRow(
                 }
             }
             MessageActionIcon("删除", onDelete) { tint ->
-                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
         }
     }
 }
 
-/** 一个 30dp 的图标按钮：图标本身 17dp，按下时从 62% 提到满色。 */
+/** 一个 32dp 的图标按钮：图标本身 18dp，按下时从 62% 提到满色。 */
 @Composable
 private fun MessageActionIcon(
     contentDescription: String,
@@ -935,7 +956,7 @@ private fun MessageActionIcon(
     )
     Box(
         modifier = Modifier
-            .size(30.dp)
+            .size(32.dp)
             .clip(CircleShape)
             .semantics { this.contentDescription = contentDescription }
             .clickable(interactionSource = press, indication = null, onClick = onClick),
@@ -948,7 +969,7 @@ private fun MessageActionIcon(
 /** 「复制」字形：两张错开的圆角纸（core 里没有 ContentCopy）。 */
 @Composable
 private fun CopyGlyph(tint: Color) {
-    Canvas(Modifier.size(17.dp)) {
+    Canvas(Modifier.size(18.dp)) {
         val w = size.width
         val stroke = Stroke(width = w * 0.09f)
         val radius = CornerRadius(w * 0.16f)
@@ -972,7 +993,7 @@ private fun CopyGlyph(tint: Color) {
 /** 「撤回」字形：一条从左下绕上去的回头箭头（core 里没有 Undo）。 */
 @Composable
 private fun UndoGlyph(tint: Color) {
-    Canvas(Modifier.size(17.dp)) {
+    Canvas(Modifier.size(18.dp)) {
         val w = size.width
         val stroke = Stroke(width = w * 0.10f, cap = StrokeCap.Round)
         val path = Path().apply {
