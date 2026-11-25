@@ -33,8 +33,6 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
 
     // 三页都和全局世界书条目页同一套：页头半透明、内容从它底下滑过（用户 2026-11-25 第 7 条：
     // 二级页的页头不该是一条纯色）。
-    val scrollUnderHeader = true
-
     GlassDetailScaffold(
         title = page.title,
         // 页头一行是"标题 + N 条"，和全局世界书详情页一致
@@ -45,14 +43,17 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
         },
         onBack = viewModel::closeCardConfigPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        contentTopInset = if (scrollUnderHeader) 0.dp else DetailHeaderHeight,
+        contentTopInset = 0.dp,
         actions = if (page == CardConfigPage.WorldBook) {
             { WorldBookBulkMenu { mode -> viewModel.setAllCardBookEntries(mode) } }
         } else {
             null
         },
     ) { padding ->
-        if (scrollUnderHeader) {
+        // **按页分发**：三页共用这一个骨架，内容却完全不同。
+        // 6f4dd53 把这里写成"只要 scrollUnderHeader 就渲染世界书页"，于是「对话样式」和
+        // 「关于这张卡」都被内嵌世界书顶掉了（v149 / v150 的真机包里就是错的）。
+        if (page == CardConfigPage.WorldBook) {
             // 条目多的时候**必须懒加载**：非懒加载的 `ListGroup` 会在进页的第一帧里把全部条目
             // 组合出来 —— 真机日志里出现过 448ms 一帧，转场动画直接被吃掉（用户 2026-11-24）。
             CardWorldBookPage(
