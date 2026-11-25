@@ -880,3 +880,17 @@ Seraphina 的。日志里还有一个更怪的名字：`写回卡 …（备份 s
 修法：`PageStack` 给每页提供 `LocalPageIsCurrent`（离场页 = false）。聊天页在离场那一帧
 `focusManager.clearFocus(force = true)`（收起输入框的焦点/光标），并把气泡正文从
 `SelectionContainer` 切回普通 `Text`（选区状态随容器销毁，手柄/工具栏立刻消失）。
+
+## 2026-11-25 · staticCompositionLocalOf 留下陈旧的 false（气泡不能选字）
+
+为在离场时收起"选文字手柄"，一度给每个气泡传 `selectable = LocalPageIsCurrent.current`，
+并把 `LocalPageIsCurrent` 定义成 `staticCompositionLocalOf`。现象：最新那条助手气泡长按选不中，
+必须先把列表滑一下才行。
+
+原因：静态 local 的**读者不会被单独标记失效**，而 `ChatScreen` 参数没变时会被跳过 ——
+从"离场那一帧"的 `false` 起就一直没重读，直到别的状态（滑动改变 `atBottom`）触发一次重组。
+
+两条修法一起用：
+1. local 换成**动态** `compositionLocalOf`（读它的页面会在值变化时重组）；
+2. 不再改变"有没有 SelectionContainer"（那会让列表项处于两种结构），改成离场时把消息列表
+   `key(epoch)` 整体重建 —— 旧 `SelectionContainer` 随组合销毁，手柄/工具栏一起消失。

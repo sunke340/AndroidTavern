@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-25 12:30）
+# 项目状态快照（2026-11-25 13:10）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -10,8 +10,8 @@
 
 | | |
 |---|---|
-| 代码 | `7fabc5a`（tag `apk-m173`） |
-| 最新交付 | `artifacts/app-v142-7fabc5a.apk`（签名与 dex `BUILD_ID` 都核过） |
+| 代码 | `4ada4c6`（tag `apk-m175`） |
+| 最新交付 | `artifacts/app-v144-4ada4c6.apk`（默认正则 + 显示格式）；上一包 v143 是选字修复 |
 | 真机验过的最后一版 | `artifacts/app-v117-0631bff.apk`（串流跟随那一轮） |
 | CI | 铁律 / 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个模块，89 条）+ 三个 `check-*.sh` |
@@ -35,7 +35,9 @@
 | 形变时的按钮遮挡：膨胀行只留高度，发送/模型钮改成**浮层**（不再被逐帧裁剪） | ✅ |
 | 撤回后列表滑回最底部（一次性信号 → `animateScrollToItem(0)`，日志 `scroll 回到列表底部`） | ✅ |
 | 删掉消息「编辑」（撤回已覆盖）；连带删 `EditMessageDialog` / `editMessageAt` | ✅ |
-| 离场页收掉输入焦点与选字手柄（`LocalPageIsCurrent`；手柄是独立弹层，不跟页面滑） | ✅ |
+| 离场页收掉输入焦点与选字手柄（动态 `LocalPageIsCurrent` + 列表 `key(epoch)` 重建） | ✅ |
+| **修**：v142 用静态 local + 逐项 `selectable` 导致"最新气泡不能长按选字、滑一下才好" | ✅ v143 |
+| **P1-12 默认正则**：内置只读两条（清包裹标签 / 动作强调），设置→正则可关；只影响显示 | ✅ v144 |
 
 ## 真机待复核（M6）
 

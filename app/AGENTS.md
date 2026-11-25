@@ -156,6 +156,20 @@
 - 思考强度只在"模型"里出现一次（模型页顶部 / 快捷抽屉顶部），两级页面都不再单列一行。
 - 新增一个可配置项时，三层都要接：数据字段、`ConfigKind` 新分支、两级页面各一行。
 
+## 消息显示格式（P1-12）
+
+- **只影响气泡显示**：存档、导出、`查看请求`、发给模型的提示词全部保持原文。
+- 两组**只读内置正则**（`core/regex` 的 `BuiltinRegex`，设置→正则「内置」开关，默认开）：
+  「清理包裹标签」（白名单 `content/output/response/message/text/answer`）和
+  「动作描写强调」（`**粗**` / `*斜*` / `_斜_`）。关掉 = 不跑这条 = 原文。
+- 执行顺序：**用户脚本 → 清标签 → 强调**；内置是全局开关，不受会话/卡级 `regexIds` 过滤
+  （老会话存的 id 集合里没有它们，混在一起会被误关）。
+- 正则把强调替换成 `<i>` / `<b>`，再由 `InlineMarkup` 解析成 `AnnotatedString`；
+  **只认** `<i> <em> <b> <strong> <br>`，其他标签原样显示 —— 不做 HTML/WebView，也不做
+  列表/标题那套完整 Markdown。
+- 强调语义有夹具：`fixtures/expected/P1-12-inline-markup.json`（原版 showdown +
+  showdown-underscore 的渲染结果），`InlineMarkupFixtureTest` 比斜体/粗体/换行的位置。
+
 ## 预设与拖动排序（P1-5）
 
 - 提示词顺序是**数据**（`prompt_order`），拼提示词时按它遍历，别在 `PromptBuilder` 里再写死顺序。
@@ -209,10 +223,12 @@
 - **输入区做高度动画时，按钮必须是浮层**（`Box` + `align(BottomEnd/BottomStart)`）：
   高度动画的容器会逐帧裁内容，按钮放进去就会在动画期间被切掉一截（2026-11-25 用户报的）。
   动画只作用在一个空 `Spacer` 的高度上；文字行的右侧让位按展开状态做 `animateDpAsState`。
-- **离场页要收掉"浮在窗口上的东西"**：`PageStack` 提供 `LocalPageIsCurrent`（离场页 = false）。
-  输入焦点与选文字手柄是**独立弹层**，不跟 `graphicsLayer` 位移 —— 聊天页在离场那一帧
-  `clearFocus(force = true)`，并把气泡正文从 `SelectionContainer` 切回普通 `Text`
-  （2026-11-25 用户报的"返回时游标钉在屏幕上"）。
+- **离场页要收掉"浮在窗口上的东西"**：`PageStack` 提供 `LocalPageIsCurrent`（**动态**
+  `compositionLocalOf`，离场页 = false）。输入焦点与选文字手柄是**独立弹层**，不跟
+  `graphicsLayer` 位移 —— 聊天页在离场那一帧 `clearFocus(force = true)`，并让消息列表
+  `key(epoch)` 整体重建（`SelectionContainer` 随旧组合销毁 → 手柄/工具栏立刻消失）。
+  ⚠️ 别用"给每个气泡传 selectable=false"：静态 local 的读者不会失效，页面会卡在 false，
+  表现为"最新气泡不能长按选字、滑一下才好"（2026-11-25 踩过）。
 - **消息操作是气泡底下的图标行，不再长按出抽屉**（用户 2026-11-25 第 11 条）：长按 = 选文字
   （正文包 `SelectionContainer`）。**只放图标不写文字**（第 6 条）：助手＝复制/[重新生成]/
   [继续]/删除，用户＝撤回/复制/删除；按钮 32dp、图标 18dp。**没有「编辑」**（撤回就能改完重发）。
