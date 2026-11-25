@@ -130,6 +130,7 @@ import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.data.log.AppLog
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
@@ -158,6 +159,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 输入区的实测高度（像素）：列表底部让位跟着它走 —— 聚焦时输入区会向上翻倍
     var inputBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+
+    // 抽屉开合期间把**列表底部让位**冻住（用户 2026-11-25："抽屉期间列表还是动"）。
+    // 会动的有两个来源，缺一个都还会跳：① 抽屉一开要先收键盘，IME 让位整块消失；
+    // ② 输入区可能改高。这两笔都直接进列表的 contentPadding.bottom，而反排列表锚在底部
+    // → 背后气泡整片往下掉（真机日志：展开 301px → 198px → 键盘=false）。
+    // 冻的是"打开那一刻的最终值"，收起后等键盘落定再解冻（此时实时值已回到同一水平）。
+    // 注意：宿主实例只能在骨架**内部**读（下面的 content lambda 里）。页面顶层读 `Local` 拿到的是
+    // 没有宿主的默认实例，它的 `spec` 永远是 null —— 这就是"抽屉开了但列表照样动"的坑。
+    var frozenListBottom by remember { mutableStateOf<Dp?>(null) }
 
     // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
     // 长按交给文字选择（正文在外面包了 SelectionContainer）。
@@ -416,6 +426,32 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
         },
     ) { padding ->
+        // 列表底部让位 = IME/导航让位 + 输入区实测高度 + 12dp 投影余量（下面 contentPadding 用）。
+        // 抽屉开着时换成冻结值：那是打开那一刻的同一个算式，所以背后气泡一动不动。
+        val sheetHost = LocalSheetController.current
+        val sheetOpen = sheetHost.spec != null
+        val inputBarDp =
+            if (inputBarHeightPx > 0) with(density) { inputBarHeightPx.toDp() } else ChatInputAreaHeight
+        val liveListBottom = padding.calculateBottomPadding() + inputBarDp + 12.dp
+        val listBottom = frozenListBottom ?: liveListBottom
+        // 只在"打开时键盘还在"才冻：那种情况下收键盘会让让位整块消失。
+        // 键盘本来就没开（输入区是一行）时，打开抽屉什么都没变 —— 冻住反而会把"收起后键盘回来"
+        // 那一段变成延迟的硬跳，不如让它跟着键盘自然长。
+        val imeVisibleNow = WindowInsets.ime.getBottom(density) > 0
+        LaunchedEffect(sheetOpen) {
+            if (sheetOpen) {
+                if (imeVisibleNow) {
+                    frozenListBottom = liveListBottom
+                    AppLog.i("ui", "抽屉打开：冻结列表底部让位 ${liveListBottom.value.toInt()}dp")
+                }
+            } else if (frozenListBottom != null) {
+                // 收起后键盘要回来（约 250ms）：等它落定再解冻，否则解冻那一下就是"键盘回来了"的跳。
+                delay(500)
+                frozenListBottom = null
+                AppLog.i("ui", "抽屉收起：解冻列表底部让位（实时 ${liveListBottom.value.toInt()}dp）")
+            }
+        }
+
         // 列表铺满整页（连输入区底下也算）：消息能滚到输入胶囊后面，胶囊才是真玻璃。
         // 顶部/底部让位一律用 contentPadding —— 它不裁内容，滚动时会从玻璃底下过。
         // reverseLayout：列表的"锚点"是底部，新消息天然出现在眼前，
@@ -459,15 +495,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 top = padding.calculateTopPadding(),
                 // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
                 // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
-                bottom = padding.calculateBottomPadding() +
-                    if (inputBarHeightPx > 0) {
-                        with(density) { inputBarHeightPx.toDp() }
-                    } else {
-                        ChatInputAreaHeight
-                    } +
-                    // 再让 12dp：输入胶囊的投影会往上铺一点，最后一条消息底下那排图标
-                    // 会"少一截"贴在胶囊边上（用户 2026-11-25 第 5 条）
-                    12.dp,
+                // 抽屉开着时这里是**冻结值**（见上面 listBottom）：那段时间让位一变，气泡就跟着动。
+                bottom = listBottom,
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
@@ -659,8 +688,8 @@ private fun ChatInputBar(
 
     val openModelSheet = {
         // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘。
-        // **但输入区高度要冻住**（keepExpanded）—— 它一缩，列表底部让位就跟着缩，背后气泡会动。
-        keepExpanded = true
+        // 输入区高度冻在**当前状态**（不要强制展开：从收起态打开时凭空长高会盖住列表）。
+        keepExpanded = expanded
         focusManager.clearFocus()
         showModelSheet(
             sheet = sheet,
