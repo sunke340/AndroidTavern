@@ -333,19 +333,19 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                 ) { viewModel.openCardConfigPage(CardConfigPage.WorldBook) }
 
                                 1 -> SettingLinkRow("模型", "$cardProfileName · $cardProfileSrc") {
-                                    showModelSheet(sheet, state, viewModel, ConfigScope.Card)
+                                    viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Model)
                                 }
 
                                 2 -> SettingLinkRow("世界书", "参与 ${cardBooks.size} 本 · $cardBooksSrc") {
-                                    showWorldBookSheet(sheet, state, viewModel, ConfigScope.Card, cardBooks)
+                                    viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.WorldBook)
                                 }
 
                                 3 -> SettingLinkRow("正则", "参与 ${cardRegex.size} 条 · $cardRegexSrc") {
-                                    showRegexSheet(sheet, state, viewModel, ConfigScope.Card, cardRegex)
+                                    viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Regex)
                                 }
 
                                 4 -> SettingLinkRow("预设", "$cardPreset · $cardPresetSrc") {
-                                    showPresetSheet(sheet, state, viewModel, ConfigScope.Card)
+                                    viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Preset)
                                 }
 
                                 5 -> SettingLinkRow("对话样式", styleLabel) {
@@ -358,14 +358,8 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                             }
                         }
 
-                        // 卡级思考强度（用户 2026-11-25 追加）：和会话级同一种滑块，
-                        // 这一层存的是"这张卡以后开的会话默认用什么"，会话级还能再盖它。
-                        ThinkingEffortSlider(
-                            current = state.cardOverride.reasoningEffort,
-                            effective = state.effectiveReasoningEffort,
-                            onSelect = viewModel::useCardReasoning,
-                            modifier = Modifier.padding(top = Space.s),
-                        )
+                        // 卡级思考强度不在这里单独占一行：它在「模型」页顶部
+                        // （用户 2026-11-25 第 5 条：两处重复，只留模型内那一处）
                     }
                 }
             }

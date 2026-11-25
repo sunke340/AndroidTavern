@@ -245,6 +245,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionConfigOpen: Boolean = false,
         /** 编辑角色卡（从详情页 ⋮ 进）。 */
         val cardEditOpen: Boolean = false,
+        /**
+         * 三级配置的"选一项"页（模型 / 世界书 / 正则 / 预设）。
+         *
+         * 以前这些都做成底部抽屉（用户 2026-11-25：应该像设置页那样**跳二级页面**）。
+         * 卡片里带作用域：会话级从「会话配置」进，角色卡级从详情页「配置」进。
+         */
+        val configPicker: ConfigPickerTarget? = null,
         /** 当前这张卡的全部开场白（第一条是 first_mes，其后是备选）。换开场白只读它。 */
         val greetings: List<String> = emptyList(),
         /**
@@ -306,7 +313,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var noticeSeq = 0L
+
+    /**
+     * **当前会话**那张卡的原始 JSON。发请求（提示词、世界书）只认它。
+     *
+     * ⚠️ 详情页浏览**不能**覆盖它：那是另一张卡的事，覆盖了就会出现"聊 A、请求里却是 B"。
+     */
     private var card: CharacterCard? = null
+
+    /**
+     * **详情页当前打开**那张卡的原始 JSON，卡编辑保存的底本。
+     *
+     * 为什么要单独存：以前编辑保存用的是 [card]（会话那张），而 [loadDetail] 又不刷新它 ——
+     * 先聊 Seraphina、再打开 Synthetic 的详情去编辑，保存时会把 Seraphina 的整份 JSON
+     * （连同内嵌世界书）写进 Synthetic（2026-11-25 真机报的正是这个）。
+     * 现在详情一打开就记下"这份 JSON 是哪张卡的"，保存前再核对一次。
+     */
+    private var detailRaw: CharacterCard? = null
+    private var detailRawId: String? = null
     private var job: Job? = null
     private var keySaveJob: Job? = null
 
@@ -485,7 +509,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeDetail() {
         _state.update {
-            it.copy(detailCardId = null, detail = null, cardConfigPage = null, cardEditOpen = false)
+            it.copy(
+                detailCardId = null,
+                detail = null,
+                cardConfigPage = null,
+                cardEditOpen = false,
+                configPicker = null,
+            )
         }
     }
 
@@ -526,6 +556,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         _state.update { current ->
             if (current.detailCardId == cardId) current.copy(detail = detail) else current
+        }
+        // 原始 JSON 跟着"当前打开的详情"走（卡编辑的底本，见 [detailRaw]）
+        if (_state.value.detailCardId == cardId) {
+            detailRaw = card
+            detailRawId = cardId
         }
         // 详情是在**转场动画期间**到达的：这次状态变更会再触发一次组合。把耗时记下来，
         // 才能判断"转场卡"是页面首帧贵，还是详情到达太晚（tag=nav 的转场帧数对时间戳）。
@@ -1328,16 +1363,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         alternateGreetings: List<String> = emptyList(),
         systemPrompt: String = "",
         postHistoryInstructions: String = "",
+        /** true = 以这张卡的图新建一张卡（原卡不动）；false = 覆盖原卡（先备份）。 */
+        asNew: Boolean = false,
     ) {
         val cardId = _state.value.detailCardId ?: return
-        val loaded = card ?: return
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
             notify("名字不能为空")
             return
         }
         viewModelScope.launch {
-            val updated = loaded
+            // 原始 JSON 必须属于**这张卡**（见 [detailRaw]）：详情打开时记下的那份，
+            // id 对不上就现读一次 —— 绝不能用 [card]（那是会话的卡）。
+            val source = if (detailRawId == cardId) {
+                detailRaw
+            } else {
+                withContext(Dispatchers.IO) { loadCard(cardId) }
+            }
+            if (source == null) {
+                notify("读卡失败：先返回再进来一次")
+                return@launch
+            }
+            val updated = source
                 .withField("name", JsonPrimitive(trimmed))
                 .withField("description", JsonPrimitive(description))
                 .withField("personality", JsonPrimitive(personality))
@@ -1353,6 +1400,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         JsonPrimitive(it)
                     }),
                 )
+
+            if (asNew) {
+                val newId = withContext(Dispatchers.IO) {
+                    runCatching { cardRepository.saveCardAs(cardId, trimmed, updated) }.getOrNull()
+                }
+                if (newId == null) {
+                    notify("新建失败：卡文件可能已被移动或损坏")
+                    return@launch
+                }
+                detailRaw = updated
+                detailRawId = newId
+                // 先关编辑页，再按"打开一张新卡"走（卡级覆盖、详情、标签页都按新卡重来）
+                _state.update { it.copy(cardEditOpen = false) }
+                val cards = withContext(Dispatchers.IO) { cardRepository.list() }
+                _state.update { it.copy(cards = cards) }
+                refreshSessions()
+                openDetail(newId)
+                AppLog.i("card", "卡编辑另存为新卡 name=${trimmed.take(20)} id=${newId.take(12)}")
+                notify("已新建「$trimmed」")
+                return@launch
+            }
+
             val ok = withContext(Dispatchers.IO) {
                 runCatching { cardRepository.saveCard(cardId, updated) }.getOrDefault(false)
             }
@@ -1360,7 +1429,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 notify("写回失败：卡文件可能已被移动或损坏")
                 return@launch
             }
-            card = updated
+            detailRaw = updated
+            detailRawId = cardId
+            // 改的就是当前会话那张卡：会话侧的原始 JSON 也要跟着换，否则下一句还用旧设定
+            if (_state.value.cardId == cardId) card = updated
             _state.update { it.copy(cardEditOpen = false) }
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
             // 会话列表显示的是会话行里冗余的 card_name：卡改名后一并刷新，否则列表还挂着旧名
@@ -1542,7 +1614,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { if (it.notice?.id == id) it.copy(notice = null) else it }
     }
 
-    fun closeChat() = _state.update { it.copy(chatOpen = false, sessionConfigOpen = false) }
+    fun closeChat() = _state.update {
+        it.copy(chatOpen = false, sessionConfigOpen = false, configPicker = null)
+    }
 
     /** 打开会话配置（三级继承最内层的那一页）。 */
     fun openSessionConfig() {
@@ -1554,7 +1628,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         AppLog.i("config", "开会话配置")
     }
 
-    fun closeSessionConfig() = _state.update { it.copy(sessionConfigOpen = false) }
+    fun closeSessionConfig() = _state.update {
+        it.copy(sessionConfigOpen = false, configPicker = null)
+    }
+
+    /** 打开"选一项"页（模型 / 世界书 / 正则 / 预设）：像设置页那样整页选，不再用底部抽屉。 */
+    fun openConfigPicker(scope: ConfigScope, kind: ConfigKind) {
+        _state.update { it.copy(configPicker = ConfigPickerTarget(scope, kind)) }
+        AppLog.i("config", "打开配置页 ${scope.name}/${kind.name}")
+    }
+
+    fun closeConfigPicker() = _state.update { it.copy(configPicker = null) }
 
     fun toggleRequest() = _state.update { it.copy(showRequest = !it.showRequest) }
 

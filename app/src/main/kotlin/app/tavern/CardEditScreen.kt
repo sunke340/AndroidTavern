@@ -61,27 +61,43 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 备选开场白：可增删改。空串在保存时会被剔掉（界面上"加一条"先塞占位）
     var greetings by remember(detail.id) { mutableStateOf(detail.alternateGreetings.toList()) }
 
+    // 保存要走一个选择：覆盖原卡 / 新建一张 / 取消（用户 2026-11-25 第 9 条）。
+    // 抽屉由本页骨架渲染（液态玻璃），所以控制器在这里建再传进去。
+    val sheet = remember { SheetController() }
+
+    fun save(asNew: Boolean) {
+        viewModel.saveCardFields(
+            name = name,
+            description = description,
+            personality = personality,
+            scenario = scenario,
+            firstMessage = firstMessage,
+            messageExample = messageExample,
+            alternateGreetings = greetings,
+            systemPrompt = systemPrompt,
+            postHistoryInstructions = postHistoryInstructions,
+            asNew = asNew,
+        )
+    }
+
     GlassDetailScaffold(
         title = "编辑角色卡",
-        subtitle = "写回卡文件，原文件备份为 .bak.png",
         onBack = viewModel::closeCardEditor,
         glass = glass,
+        sheetController = sheet,
         actions = {
             // 右上角用 ✓ 而不是"保存"两个字（用户 2026-11-25 第 19 条）
             CapsuleIcon(
                 icon = Icons.Filled.Check,
                 contentDescription = "保存",
                 onClick = {
-                    viewModel.saveCardFields(
-                        name = name,
-                        description = description,
-                        personality = personality,
-                        scenario = scenario,
-                        firstMessage = firstMessage,
-                        messageExample = messageExample,
-                        alternateGreetings = greetings,
-                        systemPrompt = systemPrompt,
-                        postHistoryInstructions = postHistoryInstructions,
+                    sheet.show(
+                        title = "保存角色卡",
+                        actions = listOf(
+                            SheetAction("新建一张角色卡") { save(asNew = true) },
+                            SheetAction("覆盖原卡（自动备份）") { save(asNew = false) },
+                            SheetAction("取消") { },
+                        ),
                     )
                 },
             )

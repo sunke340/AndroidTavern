@@ -27,6 +27,25 @@ enum class DetailTab(val label: String) {
     Config("配置"),
 }
 
+/** 配置项落在哪一层：会话级（最内层）/ 角色卡级（中间层）。全局层在设置里。 */
+enum class ConfigScope { Session, Card }
+
+/** 三级配置里"可以单独选一项"的四类东西。 */
+enum class ConfigKind(val title: String) {
+    Model("模型"),
+    WorldBook("世界书"),
+    Regex("正则"),
+    Preset("预设"),
+}
+
+/**
+ * 「选一项」页的目标：作用域 + 类别。
+ *
+ * 用户 2026-11-25：会话配置与卡配置里的这些行不该弹底部抽屉，应该像设置页那样
+ * **整页跳进去选**（参考"对话样式"那一页）。抽屉只留给聊天页左下角那个快速换模型。
+ */
+data class ConfigPickerTarget(val scope: ConfigScope, val kind: ConfigKind)
+
 /** 角色卡配置的二级页（从角色详情 → 配置 进入，作用域是"这张卡"）。 */
 enum class CardConfigPage(val title: String) {
     WorldBook("内嵌世界书"),

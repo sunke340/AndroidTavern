@@ -183,7 +183,7 @@ private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
 /** 当前使用的档案：实心勾；其余是空心圈。点整行就切换，这里只负责"看得见"。 */
 @Composable
-private fun ActiveMark(isActive: Boolean) {
+internal fun ActiveMark(isActive: Boolean) {
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier

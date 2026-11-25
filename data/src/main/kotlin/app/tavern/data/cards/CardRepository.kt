@@ -43,4 +43,12 @@ interface CardRepository {
      * `IDAT` 等图片数据由 [app.tavern.core.card.PngCard.write] 保证逐字节不变。
      */
     fun saveCard(id: String, card: app.tavern.core.card.CharacterCard): Boolean
+
+    /**
+     * 以 [sourceId] 这张卡的图（IDAT）为基础，把 [card] 写成一张**新卡**。
+     *
+     * 返回新卡的文件名；名字冲突自动加 `-2`，写失败返回 null。
+     * 图片逐字节保留、卡片 JSON 用传入的 [card]（和 [saveCard] 同一条写回路径）。
+     */
+    fun saveCardAs(sourceId: String, name: String, card: app.tavern.core.card.CharacterCard): String?
 }

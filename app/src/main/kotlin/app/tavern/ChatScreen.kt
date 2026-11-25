@@ -19,6 +19,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -50,9 +51,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -91,11 +96,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.tavern.core.model.ChatMessage
@@ -463,20 +477,23 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 modifier = Modifier.align(Alignment.End),
                             )
                         }
-                        MessageActionRow(
-                            isUser = !isAssistant,
-                            canRegenerate = isAssistant && isLast,
-                            canContinue = isAssistant && isLast,
-                            onRewind = { viewModel.rewindToMessage(realIndex) },
-                            onCopy = { clipboard.setText(AnnotatedString(message.content)) },
-                            onEdit = { editingIndex = realIndex },
-                            onRegenerate = viewModel::regenerateLast,
-                            onContinue = viewModel::continueLast,
-                            onDelete = { deletingIndex = realIndex },
-                            modifier = Modifier.align(
-                                if (isAssistant) Alignment.Start else Alignment.End,
-                            ),
-                        )
+                        // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）
+                        if (!isGreetingSlot) {
+                            MessageActionRow(
+                                isUser = !isAssistant,
+                                canRegenerate = isAssistant && isLast,
+                                canContinue = isAssistant && isLast,
+                                onRewind = { viewModel.rewindToMessage(realIndex) },
+                                onCopy = { clipboard.setText(AnnotatedString(message.content)) },
+                                onEdit = { editingIndex = realIndex },
+                                onRegenerate = viewModel::regenerateLast,
+                                onContinue = viewModel::continueLast,
+                                onDelete = { deletingIndex = realIndex },
+                                modifier = Modifier.align(
+                                    if (isAssistant) Alignment.Start else Alignment.End,
+                                ),
+                            )
+                        }
                     }
                 }
         }
@@ -554,7 +571,7 @@ private fun ChatInputBar(
     val openModelSheet = {
         // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘
         focusManager.clearFocus()
-        showModelSheet(sheet, state, viewModel, ConfigScope.Session)
+        showModelSheet(sheet, viewModel)
     }
 
     Row(
@@ -649,14 +666,15 @@ private fun ChatInputBar(
                 // 这是用户明确要的一次性形变；玻璃面逐帧重建着色器的开销，只在点输入框那 200ms 里。
                 AnimatedVisibility(
                     visible = focused,
+                    // 用户 2026-11-25：180ms 太快，看不见"变形"。展开 320ms、收起 240ms。
                     enter = expandVertically(
-                        animationSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                        animationSpec = tween(Motion.InputExpand, easing = Motion.Decelerate),
                         expandFrom = Alignment.Bottom,
-                    ) + fadeIn(tween(Motion.Base)),
+                    ) + fadeIn(tween(Motion.InputExpand)),
                     exit = shrinkVertically(
-                        animationSpec = tween(Motion.Fast, easing = Motion.Standard),
+                        animationSpec = tween(Motion.InputCollapse, easing = Motion.Standard),
                         shrinkTowards = Alignment.Bottom,
-                    ) + fadeOut(tween(Motion.Fast)),
+                    ) + fadeOut(tween(Motion.InputCollapse)),
                 ) {
                     Row(
                         modifier = Modifier
@@ -840,14 +858,14 @@ private fun MessageRow(
 }
 
 /**
- * 一条消息底下那排动作（用户 2026-11-25 第 11 条：长按改成"选文字"，操作改成常驻按钮）。
+ * 一条消息底下那排动作（用户 2026-11-25 第 11 条：长按改成"选文字"，操作改成按钮）。
+ * 第 6 条又要求**用图标、不写文字** —— 这里是图标版。
  *
- * 用户气泡：撤回（回退到这条并重新编辑）/ 复制 / 删除；
- * 助手气泡：复制 / 编辑 / 重新生成 / 继续 / 删除。后两个只对**最后一条**助手消息出现
- * （原版语义：重新生成与继续都作用在最后一条上）。
+ * 用户气泡：撤回 / 复制 / 编辑 / 删除；
+ * 助手气泡：复制 / 编辑 / 重新生成 / 继续 / 删除。后两个只对最后一条助手消息出现。
  *
- * 不用图标：`material-icons-core` 里没有"重新生成/撤回"这类语义，用两个字反而更清楚，
- * 也省得为几个图标引 10MB。
+ * 图标来源：`Edit / Refresh / Delete / ArrowForward` 用 `material-icons-core`
+ * （`-extended` 多 10MB，不值得）；「复制」「撤回」core 里没有，用 Canvas 画两个简单字形。
  */
 @Composable
 private fun MessageActionRow(
@@ -869,32 +887,107 @@ private fun MessageActionRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isUser) {
-            MessageActionText("撤回", onRewind)
+            MessageActionIcon("撤回", onRewind) { tint -> UndoGlyph(tint) }
+            MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
+            MessageActionIcon("编辑", onEdit) { tint ->
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+            }
+            MessageActionIcon("删除", onDelete) { tint ->
+                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+            }
+        } else {
+            MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
+            MessageActionIcon("编辑", onEdit) { tint ->
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+            }
+            if (canRegenerate) {
+                MessageActionIcon("重新生成", onRegenerate) { tint ->
+                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                }
+            }
+            if (canContinue) {
+                MessageActionIcon("继续", onContinue) { tint ->
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+            MessageActionIcon("删除", onDelete) { tint ->
+                Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+            }
         }
-        MessageActionText("复制", onCopy)
-        // 用户消息也能改：撤回是"连后面一起退"，编辑只改这一条
-        MessageActionText("编辑", onEdit)
-        if (!isUser && canRegenerate) MessageActionText("重新生成", onRegenerate)
-        if (!isUser && canContinue) MessageActionText("继续", onContinue)
-        MessageActionText("删除", onDelete)
     }
 }
 
-/** 动作行里的一个小按钮：11sp、低对比，不抢消息正文。 */
+/** 一个 30dp 的图标按钮：图标本身 17dp，按下时从 62% 提到满色。 */
 @Composable
-private fun MessageActionText(label: String, onClick: () -> Unit) {
+private fun MessageActionIcon(
+    contentDescription: String,
+    onClick: () -> Unit,
+    icon: @Composable (Color) -> Unit,
+) {
     val press = remember { MutableInteractionSource() }
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-            alpha = if (press.collectIsPressedAsState().value) 1f else 0.62f,
-        ),
-        modifier = Modifier
-            .clip(RoundedCornerShape(Radius.pill))
-            .clickable(interactionSource = press, indication = null, onClick = onClick)
-            .padding(horizontal = Space.s, vertical = 6.dp),
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+        alpha = if (press.collectIsPressedAsState().value) 1f else 0.62f,
     )
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(interactionSource = press, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        icon(tint)
+    }
+}
+
+/** 「复制」字形：两张错开的圆角纸（core 里没有 ContentCopy）。 */
+@Composable
+private fun CopyGlyph(tint: Color) {
+    Canvas(Modifier.size(17.dp)) {
+        val w = size.width
+        val stroke = Stroke(width = w * 0.09f)
+        val radius = CornerRadius(w * 0.16f)
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.30f, w * 0.10f),
+            size = Size(w * 0.56f, w * 0.62f),
+            cornerRadius = radius,
+            style = stroke,
+        )
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.14f, w * 0.28f),
+            size = Size(w * 0.56f, w * 0.62f),
+            cornerRadius = radius,
+            style = stroke,
+        )
+    }
+}
+
+/** 「撤回」字形：一条从左下绕上去的回头箭头（core 里没有 Undo）。 */
+@Composable
+private fun UndoGlyph(tint: Color) {
+    Canvas(Modifier.size(17.dp)) {
+        val w = size.width
+        val stroke = Stroke(width = w * 0.10f, cap = StrokeCap.Round)
+        val path = Path().apply {
+            moveTo(w * 0.82f, w * 0.78f)
+            cubicTo(w * 0.96f, w * 0.30f, w * 0.62f, w * 0.10f, w * 0.30f, w * 0.24f)
+        }
+        drawPath(path, tint, style = stroke)
+        val head = Path().apply {
+            moveTo(w * 0.30f, w * 0.24f)
+            lineTo(w * 0.48f, w * 0.10f)
+            lineTo(w * 0.48f, w * 0.38f)
+            close()
+        }
+        drawPath(head, tint)
+    }
 }
 
 @Composable

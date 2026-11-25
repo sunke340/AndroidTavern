@@ -197,8 +197,7 @@ private fun GlassSheetPlate(
     //
     // 为什么跟手用 translationY 而不是改高度：弹层高度由内容决定，改高度会让整块重新测量，
     // 拖到一半内容就换行了。位移只落在绘制上，最便宜也最像"纸片被拖下去"。
-    // 收紧的判据取**弹层自身高度**的 1/2（不是屏高，用户 2026-11-25 第 1 条把 1/4 改成 1/2：
-    // 之前手一抖就收，想"拉下来看看"根本停不住）。往下甩得够快仍然直接收。
+    // 收紧的判据取**弹层自身高度**的 1/3（用户 2026-11-25：1/4 太容易误关，1/2 要拖太远）。
     var dragY by remember { mutableFloatStateOf(0f) }
     var plateHeightPx by remember { mutableFloatStateOf(0f) }
     val dragState = rememberDraggableState { delta ->
@@ -235,10 +234,10 @@ private fun GlassSheetPlate(
                         state = dragState,
                         orientation = Orientation.Vertical,
                         onDragStopped = { velocity ->
-                            // 只看"拖了多远"，**不再看速度**（用户 2026-11-25：改成超过自身高度
-                            // 1/2 才收回）。以前下甩 800dp/s 就能收，比一半低得多 —— 那还是
-                            // "手一抖就没了"。速度现在只写进日志，供排障。
-                            val closeByDrag = dragY > plateHeightPx * 0.5f
+                            // 只看"拖了多远"，**不看速度**（用户 2026-11-25：超过自身高度 1/3 才收回）。
+                            // 以前下甩 800dp/s 就能收，比这个低得多 —— 那还是"手一抖就没了"。
+                            // 速度现在只写进日志，供排障。
+                            val closeByDrag = dragY > plateHeightPx / 3f
                             if (closeByDrag) {
                                 AppLog.i(
                                     "ui",

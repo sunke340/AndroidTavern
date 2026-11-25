@@ -62,7 +62,7 @@ class CardStore(context: Context) : CardRepository {
     override fun list(): List<CardRef> {
         val seeded = seededIds
         val files = dir.listFiles().orEmpty()
-            .filter { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
+            .filter { it.isFile && isCardFile(it.name) }
             .sortedWith(compareBy({ it.name !in seeded }, { it.name }))
         val meta = readMeta()
         var dirty = false
@@ -108,7 +108,8 @@ class CardStore(context: Context) : CardRepository {
 
     /** 上一次选中的卡；文件已不在就返回 null（调用方据此回落）。 */
     override var selectedId: String?
-        get() = prefs.getString(KEY_SELECTED, null)?.takeIf { fileFor(it)?.isFile == true }
+        get() = prefs.getString(KEY_SELECTED, null)
+            ?.takeIf { isCardFile(it) && fileFor(it)?.isFile == true }
         set(value) {
             prefs.edit().putString(KEY_SELECTED, value).apply()
         }
@@ -169,7 +170,12 @@ class CardStore(context: Context) : CardRepository {
 
     override fun delete(id: String): Boolean {
         val file = fileFor(id) ?: return false
-        return file.isFile && file.delete()
+        val deleted = file.isFile && file.delete()
+        // 连带删掉这张卡的 `.bak.png`：备份是"改坏了还能拿回来"的安全网，卡都删了就没意义，
+        // 留着还会在卡目录里越积越多（真机上出现过一屏里三张同名卡）
+        val backup = File(dir, "${file.nameWithoutExtension}.bak.png")
+        if (backup.isFile) backup.delete()
+        return deleted
     }
 
     override fun saveCard(id: String, card: CharacterCard): Boolean {
@@ -191,6 +197,49 @@ class CardStore(context: Context) : CardRepository {
             true
         }.onFailure { AppLog.e("card", "写回卡失败 ${id.take(8)}", it) }.getOrDefault(false)
     }
+
+    override fun saveCardAs(
+        sourceId: String,
+        name: String,
+        card: CharacterCard,
+    ): String? {
+        val source = fileFor(sourceId)?.takeIf { it.isFile } ?: return null
+        return runCatching {
+            val original = source.readBytes()
+            val updated = PngCard.write(original, card)
+            val base = sanitize(name)
+            var id = "$base.png"
+            var suffix = 2
+            while (fileFor(id)?.isFile == true) {
+                if (suffix > 99) error("同名卡超过 99 张")
+                id = "$base-$suffix.png"
+                suffix++
+            }
+            val target = File(dir, id)
+            target.writeBytes(updated)
+            // 列表缓存顺手写好：新建后马上刷新列表就不用再解析一遍
+            runCatching {
+                val meta = readMeta()
+                meta[id] = CardInfo(
+                    length = target.length(),
+                    modified = target.lastModified(),
+                    name = card.name.orEmpty(),
+                    description = card.description.orEmpty(),
+                    bookCount = card.bookEntries().size,
+                    tags = card.tags,
+                )
+                writeMeta(meta)
+            }
+            AppLog.i("card", "另存为卡 ${id.take(12)} ${updated.size} 字节（源 ${sourceId.take(12)}）")
+            id
+        }.onFailure { AppLog.e("card", "另存为卡失败", it) }.getOrNull()
+    }
+
+    /** 卡目录里哪些文件算"一张卡"：`.png`，但排除备份与临时文件（2026-11-25 真机踩过）。 */
+    private fun isCardFile(name: String): Boolean =
+        name.endsWith(".png", ignoreCase = true) &&
+            !name.endsWith(".bak.png", ignoreCase = true) &&
+            !name.endsWith(".tmp", ignoreCase = true)
 
     private fun fileFor(id: String): File? =
         // 路径穿越防护：id 只能是本目录下的文件名

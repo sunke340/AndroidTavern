@@ -33,6 +33,16 @@ object Motion {
      */
     const val Slow = 280
 
+    /**
+     * 聊天输入区展开 / 收起。
+     *
+     * 用户 2026-11-25 第 2 条：按 180ms 走"看不出变形，只看到突然变大"。
+     * 320 / 240 是**专门为一件事**破的例：这道形变本身就是他要看的东西，
+     * 比常规过渡长一档；别的动画别跟着用这两个数。
+     */
+    const val InputExpand = 320
+    const val InputCollapse = 240
+
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 

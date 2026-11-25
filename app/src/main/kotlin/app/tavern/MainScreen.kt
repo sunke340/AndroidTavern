@@ -124,6 +124,9 @@ internal sealed interface Destination {
     /** 聊天 → ⋮ → 会话配置（三级）：三级继承最内层。 */
     data object SessionConfig : Destination
 
+    /** 配置里"选一项"的整页（会话级 = 四级，卡级 = 三级）。 */
+    data class ConfigPicker(val target: ConfigPickerTarget) : Destination
+
     /** 角色详情 → ⋮ → 编辑卡（写回 PNG）。 */
     data class CardEdit(val cardId: String) : Destination
 }
@@ -139,6 +142,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     Destination.Gallery -> 2
     is Destination.PresetEdit -> 2
     Destination.SessionConfig -> 3
+    is Destination.ConfigPicker -> if (destination.target.scope == ConfigScope.Session) 4 else 2
     is Destination.CardEdit -> 2
 }
 
@@ -154,6 +158,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     Destination.Gallery -> "gallery"
     is Destination.PresetEdit -> "preset-edit"
     Destination.SessionConfig -> "session-config"
+    is Destination.ConfigPicker -> "config/${destination.target.kind.name}"
     is Destination.CardEdit -> "card-edit"
 }
 
@@ -175,8 +180,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val worldBook = state.worldBookView
             val editingProfile = state.profileDraft != null
             val presetEdit = state.presetEditName
+            val configPicker = state.configPicker
 
             val destination: Destination = when {
+                // 选一项的页面叠在最上面：返回落回各自的父页（会话配置 / 角色详情）
+                configPicker != null -> Destination.ConfigPicker(configPicker)
                 // 会话配置叠在聊天页之上：返回落回聊天（chatOpen 保持 true）
                 state.sessionConfigOpen -> Destination.SessionConfig
                 state.chatOpen -> Destination.Chat
@@ -302,6 +310,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         Destination.SessionConfig -> {
                             if (live) BackHandler { viewModel.closeSessionConfig() }
                             SessionConfigScreen(state = snap, viewModel = viewModel)
+                        }
+
+                        is Destination.ConfigPicker -> {
+                            if (live) BackHandler { viewModel.closeConfigPicker() }
+                            ConfigPickerScreen(state = snap, viewModel = viewModel)
                         }
 
                         is Destination.CardEdit -> {
