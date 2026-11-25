@@ -53,6 +53,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.tavern.core.regex.RegexEngine
+import app.tavern.core.regex.RegexPlacement
 import app.tavern.data.chat.ChatSession
 
 /**
@@ -254,7 +256,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     }
 
                     DetailTab.Greeting -> ScrollArea {
-                        GreetingTab(detail, viewModel, state.cardOverride.greetingIndex ?: 0)
+                        GreetingTab(detail, viewModel, state.cardOverride.greetingIndex ?: 0, state)
                     }
 
                     // 行数由数据决定 → 必须懒加载（同世界书条目页）。这个 tab 的选择是会保留的，
@@ -412,7 +414,12 @@ private fun ScrollArea(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIndex: Int) {
+private fun GreetingTab(
+    detail: CardDetail?,
+    viewModel: ChatViewModel,
+    defaultIndex: Int,
+    state: ChatViewModel.UiState,
+) {
     // 空串要剔掉：有的卡在 alternateGreetings 里留了空项，翻过去就是一条空气泡
     val greetings = (listOf(detail?.firstMessage.orEmpty()) + detail?.alternateGreetings.orEmpty())
         .map { it.trim() }
@@ -448,8 +455,16 @@ private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIn
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
+            // 和聊天气泡同一套显示管线：显示层正则（含内置"清标签/强调"）→ 内联标签渲染
+            // （用户 2026-11-25 第 7 条：正则也要作用到开场白）。只影响显示，卡文件不动。
+            val scripts = state.displayRegexScripts
+            val display = if (scripts.isEmpty()) {
+                greetings[index]
+            } else {
+                RegexEngine().applyAll(scripts, greetings[index], RegexPlacement.AiOutput)
+            }
             Text(
-                greetings[index],
+                markupText(display, MaterialTheme.colorScheme.primary),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(Space.m),
             )

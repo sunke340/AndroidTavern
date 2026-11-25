@@ -1,6 +1,7 @@
 package app.tavern
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,11 +9,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 /**
  * 三级配置的「选一项」页：模型 / 世界书 / 正则 / 预设。
@@ -28,14 +36,95 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val target = state.configPicker ?: return
     val glass = state.visualEffects.effective() == VisualEffects.Glass
 
+    // 作用域是"值"，不是说明文案：这一页改的是会话还是这张卡。
+    // 世界书/正则这两个多选页把「跟随上级」也挪进了右上菜单（用户 2026-11-25 第 4/5 条），
+    // 所以副标题要顺带说明现在是不是跟随态 —— 否则列表里看不出"我有没有覆盖"。
+    val scopeLabel = if (target.scope == ConfigScope.Session) "本会话" else "这张卡"
+    val following = when (target.kind) {
+        ConfigKind.WorldBook -> when (target.scope) {
+            ConfigScope.Session -> state.sessionOverride.worldBookNames
+            ConfigScope.Card -> state.cardOverride.worldBookNames
+        }.let { it == null }
+
+        ConfigKind.Regex -> when (target.scope) {
+            ConfigScope.Session -> state.sessionOverride.regexIds
+            ConfigScope.Card -> state.cardOverride.regexIds
+        }.let { it == null }
+
+        else -> false
+    }
+    val subtitle = if (target.kind == ConfigKind.WorldBook || target.kind == ConfigKind.Regex) {
+        if (following) "$scopeLabel · 跟随上级" else scopeLabel
+    } else {
+        scopeLabel
+    }
+
     GlassDetailScaffold(
         title = target.kind.title,
-        // 作用域是"值"，不是说明文案：这一页改的是会话还是这张卡
-        subtitle = if (target.scope == ConfigScope.Session) "本会话" else "这张卡",
+        subtitle = subtitle,
         onBack = viewModel::closeConfigPicker,
         glass = glass,
         headerMode = DetailHeaderMode.Translucent,
+        // 世界书/正则：全部开启 / 全部关闭 / 恢复默认（= 清覆盖 = 跟随上级）
+        // 之前这三行占着列表前三格（用户 2026-11-25 第 4/5 条：挪到右上胶囊，列表只留条目）
+        actions = when (target.kind) {
+            ConfigKind.WorldBook -> {
+                {
+                    PickerBulkMenu(
+                        onAll = {
+                            val all = state.worldBooks.map { it.name }.toSet()
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionWorldBooks(all)
+                                ConfigScope.Card -> viewModel.useCardWorldBooks(all)
+                            }
+                        },
+                        onNone = {
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionWorldBooks(emptySet())
+                                ConfigScope.Card -> viewModel.useCardWorldBooks(emptySet())
+                            }
+                        },
+                        onFollow = {
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionWorldBooks(null)
+                                ConfigScope.Card -> viewModel.useCardWorldBooks(null)
+                            }
+                        },
+                        // 没有书时"全部开启"等于"全部关闭"，干脆不给按
+                        enabled = state.worldBooks.isNotEmpty(),
+                    )
+                }
+            }
 
+            ConfigKind.Regex -> {
+                {
+                    PickerBulkMenu(
+                        onAll = {
+                            val all = state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionRegex(all)
+                                ConfigScope.Card -> viewModel.useCardRegex(all)
+                            }
+                        },
+                        onNone = {
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionRegex(emptySet())
+                                ConfigScope.Card -> viewModel.useCardRegex(emptySet())
+                            }
+                        },
+                        onFollow = {
+                            when (target.scope) {
+                                ConfigScope.Session -> viewModel.useSessionRegex(null)
+                                ConfigScope.Card -> viewModel.useCardRegex(null)
+                            }
+                        },
+                        enabled = state.regexScripts.isNotEmpty(),
+                    )
+                }
+            }
+
+            else -> null
+        },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -91,71 +180,22 @@ private fun WorldBookPickerBody(
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
-    val stored = when (scope) {
-        ConfigScope.Session -> state.sessionOverride.worldBookNames
-        ConfigScope.Card -> state.cardOverride.worldBookNames
-    }
     val current = effectiveBookNames(state)
-    val all = state.worldBooks.map { it.name }.toSet()
-    // 「跟随上级」常驻（用户 2026-11-25 第 4 条：它一出现就把整列往下挤，点错行）；
-    // 没有书时不摆"全部开启/关闭"两行空动作
-    val following = stored == null
-    val bulk = if (state.worldBooks.isEmpty()) 0 else 2
-    val extras = 1 + bulk
-    val count = state.worldBooks.size + extras
-
-    ListGroup(count = count) { index, _ ->
-        when {
-            index == 0 -> ListRow(
-                title = "跟随上级",
-                subtitle = null,
-                leading = { ActiveMark(following) },
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionWorldBooks(null)
-                        ConfigScope.Card -> viewModel.useCardWorldBooks(null)
-                    }
-                },
-            )
-
-            bulk > 0 && index == 1 -> ListRow(
-                title = "全部开启",
-                subtitle = "这本书单里的 ${all.size} 本都参与",
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionWorldBooks(all)
-                        ConfigScope.Card -> viewModel.useCardWorldBooks(all)
-                    }
-                },
-            )
-
-            bulk > 0 && index == 2 -> ListRow(
-                title = "全部关闭",
-                subtitle = null,
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionWorldBooks(emptySet())
-                        ConfigScope.Card -> viewModel.useCardWorldBooks(emptySet())
-                    }
-                },
-            )
-
-            else -> {
-                val book = state.worldBooks[index - extras]
-                ListRow(
-                    title = book.name,
-                    subtitle = "${book.entryCount} 条" + if (book.enabled) "" else " · 全局未启用",
-                    leading = { ActiveMark(book.name in current) },
-                    onClick = {
-                        val next = if (book.name in current) current - book.name else current + book.name
-                        when (scope) {
-                            ConfigScope.Session -> viewModel.useSessionWorldBooks(next)
-                            ConfigScope.Card -> viewModel.useCardWorldBooks(next)
-                        }
-                    },
-                )
-            }
-        }
+    // 列表只剩书本身：「跟随上级 / 全部开启 / 全部关闭」在右上胶囊里（用户 2026-11-25 第 4 条）
+    ListGroup(count = state.worldBooks.size) { index, _ ->
+        val book = state.worldBooks[index]
+        ListRow(
+            title = book.name,
+            subtitle = "${book.entryCount} 条" + if (book.enabled) "" else " · 全局未启用",
+            leading = { ActiveMark(book.name in current) },
+            onClick = {
+                val next = if (book.name in current) current - book.name else current + book.name
+                when (scope) {
+                    ConfigScope.Session -> viewModel.useSessionWorldBooks(next)
+                    ConfigScope.Card -> viewModel.useCardWorldBooks(next)
+                }
+            },
+        )
     }
 
     if (state.worldBooks.isEmpty()) {
@@ -174,68 +214,23 @@ private fun RegexPickerBody(
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
-    val stored = when (scope) {
-        ConfigScope.Session -> state.sessionOverride.regexIds
-        ConfigScope.Card -> state.cardOverride.regexIds
-    }
     val current = effectiveRegexNames(state)
-    val all = state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
-    val following = stored == null
-    val bulk = if (state.regexScripts.isEmpty()) 0 else 2
-    val extras = 1 + bulk
-    val count = state.regexScripts.size + extras
-
-    ListGroup(count = count) { index, _ ->
-        when {
-            index == 0 -> ListRow(
-                title = "跟随上级",
-                leading = { ActiveMark(following) },
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionRegex(null)
-                        ConfigScope.Card -> viewModel.useCardRegex(null)
-                    }
-                },
-            )
-
-            bulk > 0 && index == 1 -> ListRow(
-                title = "全部开启",
-                subtitle = "${all.size} 条都参与",
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionRegex(all)
-                        ConfigScope.Card -> viewModel.useCardRegex(all)
-                    }
-                },
-            )
-
-            bulk > 0 && index == 2 -> ListRow(
-                title = "全部关闭",
-                onClick = {
-                    when (scope) {
-                        ConfigScope.Session -> viewModel.useSessionRegex(emptySet())
-                        ConfigScope.Card -> viewModel.useCardRegex(emptySet())
-                    }
-                },
-            )
-
-            else -> {
-                val script = state.regexScripts[index - extras]
-                ListRow(
-                    title = script.name.ifBlank { "（未命名脚本）" },
-                    subtitle = if (script.disabled) "脚本本身已停用" else null,
-                    leading = { ActiveMark(script.name in current) },
-                    onClick = {
-                        val name = script.name
-                        val next = if (name in current) current - name else current + name
-                        when (scope) {
-                            ConfigScope.Session -> viewModel.useSessionRegex(next)
-                            ConfigScope.Card -> viewModel.useCardRegex(next)
-                        }
-                    },
-                )
-            }
-        }
+    // 列表只剩脚本本身：三个批量动作在右上胶囊（用户 2026-11-25 第 5 条）
+    ListGroup(count = state.regexScripts.size) { index, _ ->
+        val script = state.regexScripts[index]
+        ListRow(
+            title = script.name.ifBlank { "（未命名脚本）" },
+            subtitle = if (script.disabled) "脚本本身已停用" else null,
+            leading = { ActiveMark(script.name in current) },
+            onClick = {
+                val name = script.name
+                val next = if (name in current) current - name else current + name
+                when (scope) {
+                    ConfigScope.Session -> viewModel.useSessionRegex(next)
+                    ConfigScope.Card -> viewModel.useCardRegex(next)
+                }
+            },
+        )
     }
 
     if (state.regexScripts.isEmpty()) {
@@ -298,5 +293,50 @@ private fun PresetPickerBody(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * 世界书 / 正则选择页右上角的批量菜单（用户 2026-11-25 第 4、5 条）。
+ *
+ * 「恢复默认」= 清掉这一层的覆盖 = 跟随上级；和列表里原来那条「跟随上级」是同一个动作。
+ */
+@Composable
+private fun PickerBulkMenu(
+    onAll: () -> Unit,
+    onNone: () -> Unit,
+    onFollow: () -> Unit,
+    enabled: Boolean,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        CapsuleIcon(
+            icon = Icons.Filled.MoreVert,
+            contentDescription = "更多",
+        ) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("全部开启") },
+                enabled = enabled,
+                onClick = {
+                    open = false
+                    onAll()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("全部关闭") },
+                onClick = {
+                    open = false
+                    onNone()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("恢复默认") },
+                onClick = {
+                    open = false
+                    onFollow()
+                },
+            )
+        }
     }
 }

@@ -74,9 +74,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
@@ -102,7 +99,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import app.tavern.core.regex.InlineMarkup
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
@@ -991,33 +987,6 @@ private fun modelBadge(name: String?): String {
 }
 
 /**
- * 把正则输出里的内联标签（`<i>` / `<b>` / `<br>`）变成带样式的文本。
- *
- * 只认 `core/regex` 的 [InlineMarkup] 支持的那一小撮：不做 HTML 渲染，
- * 用户脚本里其他标签照旧按正文显示。
- */
-private fun markupText(text: String): AnnotatedString = buildAnnotatedString {
-    for (run in InlineMarkup.parse(text)) {
-        if (run.lineBreak) {
-            append('\n')
-            continue
-        }
-        val start = length
-        append(run.text)
-        if (run.italic || run.bold) {
-            addStyle(
-                SpanStyle(
-                    fontStyle = if (run.italic) FontStyle.Italic else null,
-                    fontWeight = if (run.bold) FontWeight.Bold else null,
-                ),
-                start,
-                length,
-            )
-        }
-    }
-}
-
-/**
  * 消息渲染的唯一入口：样式切换只在这里分叉。
  * 气泡是默认样式，整行卡片保留为可选项（设置 → 外观里能切）。
  */
@@ -1275,7 +1244,7 @@ private fun BubbleRow(
                     // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
                     SelectionContainer {
                         Text(
-                            markupText(displayText(message.content)),
+                            markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -1311,7 +1280,7 @@ private fun CardRow(
             Row {
                 SelectionContainer {
                     Text(
-                        markupText(displayText(message.content)),
+                        markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
