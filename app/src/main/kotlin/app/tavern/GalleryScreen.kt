@@ -77,7 +77,7 @@ fun GalleryScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = if (glass) "玻璃档" else "轻量档 · 设置→外观 切玻璃",
         onBack = viewModel::closeGallery,
         glass = glass,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
     ) { padding ->
         Column(
             modifier = Modifier
@@ -86,7 +86,7 @@ fun GalleryScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
                 .padding(bottom = padding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l),
         ) {
             Spacer(Modifier.height(Space.s))

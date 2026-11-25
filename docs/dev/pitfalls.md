@@ -950,3 +950,22 @@ else 设置内容`）。`6f4dd53` 为了让三页都半透明，把它改成常�
 教训：**"怎么排版"和"显示哪一页"不能共用一个布尔**。分发条件直接写页面判据（`page == ...`），
 别先抽一个中转布尔；`if (常量)` 包两套内容，等于把"以后看不出来"写进代码。
 另外：真机清单要点**入口行**（列表里的每一行），不能只点"这次改到的那一行"。
+
+## 2026-11-25 晚 · 页头 API 收口（INV-01）：只剩两个入口
+
+页面层的入口从"两个可自由组合的参数"收成"一个必填模式 + 一个留白量"：
+
+- `headerMode: DetailHeaderMode`（`Frosted` 磨砂带 / `Translucent` 半透明色罩），**必填**；
+- `contentSpacing: Dp = 0.dp`：列表传 `Space.l`（首项离页头底边 16dp），Column 页不传。
+- 骨架交出的 `padding.calculateTopPadding()` = `状态栏 + DetailHeaderHeight + contentSpacing`，
+  页面**只写它、不许再接 `+`**。
+
+`contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` **已删除**（`DetailScrollUnderTop` 曾与
+`DetailHeaderHeight` 同值，两套写法并存正是漂移的源头）。本文件与 `device-verification.md` 里
+2026-11-25 之前写下的旧参数名按这一条换算，别照着改。
+
+判据：`tools/check-ui-invariants.sh` 的 INV-01 —— 页面文件（含 `GlassDetailScaffold(` 的、除
+`DetailPage.kt` 外）不得出现旧参数名与 `calculateTopPadding() +`，每处调用必须显式传 `headerMode`
+（默认值会让页面在判据里变盲区，`6f4dd53` 的卡配置分发就是这么静默坏的）。
+自测：`cp -r app/src/main/kotlin/app/tavern /tmp/x`，改坏一处，再
+`UI_INVARIANTS_APP=/tmp/x bash tools/check-ui-invariants.sh` 看它红。

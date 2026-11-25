@@ -49,7 +49,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         title = if (draft.isNew) "新建档案" else "编辑档案",
         onBack = viewModel::closeProfileEditor,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
 
         confirmController = confirm,
         actions = {
@@ -68,7 +68,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 页头才是"半透明"而不是一条纯色（用户 2026-11-25 第 7 条）
                 .padding(bottom = padding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {

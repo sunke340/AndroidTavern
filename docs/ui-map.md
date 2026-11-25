@@ -111,10 +111,10 @@
 | 能说的名字 | 出现在哪 | 一句话外观 | 代码标识 |
 |---|---|---|---|
 | 页头 · 一级 | 三个一级页顶部 | 大标题 + 右侧玻璃胶囊 | `PageHeader` |
-| 页头 · 半透明 | 所有二级页 | 底色 94% 向下淡出，内容从下面过 | `headerScrim` / `HeaderScrimAlpha` |
-| 页头 · 磨砂 | 只有聊天页 | 下面的内容被糊掉 | `GlassDetailScaffold`（`frostedHeader = true`）+ `LiquidGlassSpec.HeaderBand` |
+| 页头 · 半透明 | 所有二级页 | 底色 94% 向下淡出，内容从下面过 | `DetailHeaderMode.Translucent` / `headerScrim` / `HeaderScrimAlpha` |
+| 页头 · 磨砂 | 只有聊天页 | 下面的内容被糊掉 | `DetailHeaderMode.Frosted` + `LiquidGlassSpec.HeaderBand` |
 | 详情页骨架 | 二三级页 | 内容录图层 + 页头浮层 | `GlassDetailScaffold` |
-| 内容首项留白 | 二级页滚动内容 | 补页头那 64dp（页面传入时） | `DetailScrollUnderTop` |
+| 内容首项留白 | 二级页滚动内容 | 列表首项离页头底边 16dp，Column 页贴底边；页面不再自己算 | `contentSpacing`（骨架参数） |
 | 页头右上胶囊 | 页头右侧 | 只吃高度的玻璃胶囊，装图标 | `CapsuleIcon` |
 | 页栈转场 | 页面切换 | 进：新页从右滑入；退：整屏滑走 | `PageStack` |
 | 状态栏留白 | 各页 | 统一取值，别各写 | `statusBarTop` |

@@ -59,7 +59,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  *
  * - `onMove` 里**同步**改完列表（`movePrompt` 直接改 `MutableStateFlow`），否则被拎起来那行会闪；
  * - **松手才落盘**（`commitPromptOrder`），拖动中每次换位都写 SharedPreferences 太浪费；
- * - 恢复默认在页头右上角的圆钮菜单里；列表就是这一页本身（`contentTopInset = 0.dp` + `contentPadding`）。
+ * - 恢复默认在页头右上角的圆钮菜单里；列表就是这一页本身（`headerMode` + `contentPadding`）。
  */
 @Composable
 fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
@@ -79,8 +79,9 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = "${state.promptOrder.size} 段提示词",
         onBack = viewModel::closePresetEditor,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        // 自己用 contentPadding 让位：列表满屏、能从页头底下穿过去
-        contentTopInset = 0.dp,
+        // 自己用 contentPadding 让位：列表满屏、能从页头底下穿过去；首项离页头底边 16dp
+        headerMode = DetailHeaderMode.Translucent,
+        contentSpacing = Space.l,
         actions = {
             CapsuleIcon(
                 icon = Icons.Filled.MoreVert,
@@ -103,7 +104,7 @@ fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
+                top = padding.calculateTopPadding(),
                 bottom = padding.calculateBottomPadding() + Space.xl,
             ),
         ) {

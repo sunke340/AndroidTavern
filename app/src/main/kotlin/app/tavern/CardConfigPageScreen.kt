@@ -33,27 +33,21 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
 
     // 三页都和全局世界书条目页同一套：页头半透明、内容从它底下滑过（用户 2026-11-25 第 7 条：
     // 二级页的页头不该是一条纯色）。
-    GlassDetailScaffold(
-        title = page.title,
-        // 页头一行是"标题 + N 条"，和全局世界书详情页一致
-        subtitle = if (page == CardConfigPage.WorldBook) {
-            detail?.bookEntries?.size?.let { "$it 条" }
-        } else {
-            null
-        },
-        onBack = viewModel::closeCardConfigPage,
-        glass = state.visualEffects.effective() == VisualEffects.Glass,
-        contentTopInset = 0.dp,
-        actions = if (page == CardConfigPage.WorldBook) {
-            { WorldBookBulkMenu { mode -> viewModel.setAllCardBookEntries(mode) } }
-        } else {
-            null
-        },
-    ) { padding ->
-        // **按页分发**：三页共用这一个骨架，内容却完全不同。
-        // 6f4dd53 把这里写成"只要 scrollUnderHeader 就渲染世界书页"，于是「对话样式」和
-        // 「关于这张卡」都被内嵌世界书顶掉了（v149 / v150 的真机包里就是错的）。
-        if (page == CardConfigPage.WorldBook) {
+    //
+    // **按页分发，骨架也分开调**：内嵌书是列表（首项 +16dp），另两页是 Column（贴页头底边）。
+    // `6f4dd53` 曾把分发写成 `if (scrollUnderHeader)` —— 常量一固定，另两页就静默渲染成世界书
+    // 列表（见 device-verification.md M10）；首项留白也随之只能各写一份，所以这里不共用一次调用。
+    when (page) {
+        CardConfigPage.WorldBook -> GlassDetailScaffold(
+            title = page.title,
+            // 页头一行是"标题 + N 条"，和全局世界书详情页一致
+            subtitle = detail?.bookEntries?.size?.let { "$it 条" },
+            onBack = viewModel::closeCardConfigPage,
+            glass = state.visualEffects.effective() == VisualEffects.Glass,
+            headerMode = DetailHeaderMode.Translucent,
+            contentSpacing = Space.l,
+            actions = { WorldBookBulkMenu { mode -> viewModel.setAllCardBookEntries(mode) } },
+        ) { padding ->
             // 条目多的时候**必须懒加载**：非懒加载的 `ListGroup` 会在进页的第一帧里把全部条目
             // 组合出来 —— 真机日志里出现过 448ms 一帧，转场动画直接被吃掉（用户 2026-11-24）。
             CardWorldBookPage(
@@ -62,7 +56,14 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
                 viewModel = viewModel,
                 padding = padding,
             )
-        } else {
+        }
+
+        CardConfigPage.MessageStyle, CardConfigPage.Info -> GlassDetailScaffold(
+            title = page.title,
+            onBack = viewModel::closeCardConfigPage,
+            glass = state.visualEffects.effective() == VisualEffects.Glass,
+            headerMode = DetailHeaderMode.Translucent,
+        ) { padding ->
             val overscroll = rememberRubberOverscroll()
             Column(
                 modifier = Modifier
@@ -70,14 +71,13 @@ fun CardConfigPageScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel)
                     .padding(bottom = padding.calculateBottomPadding())
                     .rubberOverscroll(overscroll)
                     .verticalScroll(rememberScrollState())
-                    .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                    .padding(top = padding.calculateTopPadding())
                     .padding(horizontal = Space.l),
                 verticalArrangement = Arrangement.spacedBy(Space.m),
             ) {
                 when (page) {
                     CardConfigPage.MessageStyle -> CardMessageStylePage(detail, cardId, viewModel)
-                    CardConfigPage.Info -> CardInfoPage(detail)
-                    else -> Unit
+                    else -> CardInfoPage(detail)
                 }
             }
         }
@@ -104,7 +104,7 @@ private fun CardWorldBookPage(
     val contentPadding = PaddingValues(
         start = Space.l,
         end = Space.l,
-        top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
+        top = padding.calculateTopPadding(),
         bottom = padding.calculateBottomPadding() + Space.l,
     )
 

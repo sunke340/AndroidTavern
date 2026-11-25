@@ -5,24 +5,22 @@
 # 而本机编不了 :app、也没有模拟器 —— 只能靠**结构级/文本级**的检查兜底。
 # 判据不成立的条目**不许**写进表里（见 docs/ui-invariants.md 的验收规则）。
 #
-# 已完成：INV-02 / INV-03 / INV-05 / INV-07
-# 待做（在 docs/ui-invariants.md 里标着「未做」）：INV-01（要先把页头决定收成枚举）、
-#   INV-04（玻璃三铁律的文本近似）、INV-06（可滚面都挂橡皮筋）、INV-08（页面里不许写字面色值）
+# 已完成：INV-01 / INV-02 / INV-03 / INV-05 / INV-07
+# 待做（在 docs/ui-invariants.md 里标着「未做」）：INV-04（玻璃三铁律的文本近似）、
+#   INV-06（可滚面都挂橡皮筋）、INV-08（页面里不许写字面色值）
 #
 # 本机可跑：bash tools/check-ui-invariants.sh
+# 自测（判据会不会红）：把被测目录指到一份改坏的副本，例如
+#   cp -r app /tmp/selftest && <改坏> && \
+#   UI_INVARIANTS_APP=/tmp/selftest/src/main/kotlin/app/tavern bash tools/check-ui-invariants.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 python3 - <<'PY'
-import re, sys, pathlib
+import os, re, sys, pathlib
 
-APP = pathlib.Path('app/src/main/kotlin/app/tavern')
+APP = pathlib.Path(os.environ.get('UI_INVARIANTS_APP', 'app/src/main/kotlin/app/tavern'))
 problems = []
-
-# ---- INV-02：聊天页气泡底板不是 Material3 Surface ----
-# Surface 的 clip(shape) 会让超高气泡的子树在约 8k px 之后收不到触摸（选字完全无反应、画面正常）。
-chat = APP / 'ChatScreen.kt'
-src = chat.read_text(encoding='utf-8')
 
 def blank_comments(text):
     """把注释内容替换成空格（保留换行与偏移），否则注释里提到 `Surface(...)` 会误报。"""
@@ -45,7 +43,46 @@ def blank_comments(text):
             i += 1
     return ''.join(out)
 
+def read_code(path):
+    return blank_comments(path.read_text(encoding='utf-8'))
+
+def line_of(code, token):
+    return code.count('\n', 0, code.index(token)) + 1
+
+# ---- INV-01：页头材质与首项让位只由骨架决定 ----
+# 骨架把最终 top 交出来（状态栏 + 页头 + contentSpacing），页面只写 padding.calculateTopPadding()。
+# 页头自己加一笔 = 两次事故（首项多 12dp / 世界书列表少 64dp）；headerMode 吃默认值 =
+# 页面在判据里变盲区（6f4dd53 的卡配置分发就是这么静默坏掉的）。
+SCAFFOLD = 'GlassDetailScaffold('
+for p in sorted(APP.glob('*.kt')):
+    full = read_code(p)
+    if SCAFFOLD not in full or p.name == 'DetailPage.kt':   # 骨架自己合法地用这些名字
+        continue
+    for token in ('contentTopInset', 'frostedHeader', 'DetailScrollUnderTop',
+                  'DetailHeaderHeight', 'statusBarTop('):
+        if token in full:
+            problems.append(
+                f'INV-01: {p.name}:{line_of(full, token)} 用了 {token}'
+                f'（页头与首项让位只能由骨架给，页面不许自己算）'
+            )
+    if 'calculateTopPadding() +' in full:
+        problems.append(
+            f'INV-01: {p.name}:{line_of(full, "calculateTopPadding() +")} 在 padding 上自己加了一笔'
+            f'（只能写 padding.calculateTopPadding()，额外留白走 contentSpacing）'
+        )
+    calls, modes = full.count(SCAFFOLD), full.count('headerMode =')
+    if modes < calls:
+        problems.append(
+            f'INV-01: {p.name} 有 {calls} 处 GlassDetailScaffold 调用，只有 {modes} 处显式传 headerMode'
+            f'（不许吃默认值：默认值会让页面在判据里变盲区）'
+        )
+
+# ---- INV-02：聊天页气泡底板不是 Material3 Surface ----
+# Surface 的 clip(shape) 会让超高气泡的子树在约 8k px 之后收不到触摸（选字完全无反应、画面正常）。
+chat = APP / 'ChatScreen.kt'
+src = chat.read_text(encoding='utf-8')
 code = blank_comments(src)
+
 # 函数区间：以行首 `private fun X(` 为界
 bounds = [(m.start(), m.group(1)) for m in re.finditer(r'^private fun (\w+)\(', src, re.M)]
 bounds.append((len(src), '<eof>'))
@@ -91,5 +128,6 @@ if problems:
     print('别硬改检查：先看 docs/ui-invariants.md 里这条的"为什么"，再决定是实现错了还是判据该调整。')
     sys.exit(1)
 
-print('OK: 已实现的不变量都成立（INV-02 消息底板 / INV-03 选字不拖列表 / INV-05 弹层 / INV-07 让位并集）')
+print('OK: 已实现的不变量都成立（INV-01 页头入口 / INV-02 消息底板 / INV-03 选字不拖列表 / '
+      'INV-05 弹层 / INV-07 让位并集）')
 PY

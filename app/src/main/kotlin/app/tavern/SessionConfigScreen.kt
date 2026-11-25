@@ -52,7 +52,7 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
         title = "会话配置",
         onBack = viewModel::closeSessionConfig,
         glass = glass,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
 
     ) { padding ->
         Column(
@@ -63,7 +63,7 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(rememberRubberOverscroll())
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.l),
         ) {

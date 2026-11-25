@@ -122,10 +122,15 @@
 
 - 页头是 `PageHeader` **浮层**（与底栏同级，画在录图层**之外**），页面自己不画；内容用
   `contentPadding(top = PageHeaderHeight + statusBarTop() + …)` 让位。
-- **只有聊天页是磨砂页头**（`frostedHeader = true`），其余是**纯线性色罩**（`HeaderScrimAlpha` 0.94）；
-- **半透明页头的观感来自"内容在它下面滚"**（用户 2026-11-25 第 7 条：二级页页头变成一条纯色）。
-  二级页一律 `contentTopInset = 0.dp`，让位做在滚动容器**里面**（`DetailScrollUnderTop` 或列表的
-  `contentPadding`），页头盒子浮在上面，滚上去的行从它底下穿过。例外：角色详情页的卡头是常驻海报，还没改。
+- **页头材质只有两个值**：`headerMode = DetailHeaderMode.Frosted`（磨砂带，只有聊天页）/
+  `DetailHeaderMode.Translucent`（纯线性色罩 `HeaderScrimAlpha` 0.94，其余二级页）。**必须显式传**。
+- **首项让位只有一个入口**：骨架交出的 `padding.calculateTopPadding()` 已经等于
+  `状态栏 + DetailHeaderHeight + contentSpacing`；列表页传 `contentSpacing = Space.l`（首项离页头底边 16dp），
+  Column 页不传。页面**只写 `padding.calculateTopPadding()`，不许再接 `+`**（`tools/check-ui-invariants.sh` 的
+  INV-01 查这条，`df71772` 多 12dp / `6f4dd53` 少 64dp 都是页面自己加出来的）。
+- **半透明页头的观感来自"内容在它下面滚"**（用户 2026-11-25 第 7 条）：让位的 top 要**用在滚动容器里面**
+  （`.verticalScroll(...).padding(top = padding.calculateTopPadding())` 或列表 `contentPadding`），
+  页头盒子浮在上面，滚上去的行从它底下穿过。唯一例外：角色详情页（卡头是常驻海报）把 `padding` 整份用在外面。
   **渐变不许加拐点**（会被看成阶梯）。聊天页磨砂页头下沿投影 ×0.5（`shadowScale`）。
 - 顶部间距按"第一项是什么"算：会话页分组标题自带 16dp 不再加；卡 +8dp；聊天 +16dp；设置二级列表 +16dp。
 - 状态栏高度统一 `statusBarTop()`（`PageHeader.kt`）。
@@ -136,8 +141,8 @@
   列表就是页面本身，底部按钮会把页面再切一刀。空状态文案要跟着改（"点右上「+」"）。
 - **列表类二级页的页头是半透明的，列表从它底下穿过**（世界书条目两页、预设编辑、聊天）——
   这是设计，**别当"页头透明"的 bug 去夹死它**（2026-11-24 误修过一次，见 pitfalls）。
-  判据是"这页会不会滚"：会滚 → `contentTopInset = 0.dp` + 让位做在 `verticalScroll` **里面**；
-  不滚的设置页 → 让位做在外面，内容裁在页头下面。
+  判据是"这页会不会滚"：会滚 → top 让位做在 `verticalScroll` **里面**（用骨架给的
+  `padding.calculateTopPadding()`）；空状态那种不滚的盒子 → 整份 `padding` 用在外面。
 - 底栏自绘（56dp）：选中只靠主色 + **一块滑动的 14% 底块**（每个 tab 别自己画底块）+ 点按 6% tint；
   **不开涟漪**。
 - 颜色/间距/圆角只从 `Theme.kt` / `Style.kt` 取；多选项用 `SegmentedRow`。
@@ -186,7 +191,7 @@
   固定成同一种形状 + 衔接处只画一条 1px 线（两端各让出圆角半径，避开圆弧）→ 两个毛病都没有。
 - **拖动只改投影（0→10dp）与缩放（1→1.03，`Motion.Fast`）+ `zIndex`**，形状全程不变；
   拖动中把这一行下方的分隔线藏起来（否则那条线会跟着胶囊被拎走）。抓握纹在最左边，开关在右。
-- 编辑页的列表**就是页面本身**：`contentTopInset = 0.dp` + `contentPadding` 让位（和聊天页同一套路），
+- 编辑页的列表**就是页面本身**：`contentSpacing = Space.l` + `contentPadding` 让位（和聊天页同一套路），
   **不要把 `LazyColumn` 塞进 `heightIn(max = …)` 的固定框里** —— 那看着像开了个小窗口，
   滚动也会变成"外层不动、内层在滚"的两层。
 - **页面级操作放页头右上角的圆钮 + `DropdownMenu`**（`GlassDetailScaffold(actions = …)` + `CapsuleIcon`），
@@ -201,8 +206,8 @@
 ## 二级/三级页与 insets
 
 - 二三级页统一 `GlassDetailScaffold`（圆形玻璃返回钮 + 大标题 + 右侧圆钮），不要 `Scaffold` + `TopAppBar`；
-  **每页自己录一份内容图层**。内容要滚到页头下面（聊天）就传 `contentTopInset = 0.dp` + 列表
-  `contentPadding` 让位；输入区用 `bottomOverlay` 槽（画在录制之外，才采得到磨砂）。
+  **每页自己录一份内容图层**。`headerMode` 必填；内容要滚到页头下面，把 `padding.calculateTopPadding()`
+  用在滚动容器里面（列表走 `contentPadding`）；输入区用 `bottomOverlay` 槽（画在录制之外，才采得到磨砂）。
 - `MainActivity` 必须 `enableEdgeToEdge()`，Manifest 钉死 `windowSoftInputMode="adjustResize"` ——
   缺一就是“点输入框时先抽一下再落回”（系统缩放与 `imePadding()` 各走一套）。
 

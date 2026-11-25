@@ -60,17 +60,20 @@ val DetailHeaderHeight: Dp = 56.dp
 val DetailBackSize: Dp = 40.dp
 
 /**
- * 内容要**从页头底下穿过去**时，滚动内容首部要补的留白。
+ * 二级/三级页的页头材质。
  *
- * 半透明页头的观感来自"内容在它下面滚"：页面传 `contentTopInset = 0.dp`，骨架给的
- * `padding.calculateTopPadding()` 就只剩状态栏，页头那 64dp 由页面自己补在滚动内容里面
- * （补在外面的话内容会被页头盖住，而且永远露不出来）。
- *
- * ⚠️ 值就是 [DetailHeaderHeight]，**不要夹带额外的呼吸值**：补进去的是"原本由骨架让开的
- * 那 64dp"，首项位置必须和改动前逐像素一致（用户 2026-11-25：页头与下方内容的距离被改动了）。
- * 需要额外留白的页面自己加（列表类统一是 `+ DetailHeaderHeight + Space.l`）。
+ * **只有材质**：首项让位不在这里，而在 [GlassDetailScaffold] 的 `contentSpacing`。
+ * 曾经想过加第三个值表示"内容不从页头底下穿过"，但那是**页面怎么用 padding** 的事
+ * （用在滚动容器里还是外），骨架管不了 —— 一个什么都不做的枚举值只会让文档和代码对不上。
+ * "不穿"目前只有一个具名例外：角色详情页（卡头是常驻海报），它把 padding 用在滚动容器外面。
  */
-val DetailScrollUnderTop: Dp = DetailHeaderHeight
+enum class DetailHeaderMode {
+    /** 磨砂带（`LiquidGlassSpec.HeaderBand`）：内容一直在标题正下方滚时才用，只有聊天页。 */
+    Frosted,
+
+    /** 半透明色罩（`HeaderScrimAlpha`）：其余二级页。 */
+    Translucent,
+}
 
 /** 页头玻璃胶囊的高度（比一级页的 44dp 矮一档）。 */
 val DetailActionHeight: Dp = 40.dp
@@ -91,17 +94,23 @@ fun GlassDetailScaffold(
     title: String,
     onBack: () -> Unit,
     glass: Boolean,
+    /**
+     * 页头材质。**必填**，不吃默认值：靠"没写就是色罩"会让页面在判据里变成盲区
+     * （`6f4dd53` 的卡配置分发就是这么静默坏掉的）。
+     */
+    headerMode: DetailHeaderMode,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     /**
-     * 整条页头是否**磨砂**。默认 false = 半透明色罩（和一级页一致）。
+     * 内容首项的额外留白（**唯一入口**）。
      *
-     * 只有聊天页传 true：那页的消息一直在标题正下方滚，必须糊掉才不会跟标题打架。
-     * 其余二级页（设置、角色详情、档案编辑）里内容不在标题下面滚，色罩足够，磨砂反而显脏。
+     * 骨架交给页面的 `padding.calculateTopPadding()` 已经等于
+     * `状态栏 + DetailHeaderHeight + contentSpacing`，页面**只写它、不许再接 `+` 运算**：
+     * `df71772`（首项多 12dp）和 `6f4dd53`（世界书列表少 64dp）两次都是页面自己加出来的。
+     *
+     * 列表类传 `Space.l`（首项离页头底边 16dp），Column 页不传（贴页头底边）。
      */
-    frostedHeader: Boolean = false,
-    /** 内容区顶部让位。传 0 表示页面自己用 `contentPadding` 让位，这样内容能滚到玻璃页头下面。 */
-    contentTopInset: Dp = DetailHeaderHeight,
+    contentSpacing: Dp = 0.dp,
     /**
      * 页面自己创建的浮层控制器（可选）。
      *
@@ -174,7 +183,7 @@ fun GlassDetailScaffold(
                 ) {
                     content(
                         PaddingValues(
-                            top = contentTopInset + statusBar,
+                            top = statusBar + DetailHeaderHeight + contentSpacing,
                             bottom = inner.calculateBottomPadding() + maxOf(navBottom, imeBottom),
                         ),
                     )
@@ -212,7 +221,7 @@ fun GlassDetailScaffold(
                     subtitle = subtitle,
                     onBack = onBack,
                     glass = glass,
-                    frosted = frostedHeader,
+                    frosted = headerMode == DetailHeaderMode.Frosted,
                     frost = frost,
                     contentOrigin = { origin.value },
                     actions = actions,

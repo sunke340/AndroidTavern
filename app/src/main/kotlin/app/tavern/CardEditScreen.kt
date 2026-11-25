@@ -41,6 +41,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             title = "编辑角色卡",
             onBack = viewModel::closeCardEditor,
             glass = glass,
+            headerMode = DetailHeaderMode.Translucent,
         ) { padding ->
             Text("读取中…", modifier = Modifier.padding(padding).padding(Space.l))
         }
@@ -86,7 +87,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         onBack = viewModel::closeCardEditor,
         glass = glass,
         confirmController = confirm,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
         actions = {
             // 右上角用 ✓ 而不是"保存"两个字（用户 2026-11-25 第 19 条）
             CapsuleIcon(
@@ -103,7 +104,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(rememberRubberOverscroll())
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {

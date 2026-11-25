@@ -34,7 +34,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = if (target.scope == ConfigScope.Session) "本会话" else "这张卡",
         onBack = viewModel::closeConfigPicker,
         glass = glass,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
 
     ) { padding ->
         Column(
@@ -45,7 +45,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(rememberRubberOverscroll())
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l, vertical = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.l),
         ) {

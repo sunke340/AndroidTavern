@@ -42,7 +42,7 @@ fun statusBarTop(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopP
  *
  * 页头底下压一层"底色 → 透明"的**半透明色罩**（不是磨砂）：内容从下面滚过去时自然淡出，
  * 标题不会跟列表文字叠在一起。磨砂页头只留给聊天页（见 `GlassDetailScaffold` 的
- * `frostedHeader`）—— 一级页的内容不会一直在标题正下方滚，没必要上磨砂。
+ * `DetailHeaderMode.Frosted`）—— 一级页的内容不会一直在标题正下方滚，没必要上磨砂。
  */
 @Composable
 fun PageHeader(

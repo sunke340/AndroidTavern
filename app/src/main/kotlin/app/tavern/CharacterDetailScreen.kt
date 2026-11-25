@@ -88,6 +88,9 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
         title = "角色详情",
         onBack = viewModel::closeDetail,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        // 唯一"不穿页头"的具名例外：卡头是常驻海报，整页内容用 `.padding(padding)` 让位在
+        // 滚动容器外面（其他二级页都把 top 用在滚动内容里，才会有内容从页头底下过的观感）。
+        headerMode = DetailHeaderMode.Translucent,
         sheetController = sheet,
         confirmController = confirm,
         actions = {

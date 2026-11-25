@@ -87,9 +87,10 @@ C 文本与气泡），明细见 [device-verification.md](device-verification.md
 
 ## 三、下一步优先级
 
-1. **INV-01 第一批**（半天）：规格已定稿在 [ui-invariants.md](../ui-invariants.md)「第一批」——
-   枚举只收材质、骨架交出最终 top、12 处调用对照表、三条脚本判据。**等用户点头再动**；
-   动之前先读那张表，别再凭印象改 `contentTopInset`。
+1. **INV-01 第一批已完成（2026-11-25 晚）**：见 [ui-invariants.md](../ui-invariants.md)「第一批」。
+   现在页头只有两个入口：`headerMode`（材质）+ `contentSpacing`（首项留白），页面里**不许**再出现
+   `contentTopInset` / `DetailScrollUnderTop` / `calculateTopPadding() +`（脚本 INV-01 会红）。
+   要做的是**真机复验**（M11）和把角色详情页的取舍定下来。
 2. 世界书 outlet（要先做夹具：capture 得能选预设，还要造一个带 `{{outlet::…}}` 的预设）。
 3. 卡库分组。
 4. 角色详情页页头要不要穿（单独一轮：卡头 + TabRow 要一起重排）。
@@ -128,7 +129,7 @@ C 文本与气泡），明细见 [device-verification.md](device-verification.md
 |---|---|
 | 消息底板 / 气泡 / 动作行 / 输入区 / 两个圆钮 | `ChatScreen.kt`（`MessagePanel` / `BubbleRow` / `CardRow` / `MessageActionRow` / `ChatInputBar` / `SendStopButton` / `ModelButton`） |
 | 选字不拖动列表 | `ChatScreen.kt` 的 `NoFocusScrollSpec` + 列表上的 `LocalBringIntoViewSpec` |
-| 页头材质与让位 | `DetailPage.kt`（`GlassDetailScaffold` / `DetailHeader` / `DetailScrollUnderTop`）、各页 `contentTopInset` |
+| 页头材质与让位 | `DetailPage.kt`（`GlassDetailScaffold` / `DetailHeaderMode` / `contentSpacing` / `DetailHeader`） |
 | 思考强度 | `ThinkingEffort.kt`（滑块 + 自定义）、`ConfigSheets.kt`（抽屉）、`ConfigPickerScreen.kt`（卡/会话的模型页）、`ChatViewModel.useSessionReasoning/useCardReasoning` |
 | 抽屉收回回调 | `ActionSheet.kt`（`SheetSpec.onDismiss` → `dismiss()`） |
 | 内置正则 | `core/regex/BuiltinRegex.kt`、`core/regex/InlineMarkup.kt`、单测 `BuiltinRegexTest` |

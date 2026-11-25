@@ -35,8 +35,9 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
         subtitle = book?.let { "${it.entries.size} 条" },
         onBack = viewModel::closeWorldBook,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        // 列表从页头底下穿过去：它的 contentPadding 顶部已经按 `padding` 算过，这里只要让开
-        contentTopInset = 0.dp,
+        // 列表从页头底下穿过去：让位走 contentPadding；首项离页头底边 16dp
+        headerMode = DetailHeaderMode.Translucent,
+        contentSpacing = Space.l,
         actions = {
             if (book != null) {
                 WorldBookBulkMenu { mode -> viewModel.setAllWorldBookEntries(book.name, mode) }
@@ -76,8 +77,8 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
             contentPadding = PaddingValues(
                 start = Space.l,
                 end = Space.l,
-                // 页头那 64dp 以前由骨架让开，现在要自己补：列表才能从它底下穿过（间距保持原样 +16dp）
-                top = padding.calculateTopPadding() + DetailHeaderHeight + Space.l,
+                // 页头那一段由骨架算进 padding（含首项那 16dp），页面不再自己加
+                top = padding.calculateTopPadding(),
                 // 底部把导航栏/键盘也吃进去，最后一行不会钻到导航栏下面
                 bottom = padding.calculateBottomPadding() + Space.l,
             ),

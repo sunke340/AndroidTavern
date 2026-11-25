@@ -38,7 +38,7 @@
 
 | ID | 不变量（必须成立什么） | 唯一入口 | 判据 | 状态 | 破坏记录 |
 |---|---|---|---|---|---|
-| INV-01 | 二级页页头的**材质 + 首项让位**只能由骨架决定，页面层**没有 API 可写** | `GlassDetailScaffold` 的 `DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`（规格见第五节的"第一批"；待引入） | 脚本（白名单只有 `DetailPage.kt`）：页面文件不得出现 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` / `DetailHeaderHeight` / `statusBarTop(` / `calculateTopPadding() +`；每处 `GlassDetailScaffold(` 必须显式传 `headerMode =`。真机：按 [device-verification.md](dev/device-verification.md)「M9 / M9.1 回执」A 组复验 | ⬜ | `8ee1b72`（磨砂带→色罩）、`df71772`（首项多出 12dp）、`6f4dd53`（世界书列表少了 64dp；同提交把卡配置三页的分发写死成常量，另两页内容被顶掉 → M10） |
+| INV-01 | 二级页页头的**材质 + 首项让位**只能由骨架决定，页面层**没有 API 可写** | `GlassDetailScaffold` 的 `DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`（见第五节的"第一批"） | 脚本（白名单只有 `DetailPage.kt`）：页面文件不得出现 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop` / `DetailHeaderHeight` / `statusBarTop(` / `calculateTopPadding() +`；每处 `GlassDetailScaffold(` 必须显式传 `headerMode =`。真机：按 [device-verification.md](dev/device-verification.md)「M9 / M9.1 回执」A 组复验 | ✅ | `8ee1b72`（磨砂带→色罩）、`df71772`（首项多出 12dp）、`6f4dd53`（世界书列表少了 64dp；同提交把卡配置三页的分发写死成常量，另两页内容被顶掉 → M10） |
 | INV-02 | 聊天页气泡底板必须用 `MessagePanel`，**不许**用 Material3 `Surface` | `ChatScreen.MessagePanel` | 脚本：`ChatScreen.kt` 里裸 `Surface(` 只允许出现在 `RequestDialog` 内（注释先剔除） | ✅ | `1952a2b`：Surface 的 `clip(shape)` 让 18900px 高的气泡在约 8k px 之后收不到触摸 → 长按完全没反应 |
 | INV-03 | 选中文字**不许**拖动列表 | `ChatScreen` 的 `NoFocusScrollSpec` + `LocalBringIntoViewSpec` | 脚本：`ChatScreen.kt` 必须出现 `LocalBringIntoViewSpec provides NoFocusScrollSpec`；真机：反复长按，`偏移=` 不变 | ✅ | `f58ad0c`（修 `8ee1b72` 之后暴露的焦点滚动，跳动量 = `trailingEdge - containerSize`） |
 | INV-04 | 玻璃三铁律：不许 `Modifier.blur` / Haze；录图层只用 `record` 扩展；`renderEffect` 不许在 draw 块里"设了再清" | `GlassSurface`（`Glass.kt`） | 脚本：grep `Modifier.blur(`、`haze`、四参数 `record(`；（待做） | ⬜ | ADR 0005/0006：Haze 在 vivo sdk37 只给半透明；四参数 record 画出空图层 |
@@ -64,7 +64,7 @@
 
 ## 五、执行计划（三批，可分批验收）
 
-### 第一批（约半天）—— 收口 + 骨架（**规格定稿 2026-11-25 晚**）
+### 第一批（约半天）—— 收口 + 骨架（**2026-11-25 晚完成**）
 
 **要解决的问题**：页头的"材质"和"首项让位"散在 12 处调用里，而且让位有**四种写法** ——
 `+ DetailScrollUnderTop`、`+ DetailHeaderHeight + Space.l`、聊天页自己算 `+ statusBarTop() + Space.l`、

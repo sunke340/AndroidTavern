@@ -74,7 +74,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         title = page.title,
         onBack = viewModel::closeSettingsPage,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Translucent,
 
         actions = when (page) {
             SettingsPage.Model -> {
@@ -105,7 +105,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 .padding(bottom = padding.calculateBottomPadding())
                 .rubberOverscroll(overscroll)
                 .verticalScroll(rememberScrollState())
-                .padding(top = padding.calculateTopPadding() + DetailScrollUnderTop)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = Space.l),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {

@@ -67,7 +67,7 @@ for head in sorted(tokens - allow):
 
 # ---- 3. 核心组件不许被删行 ----
 core = [
-    'GlassDetailScaffold', 'DetailScrollUnderTop', 'headerScrim', 'HeaderScrimAlpha',
+    'GlassDetailScaffold', 'DetailHeaderMode', 'contentSpacing', 'headerScrim', 'HeaderScrimAlpha',
     'LiquidGlassSpec', 'GlassSurface', 'CapsuleIcon',
     'MessagePanel', 'MessageActionRow', 'SendStopButton', 'ModelButton', 'ChatInputBar',
     'StreamingCursor', 'NoFocusScrollSpec',

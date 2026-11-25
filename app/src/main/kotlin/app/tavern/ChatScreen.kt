@@ -359,9 +359,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 页面顶层（动作行、确认框）也要拿到同一个宿主实例
         confirmController = confirm,
         // 聊天页是唯一一个"内容一直在标题下面滚"的页头 —— 只有它上磨砂
-        frostedHeader = true,
-        // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
-        contentTopInset = 0.dp,
+        headerMode = DetailHeaderMode.Frosted,
+        // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding；
+        // 首条消息离页头底边 16dp（磨砂页头下面多留一点，用户 2026-11-24）
+        contentSpacing = Space.l,
         // 输入区画在录制之外：可以采磨砂，消息从胶囊后面滚过去
         bottomOverlay = { backdrop ->
             ChatInputBar(
@@ -448,11 +449,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
                 .rubberOverscroll(overscroll),
             contentPadding = PaddingValues(
-                // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
-                // 8 → 16：磨砂页头下面再多留一点，首条消息不贴着头（用户 2026-11-24）
-                top = DetailHeaderHeight +
-                    statusBarTop() +
-                    Space.l,
+                // 页头 + 状态栏 + 首项那 16dp 都由骨架算进 padding（contentSpacing = Space.l）
+                top = padding.calculateTopPadding(),
                 // 输入区高度 + 键盘高度：键盘弹出时列表底部让位跟着长，被挡的消息才拖得出来。
                 // 注意这里不能只写固定值，否则键盘一开最后几条就永远在键盘下面（用户 2026-11-23 报）。
                 bottom = padding.calculateBottomPadding() +
