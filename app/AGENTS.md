@@ -281,6 +281,10 @@
 用户说的新叫法当场记进词表的"别名"。改页面或共用组件时，同一提交里更新词表并跑
 `tools/check-ui-map.sh`（CI 也在跑）。**不许在回执里临时造名字** —— 要新词先加表。
 
+真机上坏过、必须守住的结构性约束（超高气泡命中、选字拖列表、弹层只能走宿主、inset 并集）
+登记在 [docs/ui-invariants.md](../docs/ui-invariants.md)，能自动查的由
+`tools/check-ui-invariants.sh` 在 CI 里守；改这些地方前先读那张表。
+
 ## 日志与自查
 
 走 `AppLog`（真机没有 logcat），只记事件与状态码，不记 Key 与正文；导航也打 `tag=nav`，

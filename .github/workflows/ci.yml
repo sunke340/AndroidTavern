@@ -39,6 +39,10 @@ jobs:
       - name: UI 词表与代码一致
         run: bash tools/check-ui-map.sh
 
+      # 真机上坏过的不变量（超高气泡命中、选字拖列表、弹层、inset）。判据见 docs/ui-invariants.md。
+      - name: UI 不变量成立
+        run: bash tools/check-ui-invariants.sh
+
       - name: 文档相对链接必须可解析
         run: |
           python3 - <<'PY'
