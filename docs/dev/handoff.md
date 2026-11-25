@@ -1,4 +1,4 @@
-# 接手卡（2026-11-26 00:50）
+# 接手卡（2026-11-26 02:10）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
@@ -11,12 +11,13 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **代码基线**：`3f7e38c`（tag `apk-m189`）/ 交付包 `artifacts/app-v158-3f7e38c.apk`。
-  其后只有文档提交（`9c280b4` 及本页）。
-- **真机确认到**：`v157`（M15）。**`v158` 还没回执**（M16，5 组）。
-- **在做的活**：用户 2026-11-25 晚一次提的 **16 条需求 + 2 条补充**，口径/排期全在
-  [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)。**A / B / C 批已真机确认；D 批已实现待验；
-  E（胶囊→玻璃菜单动画）与 F（用户人设）未开工。**
+- **代码基线**：`dcb0742`（功能包）/ 前一包 `c984f71`（止血重构）。两包都已出：
+  `artifacts/app-v159-c984f71.apk`（tag `apk-m190`）、`artifacts/app-v160-dcb0742.apk`（tag `apk-m191`）。
+- **真机确认到**：`v157`（M15）。**v158（M16，只剩卡内嵌书条目页保位一项，已在 v160 修）、
+  v159（M17，重构回归）、v160（M18，七条需求）都还没回执。**
+- **在做的活**：2026-11-25 的 16 条需求（A/B/C 已确认、D 待验、E/F 未开工，口径见
+  [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)）+ 2026-11-26 凌晨的七条
+  （[plan-req-2026-11-26.md](../plan-req-2026-11-26.md)，已出 v160）。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**；
   **说界面上的东西用 `docs/ui-map.md` 的名字，对不上就先问、不许猜**。
 
@@ -62,10 +63,13 @@
 
 ## 三、下一步优先级
 
-1. **收 v158 的 M16 回执**；有不一致按条修，别顺手改别的。
-2. **E 批**：胶囊→玻璃菜单（先两处原型）。
-3. **F 批**：用户人设（夹具先行）。
-4. 老账：outlet（夹具先行）→ 卡库分组 → 角色详情页头。
+1. **按顺序收三包回执**：v158 M16（剩余项）→ v159 M17（重构回归，重点验发送/停止/切会话）
+   → v160 M18（七条需求 + M16 修复）。有不一致按条修，别顺手改别的。
+2. **审计 P0-3**：`data` 层 JVM 测试（三级配置编解码 / `.meta` 容错 / DB 迁移 / JSONL 往返）。
+3. **E 批**：胶囊→玻璃菜单（先两处原型）。
+4. **F 批**：用户人设（夹具先行）。
+5. 老账：outlet（夹具先行）→ 卡库分组 → 角色详情页头。
+6. 推迟项：`P1-3` 重组成本优化（等真机清单清空再做）。
 
 ## 四、这台机器与出包（比上一版更长的教训，每次都看）
 
@@ -116,6 +120,12 @@
 | 世界书条目 / 全文 / 搜索 | `WorldBookEntriesScreen.kt`、`WorldBookEntryScreen.kt`、`WorldBookEntryRow.kt`、`CardConfigPageScreen.kt`、`SearchField.kt` |
 | 显示管线（正则 → 样式） | `DisplayText.kt`（`markupText` / `displayPlain`）、`core/regex/BuiltinRegex.kt` |
 | 采样与内置正则的存储 | `data/config/ConfigOverrideRepository.kt`（+ `impl/PreferencesConfigOverrideRepository`）、`data/settings/*` |
+| 点触反馈（行/卡/底栏共用手感） | `Style.kt` 的 `rememberPressTint`（最短 90ms 可视） |
+| 回到底部钮 | `ChatScreen.kt` 的 `JumpToBottomButton` + `bottomOverlay`（不参与输入区测量） |
+| 开场白「设为默认」胶囊 | `CharacterDetailScreen.kt` 的 `DefaultGreetingChip` |
+| 气泡字号三级 | `Screen.kt`（`BubbleFontSizes` / `ConfigKind.FontSize`）、`UiState.effectiveBubbleFontSize`、三处入口（`SettingsPages` / `CardConfigPageScreen` / `SessionConfigScreen` + `ConfigPickerScreen`） |
+| 预设里的「提示词全文」 | `PresetPromptScreen`（新增 `Destination.PresetPrompt` + `UiState.presetPromptDetail`） |
+| 流式任务所有权 | `ChatViewModel.StreamingTask` / `stop()` / `openSessionInternal()` 的取消逻辑 |
 | 词表 / 不变量 | `docs/ui-map.md`、`docs/ui-invariants.md`、`tools/check-ui-map.sh`、`tools/check-ui-invariants.sh` |
 
 ## 七、这轮踩的坑（一句话一条）
@@ -134,3 +144,9 @@
 7. **`if (常量) A else B` 会静默杀死一支**：编译、脚本、回执三套防线都看不见（v149/v150 卡配置两页）。
 8. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；`positionInWindow` 是扩展函数要单独 import；
    页面里用 `0.dp` 要确认该文件 import 了 `dp`。
+9. **`collectIsPressedAsState()` 会在同一帧按下+抬起时被合并** → 短促点按一次都不播。
+   要给"必须跟手"的反馈，直接吃 `interactions` 流 + 最短可视时长（2026-11-26 修）。
+10. **键盘收起动画不能等 `imeVisible == false`**：那是 IME 退场动画播完的时刻。
+    盯 `snapshotFlow { ime.getBottom(density) }` 的"开始下降"才对（`density` 和 `ime` 要在组合里取好）。
+11. **底部浮动控件不许进被测量的那一层**：列表让位读的是 `ChatInputBar` 的实测高度，
+    把按钮塞进同一个测量里，它出现/消失就会让整屏气泡跳一下。

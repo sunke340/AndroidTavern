@@ -994,3 +994,32 @@ else 设置内容`）。`6f4dd53` 为了让三页都半透明，把它改成常�
 另一个坑：宿主实例只能在**骨架内部**读。页面顶层 `LocalSheetController.current` 拿到的是没有宿主的
 默认实例，它的 `spec` 永远是 `null` —— 拿它判断"抽屉开没开"会永远为假。读的地方要放进
 `GlassDetailScaffold` 的 content lambda 里。
+
+## 按压反馈：`collectIsPressedAsState` 会吞掉短促点按（2026-11-26）
+
+用户报"点下去的变深出现太慢，点得太短干脆没有效果"。代码里按下已经是 `snap()`（无进入时长），
+所以问题不在动画，而在**事件采集**：`collectIsPressedAsState()` 是"把交互流收成一个布尔 state"，
+同一帧里按下 + 抬起（一次 60~90ms 的快速点按）两次事件会被合并，组合读到的值始终是 false ——
+一次都不播。
+
+修法（`Style.kt` 的 `rememberPressTint`，行 / 卡 / 底栏共用）：
+直接 `source.interactions.collect { … }`，`PressInteraction.Press` 时 `Animatable.snapTo(1f)`；
+`Release/Cancel` 时**先补足最短可视 90ms**（按时间差算）再 `animateTo(0f, tween(Motion.Fast + 40))`。
+这样"点一下就走"也保证亮过一下。
+
+## 键盘收起：别等 `imeVisible == false`（2026-11-26）
+
+输入框"聚焦翻倍、收键盘回一行"的判据原来是 `imeVisible`（`ime.getBottom() > 0`）。
+IME 的退场有 200~300ms 动画，`imeVisible` 在动画**跑完**才变假 —— 观感就是
+"键盘先滑下去、滑完了输入框才慢半拍缩回一行"。
+
+修法：`ChatInputBar` 用 `snapshotFlow { ime.getBottom(density) }` 观察高度，**一旦开始下降**
+就置 `imeHiding = true`，`expanded` 立刻变假（动画马上开始）；键盘再长高时清掉它。
+注意 `ime` 与 `density` 必须在组合里取好再传进 `snapshotFlow` —— 那里不能读 CompositionLocal。
+
+## 聊天页底部浮动钮：不能进"被测量的那一层"（2026-11-26）
+
+列表底部让位读的是 `ChatInputBar` 的**实测高度**（`onSizeChanged`）。「回到底部」钮如果塞进
+同一段测量里，它出现/消失就会改变让位 → 整屏气泡上下跳一下。
+现在的摆法：`bottomOverlay` 里用 `Column` 把按钮放在 `ChatInputBar` **之上**，
+按钮只增加"输入区上方的一段高度"，输入栏本身仍在屏幕底部不动，让位数字完全不变。
