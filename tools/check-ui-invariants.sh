@@ -158,7 +158,8 @@ for p in APP.glob('*.kt'):
 # ---- INV-06：每个可滚动面都要挂橡皮筋 ----
 # 顺序（rubberOverscroll 要排在 verticalScroll/LazyColumn 之前）没法可靠地用文本判，这里只判"有没有"。
 SCROLL_WHITELIST = {
-    # 弹层宿主：内容滚动和"拖把手收回"共用一个纵向手势，要挂先真机验（别顺手加）
+    # 弹层宿主：内容区高度被限制在 62% 屏高、把手拖拽在另一个节点上（拖位移会连带整个弹层），
+    # 现在没挂橡皮筋；要加先真机验证手势不打架（别顺手加）
     'ActionSheet.kt',
 }
 for p in sorted(APP.glob('*.kt')):
