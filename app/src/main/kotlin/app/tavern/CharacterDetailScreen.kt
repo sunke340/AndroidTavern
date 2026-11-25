@@ -245,13 +245,31 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                         // 让长描述在**转场那一帧**就排好版；等 detail 到了文本没变，Text 不会重排。
                         // 不然长描述会在动画中途才排版一次 —— 那一下正好吃掉转场的好几帧。
                         val text = (detail?.description ?: cardRef?.description).orEmpty()
+                        // 简介也走显示管线（用户 2026-11-25 补充）：正则清标记 + `<i>/<b>` 内联样式，
+                        // 与气泡/开场白同一套；卡文件本身不动。
+                        val primary = MaterialTheme.colorScheme.primary
+                        val scripts = state.displayRegexScripts
+                        val shown = remember(text, scripts, primary) {
+                            if (text.isBlank()) {
+                                null
+                            } else {
+                                val display = if (scripts.isEmpty()) {
+                                    text
+                                } else {
+                                    RegexEngine().applyAll(scripts, text, RegexPlacement.AiOutput)
+                                }
+                                markupText(display, primary)
+                            }
+                        }
                         ScrollArea {
-                            Text(
-                                text.ifBlank {
-                                    if (detail == null) "读取中…" else "（这张卡没有描述）"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                            if (shown != null) {
+                                Text(shown, style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text(
+                                    if (detail == null) "读取中…" else "（这张卡没有描述）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                     }
 
@@ -277,7 +295,9 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     ListRow(
                                         title = session.cardName,
                                         subtitle = previewLine(
-                                            session.lastMessage,
+                                            session.lastMessage?.let {
+                                                displayPlain(it, state.displayRegexScripts)
+                                            },
                                             session.lastFromUser,
                                         ),
                                         meta = sessionTimeLabel(session.updatedAt),

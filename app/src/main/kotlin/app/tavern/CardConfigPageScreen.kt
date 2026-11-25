@@ -15,6 +15,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -108,48 +112,75 @@ private fun CardWorldBookPage(
         bottom = padding.calculateBottomPadding() + Space.l,
     )
 
-    if (entries.isEmpty()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
-            contentPadding = contentPadding,
-        ) {
-            item { EmptyHint("这张卡没有内嵌世界书。") }
+    // 搜索（用户 2026-11-25 第 16 条）：卡内嵌书的正文本来就在内存里，纯 UI 侧过滤就够。
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(query, entries) {
+        if (query.isBlank()) {
+            entries
+        } else {
+            val q = query.trim().lowercase()
+            entries.filter { entry ->
+                entry.comment.lowercase().contains(q) ||
+                    entry.keys.any { it.lowercase().contains(q) } ||
+                    entry.content.lowercase().contains(q)
+            }
         }
-        return
     }
 
-    val count = entries.size
+    val count = filtered.size
     LazyColumn(
         modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
         contentPadding = contentPadding,
     ) {
-        if (forced.isNotEmpty()) {
-            item {
-                WorldBookForcedHint(
-                    modifier = Modifier.padding(
-                        start = RowToken.padH,
-                        top = Space.xs,
-                        bottom = Space.xs,
-                    ),
+        item(key = "search") {
+            SearchField(
+                value = query,
+                placeholder = "搜索标题 / 关键词 / 正文",
+                onValueChange = { query = it },
+                modifier = Modifier.padding(bottom = Space.s),
+            )
+        }
+        if (filtered.isEmpty()) {
+            item(key = "empty") {
+                EmptyHint(
+                    if (entries.isEmpty()) {
+                        "这张卡没有内嵌世界书。"
+                    } else {
+                        "没有匹配的条目"
+                    },
                 )
             }
-        }
-        itemsIndexed(entries) { index, entry ->
-            GroupPiece(piece = rowPieceAt(index, count)) {
-                WorldBookEntryRow(
-                    title = entry.comment,
-                    content = entry.content,
-                    // 生效状态 = 卡里写的 enabled **叠加** 应用内的两个覆盖（强关 / 强制开启）
-                    checked = when {
-                        entry.uid in forced -> true
-                        entry.uid in off -> false
-                        else -> entry.enabled
-                    },
-                    forcedOn = entry.uid in forced,
-                    onToggle = { enabled ->
-                        viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
-                    },
-                )
+        } else {
+            if (filtered.any { it.uid in forced }) {
+                item(key = "forced-hint") {
+                    WorldBookForcedHint(
+                        modifier = Modifier.padding(
+                            start = RowToken.padH,
+                            top = Space.xs,
+                            bottom = Space.xs,
+                        ),
+                    )
+                }
+            }
+            itemsIndexed(filtered, key = { _, entry -> entry.uid }) { index, entry ->
+                GroupPiece(piece = rowPieceAt(index, count)) {
+                    WorldBookEntryRow(
+                        title = entry.comment,
+                        content = entry.content,
+                        // 生效状态 = 卡里写的 enabled **叠加** 应用内的两个覆盖（强关 / 强制开启）
+                        checked = when {
+                            entry.uid in forced -> true
+                            entry.uid in off -> false
+                            else -> entry.enabled
+                        },
+                        forcedOn = entry.uid in forced,
+                        onToggle = { enabled ->
+                            viewModel.setBookEntryEnabled(cardId, entry.uid, enabled)
+                        },
+                        // 点行看全文（用户 2026-11-25 第 8 条）
+                        onClick = { viewModel.openCardBookEntry(entry.uid) },
+                    )
+                }
             }
         }
     }

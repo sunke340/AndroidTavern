@@ -50,7 +50,7 @@
 
 | 能说的名字 | 页面函数 | 说明 |
 |---|---|---|
-| 会话 | `SessionsScreen` | 会话列表，按「今天 / 更早」分组 |
+| 会话 | `SessionsScreen` | 会话列表，按「置顶 / 今天 / 更早」分组 |
 | 角色卡 | `CharactersScreen` | 卡墙，3:4 满幅图 |
 | 设置 | `SettingsScreen` | 设置入口，只放"去哪儿" |
 
@@ -74,7 +74,8 @@
 | 能说的名字 | 页面函数 | 从哪进 |
 |---|---|---|
 | 档案编辑 | `ProfileEditScreen` | 设置 · 模型 → 某档案 / 右上「+」 |
-| 世界书条目 | `WorldBookEntriesScreen` | 设置 · 世界书 → 某本 |
+| 世界书条目 | `WorldBookEntriesScreen` | 设置 · 世界书 → 某本；卡详情 → 配置 → 内嵌世界书 |
+| 条目全文 | `WorldBookEntryScreen` | 世界书条目 → 点某条（全局书与卡内嵌书共用） |
 | 预设编辑 | `PresetEditScreen` | 设置 · 预设 → 长按某份 → 编辑 |
 | 会话配置 | `SessionConfigScreen` | 聊天 → 页头右上「⋮」 |
 | 卡的配置 | `CardConfigPageScreen` | 角色详情 → 配置；三页：内嵌世界书 / 对话样式 / 关于这张卡 |
@@ -116,6 +117,7 @@
 | 详情页骨架 | 二三级页 | 内容录图层 + 页头浮层 | `GlassDetailScaffold` |
 | 内容首项留白 | 二级页滚动内容 | 列表首项离页头底边 16dp，Column 页贴底边；页面不再自己算 | `contentSpacing`（骨架参数） |
 | 页头右上胶囊 | 页头右侧 | 只吃高度的玻璃胶囊，装图标 | `CapsuleIcon` |
+| 搜索框 | 世界书条目页 / 世界书选择页顶部 | 单行输入，左侧放大镜 | `SearchField` |
 | 选择页批量菜单 | 世界书 / 正则选择页右上 | 全部开启 / 全部关闭 / 恢复默认（恢复默认 = 跟随上级） | `PickerBulkMenu` |
 | 页栈转场 | 页面切换 | 进：新页从右滑入；退：整屏滑走 | `PageStack` |
 | 状态栏留白 | 各页 | 统一取值，别各写 | `statusBarTop` |

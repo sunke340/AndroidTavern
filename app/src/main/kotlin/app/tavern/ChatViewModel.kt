@@ -14,6 +14,7 @@ import app.tavern.core.card.CharacterCard
 import app.tavern.core.chat.ChatFile
 import app.tavern.core.chat.ChatMessage as ChatFileMessage
 import app.tavern.core.card.PngCard
+import app.tavern.core.card.WorldBookFile
 import app.tavern.core.card.bookEntries
 import app.tavern.core.card.lorebookEntries
 import app.tavern.core.model.ChatMessage
@@ -112,6 +113,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val entries: List<WorldBookEntryView>,
         /** false = 还在读文件（界面显示"读取中"）。 */
         val loaded: Boolean = false,
+        /** 搜索词（空 = 不过滤）。条目页顶部的搜索框读它。 */
+        val query: String = "",
+        /** 这本书原本有多少条（搜索时用来显示"N / M"）。 */
+        val total: Int = 0,
+    )
+
+    /** 条目全文页（世界书条目与卡内嵌书条目共用）。 */
+    data class WorldBookEntryDetail(
+        val title: String,
+        val keys: List<String>,
+        val content: String,
+        val enabled: Boolean,
+        /** 页头副标题：「书：名字」/「卡内嵌书：卡名」。 */
+        val source: String,
     )
 
     /** 一次性提示（导入/删除的结果），用 Snackbar 显示；`id` 保证同一条不会重复弹。 */
@@ -219,6 +234,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val builtinRegexDisabled: Set<String> = emptySet(),
         /** 非 null 时显示某本全局书的条目列表。 */
         val worldBookView: WorldBookView? = null,
+        /** 世界书条目全文页；非空 = 目的地是那一页。 */
+        val worldBookEntry: WorldBookEntryDetail? = null,
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
         val temperatureText: String = "1.0",
         val maxTokensText: String = "0",
@@ -312,6 +329,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val displayRegexScripts: List<RegexScript>
             get() = effectiveRegexScripts + BuiltinRegex.rules(builtinRegexDisabled)
     }
+
+    /**
+     * 当前打开那本书的解析结果：条目页搜索（正文命中）与"看全文"都从这里取，
+     * 不重复读文件，也不把整本正文塞进 UiState（那会让每次重组都拖着几 MB）。
+     */
+    private var openBook: WorldBookFile? = null
+    private var openBookName: String? = null
+    private var openBookEntries: List<WorldBookEntryView> = emptyList()
 
     private val cardRepository = AppGraph.cards(application)
     private val profileRepository: ProfileRepository = AppGraph.profiles(application)
@@ -812,6 +837,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSession(id: String) {
         viewModelScope.launch { openSessionInternal(id, navigate = true) }
+    }
+
+    /**
+     * 置顶 / 取消置顶（用户 2026-11-25 第 13 条）。
+     *
+     * 只改会话行的 `pinned` 标记，不碰消息与 `updated_at`；排序由仓库的 ORDER BY 决定
+     * （`pinned DESC, updated_at DESC`），所以这里改完要重读一次列表。
+     */
+    fun setSessionPinned(id: String, pinned: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { chatRepository.setSessionPinned(id, pinned) }
+            refreshSessions()
+            AppLog.i("chat", "会话置顶 id=$id pinned=$pinned")
+        }
     }
 
     fun deleteSession(id: String) {
@@ -1815,48 +1854,127 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadWorldBook(name: String) {
         val started = SystemClock.elapsedRealtime()
-        val view = withContext(Dispatchers.IO) {
+        val loaded = withContext(Dispatchers.IO) {
             val parseAt = SystemClock.elapsedRealtime()
             val book = worldBookRepository.load(name) ?: return@withContext null
             val parseMs = SystemClock.elapsedRealtime() - parseAt
             val overrides = worldBookRepository.disabledEntries(name)
             val forced = worldBookRepository.forcedEntries(name)
             val buildAt = SystemClock.elapsedRealtime()
+            val entries = book.entries.map { entry ->
+                val forcedOn = entry.disabled && entry.uid in forced
+                WorldBookEntryView(
+                    uid = entry.uid,
+                    title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+                        ?: "条目 ${entry.uid}",
+                    keys = entry.keys,
+                    preview = entry.content.replace("\n", " ").take(90),
+                    enabled = forcedOn || (!entry.disabled && entry.uid !in overrides),
+                    disabledInFile = entry.disabled,
+                    forcedOn = forcedOn,
+                )
+            }
             val view = WorldBookView(
                 name = name,
-                entries = book.entries.map { entry ->
-                    val forcedOn = entry.disabled && entry.uid in forced
-                    WorldBookEntryView(
-                        uid = entry.uid,
-                        title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
-                            ?: "条目 ${entry.uid}",
-                        keys = entry.keys,
-                        preview = entry.content.replace("\n", " ").take(90),
-                        enabled = forcedOn || (!entry.disabled && entry.uid !in overrides),
-                        disabledInFile = entry.disabled,
-                        forcedOn = forcedOn,
-                    )
-                },
+                entries = entries,
                 loaded = true,
+                total = entries.size,
             )
             AppLog.i(
                 "wi",
                 "开书 $name：解析 ${parseMs}ms，建条目 ${SystemClock.elapsedRealtime() - buildAt}ms，" +
                     "${view.entries.size} 条",
             )
-            view
+            book to view
         }
-        if (view == null) {
+        if (loaded == null) {
             _state.update { it.copy(status = "这本书读不出来了：$name", worldBookView = null) }
         } else {
+            val (book, view) = loaded
+            // 缓存解析结果：条目页搜索（正文命中）与"看全文"都从这里取，不重复读文件
+            openBook = book
+            openBookName = name
+            openBookEntries = view.entries
             // 读的过程中用户可能已经返回了，别把页面又推回来
             _state.update { if (it.worldBookView?.name == name) it.copy(worldBookView = view) else it }
             AppLog.i("wi", "开书 $name 落地 +${SystemClock.elapsedRealtime() - started}ms")
         }
     }
 
+    /**
+     * 条目页搜索：标题 / 关键词先过滤，正文命中从缓存里比（用户 2026-11-25 第 16 条）。
+     *
+     * 正文不在 UiState 里，所以不能纯 UI 侧过滤 —— 这里拿 `openBook` 的原文比对。
+     */
+    fun onWorldBookQuery(query: String) {
+        val view = _state.value.worldBookView ?: return
+        _state.update { it.copy(worldBookView = view.copy(query = query, entries = filteredWorldBookEntries(query))) }
+    }
+
+    private fun filteredWorldBookEntries(query: String): List<WorldBookEntryView> {
+        if (query.isBlank()) return openBookEntries
+        val q = query.trim().lowercase()
+        val contents = openBook?.entries?.associate { it.uid to it.content.lowercase() }.orEmpty()
+        return openBookEntries.filter { entry ->
+            entry.title.lowercase().contains(q) ||
+                entry.keys.any { it.lowercase().contains(q) } ||
+                entry.preview.lowercase().contains(q) ||
+                contents[entry.uid]?.contains(q) == true
+        }
+    }
+
+    /** 打开全局世界书的某一条全文。 */
+    fun openWorldBookEntry(uid: Int) {
+        val view = _state.value.worldBookView ?: return
+        val full = openBook?.entries?.firstOrNull { it.uid == uid } ?: return
+        val row = openBookEntries.firstOrNull { it.uid == uid } ?: return
+        _state.update {
+            it.copy(
+                worldBookEntry = WorldBookEntryDetail(
+                    title = row.title,
+                    keys = full.keys,
+                    content = full.content,
+                    enabled = row.enabled,
+                    source = "书：${view.name}",
+                ),
+            )
+        }
+        AppLog.i("wi", "看条目全文 ${view.name}#$uid（${full.content.length} 字）")
+    }
+
+    /** 打开卡内嵌书的某一条全文（内容已经在 CardDetail 里，不用再读卡）。 */
+    fun openCardBookEntry(uid: Int) {
+        val detail = _state.value.detail ?: return
+        val entry = detail.bookEntries.firstOrNull { it.uid == uid } ?: return
+        val enabled = when {
+            entry.uid in detail.forcedUids -> true
+            entry.uid in detail.offUids -> false
+            else -> entry.enabled
+        }
+        _state.update {
+            it.copy(
+                worldBookEntry = WorldBookEntryDetail(
+                    title = entry.keys.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+                        ?: "条目 ${entry.uid}",
+                    keys = entry.keys,
+                    content = entry.content,
+                    enabled = enabled,
+                    source = "卡内嵌书：${detail.name}",
+                ),
+            )
+        }
+        AppLog.i("wi", "看卡内嵌书条目 ${detail.name}#$uid（${entry.content.length} 字）")
+    }
+
+    fun closeWorldBookEntry() {
+        _state.update { it.copy(worldBookEntry = null) }
+    }
+
     fun closeWorldBook() {
         _state.update { it.copy(worldBookView = null) }
+        openBook = null
+        openBookName = null
+        openBookEntries = emptyList()
     }
 
     /**

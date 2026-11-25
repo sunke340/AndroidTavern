@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.tavern.core.regex.RegexScript
 import app.tavern.data.chat.ChatSession
 
 /**
@@ -46,7 +47,9 @@ fun SessionsScreen(
 
     // 分组与时间标签都以"进入这一屏的那一刻"为准：不在滚动途中重算，行标签才不会半路跳变
     val now = remember(state.sessions) { System.currentTimeMillis() }
-    val listItems = remember(state.sessions, now) { buildSessionItems(state.sessions, now) }
+    val listItems = remember(state.sessions, now, state.displayRegexScripts) {
+        buildSessionItems(state.sessions, now, state.displayRegexScripts)
+    }
 
     if (!state.sessionsLoaded) {
         // 还没读到库：什么也不写。"还没有会话"是**结论**，不能在加载完成前先说出来
@@ -96,7 +99,16 @@ fun SessionsScreen(
                             onLongClick = {
                                 sheet.show(
                                     title = item.session.title,
-                                    actions = listOf(
+                                    actions = listOfNotNull(
+                                        SheetAction(
+                                            if (item.session.pinned) "取消置顶" else "置顶",
+                                        ) {
+                                            sheet.dismiss()
+                                            viewModel.setSessionPinned(
+                                                item.session.id,
+                                                !item.session.pinned,
+                                            )
+                                        },
                                         SheetAction("删除会话", destructive = true) {
                                             pendingDelete = item.session
                                         },
@@ -149,32 +161,60 @@ private sealed interface SessionListItem {
  * `sessions` 已由仓库按 `updated_at` 倒序给出，所以同一组一定是连续的，
  * 顺序扫一遍即可（不做二次排序，避免和 SQL 的排序口径打架）。
  */
-private fun buildSessionItems(sessions: List<ChatSession>, now: Long): List<SessionListItem> {
+private fun buildSessionItems(
+    sessions: List<ChatSession>,
+    now: Long,
+    // 显示层正则：最后一条消息的预览也要清掉标记（用户 2026-11-25 补充）
+    scripts: List<RegexScript>,
+): List<SessionListItem> {
     val result = mutableListOf<SessionListItem>()
+    // 置顶单独一组排最前（用户 2026-11-25 第 13 条）：不和"今天/更早"混在一起，
+    // 否则一条老会话置顶后会被塞进「更早」，看着像没生效。组内仍按 updated_at 倒序。
+    val pinned = sessions.filter { it.pinned }
+    val rest = sessions.filterNot { it.pinned }
+    if (pinned.isNotEmpty()) {
+        result += SessionListItem.Day("置顶")
+        appendSessionRows(pinned, now, scripts, result)
+    }
     var index = 0
-    while (index < sessions.size) {
-        val day = sessionDay(sessions[index].updatedAt, now)
+    while (index < rest.size) {
+        val day = sessionDay(rest[index].updatedAt, now)
         var end = index
-        while (end < sessions.size && sessionDay(sessions[end].updatedAt, now) == day) {
+        while (end < rest.size && sessionDay(rest[end].updatedAt, now) == day) {
             end += 1
         }
         result += SessionListItem.Day(day.label)
-        val count = end - index
-        for (i in index until end) {
-            val session = sessions[i]
-            result += SessionListItem.Session(
-                session = session,
-                subtitle = previewLine(session.lastMessage, session.lastFromUser),
-                meta = sessionTimeLabel(session.updatedAt, now),
-                piece = when {
-                    count == 1 -> RowPiece.Single
-                    i == index -> RowPiece.Top
-                    i == end - 1 -> RowPiece.Bottom
-                    else -> RowPiece.Middle
-                },
-            )
-        }
+        appendSessionRows(rest.subList(index, end), now, scripts, result)
         index = end
     }
     return result
+}
+
+/** 一组会话 → 列表行（片型按组内位置算；置顶组和日内组的规则一样）。 */
+private fun appendSessionRows(
+    rows: List<ChatSession>,
+    now: Long,
+    scripts: List<RegexScript>,
+    into: MutableList<SessionListItem>,
+) {
+    rows.forEachIndexed { i, session ->
+        into += SessionListItem.Session(
+            session = session,
+            subtitle = previewLine(
+                session.lastMessage?.let { displayPlain(it, scripts) },
+                session.lastFromUser,
+            ),
+            meta = if (session.pinned) {
+                "置顶 · ${sessionTimeLabel(session.updatedAt, now)}"
+            } else {
+                sessionTimeLabel(session.updatedAt, now)
+            },
+            piece = when {
+                rows.size == 1 -> RowPiece.Single
+                i == 0 -> RowPiece.Top
+                i == rows.lastIndex -> RowPiece.Bottom
+                else -> RowPiece.Middle
+            },
+        )
+    }
 }

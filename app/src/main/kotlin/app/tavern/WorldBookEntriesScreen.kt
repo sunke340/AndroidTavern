@@ -57,20 +57,6 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
             }
             return@GlassDetailScaffold
         }
-        if (book.entries.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "这本书里没有条目",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            return@GlassDetailScaffold
-        }
-
         val count = book.entries.size
         LazyColumn(
             modifier = Modifier.fillMaxSize().rubberOverscroll(rememberRubberOverscroll()),
@@ -83,29 +69,47 @@ fun WorldBookEntriesScreen(state: ChatViewModel.UiState, viewModel: ChatViewMode
                 bottom = padding.calculateBottomPadding() + Space.l,
             ),
         ) {
-            // 强制开启只靠红色表示，含义写在这里；没有强制条目时不占位
-            if (book.entries.any { it.forcedOn }) {
-                item(key = "forced-hint") {
-                    WorldBookForcedHint(
-                        modifier = Modifier.padding(
-                            start = RowToken.padH,
-                            top = Space.xs,
-                            bottom = Space.xs,
-                        ),
-                    )
-                }
+            // 搜索框常驻第一格（用户 2026-11-25 第 16 条）：条目多的书靠它找词。
+            // 过滤在 ViewModel 做 —— 正文不在 UiState 里，要拿缓存里的原文比（标题/关键词先比）。
+            item(key = "search") {
+                SearchField(
+                    value = book.query,
+                    placeholder = "搜索标题 / 关键词 / 正文",
+                    onValueChange = viewModel::onWorldBookQuery,
+                    modifier = Modifier.padding(bottom = Space.s),
+                )
             }
-            itemsIndexed(book.entries, key = { _, entry -> entry.uid }) { index, entry ->
-                GroupPiece(piece = rowPieceAt(index, count)) {
-                    WorldBookEntryRow(
-                        title = entry.title,
-                        content = entry.preview,
-                        checked = entry.enabled,
-                        forcedOn = entry.forcedOn,
-                        onToggle = { enabled ->
-                            viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
-                        },
-                    )
+            if (book.entries.isEmpty()) {
+                item(key = "empty") {
+                    EmptyHint(if (book.total == 0) "这本书里没有条目" else "没有匹配的条目")
+                }
+            } else {
+                // 强制开启只靠红色表示，含义写在这里；没有强制条目时不占位
+                if (book.entries.any { it.forcedOn }) {
+                    item(key = "forced-hint") {
+                        WorldBookForcedHint(
+                            modifier = Modifier.padding(
+                                start = RowToken.padH,
+                                top = Space.xs,
+                                bottom = Space.xs,
+                            ),
+                        )
+                    }
+                }
+                itemsIndexed(book.entries, key = { _, entry -> entry.uid }) { index, entry ->
+                    GroupPiece(piece = rowPieceAt(index, count)) {
+                        WorldBookEntryRow(
+                            title = entry.title,
+                            content = entry.preview,
+                            checked = entry.enabled,
+                            forcedOn = entry.forcedOn,
+                            onToggle = { enabled ->
+                                viewModel.setWorldBookEntryEnabled(book.name, entry.uid, enabled)
+                            },
+                            // 点行看全文（用户 2026-11-25 第 8 条）
+                            onClick = { viewModel.openWorldBookEntry(entry.uid) },
+                        )
+                    }
                 }
             }
         }

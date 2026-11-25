@@ -181,9 +181,24 @@ private fun WorldBookPickerBody(
     scope: ConfigScope,
 ) {
     val current = effectiveBookNames(state)
+    // 书多的时候按名字搜（用户 2026-11-25 第 16 条）
+    var query by remember { mutableStateOf("") }
+    val books = remember(query, state.worldBooks) {
+        if (query.isBlank()) {
+            state.worldBooks
+        } else {
+            val q = query.trim().lowercase()
+            state.worldBooks.filter { it.name.lowercase().contains(q) }
+        }
+    }
+    SearchField(
+        value = query,
+        placeholder = "搜索世界书",
+        onValueChange = { query = it },
+    )
     // 列表只剩书本身：「跟随上级 / 全部开启 / 全部关闭」在右上胶囊里（用户 2026-11-25 第 4 条）
-    ListGroup(count = state.worldBooks.size) { index, _ ->
-        val book = state.worldBooks[index]
+    ListGroup(count = books.size) { index, _ ->
+        val book = books[index]
         ListRow(
             title = book.name,
             subtitle = "${book.entryCount} 条" + if (book.enabled) "" else " · 全局未启用",
@@ -201,6 +216,12 @@ private fun WorldBookPickerBody(
     if (state.worldBooks.isEmpty()) {
         Text(
             "还没有导入全局世界书（设置 → 世界书）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else if (books.isEmpty()) {
+        Text(
+            "没有匹配的世界书",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

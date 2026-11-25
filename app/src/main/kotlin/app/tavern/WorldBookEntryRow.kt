@@ -43,6 +43,8 @@ fun WorldBookEntryRow(
     checked: Boolean,
     forcedOn: Boolean,
     onToggle: (Boolean) -> Unit,
+    /** 点行看全文（用户 2026-11-25 第 8 条）；不传就是不可点。 */
+    onClick: (() -> Unit)? = null,
 ) {
     val error = MaterialTheme.colorScheme.error
     Box(
@@ -57,6 +59,7 @@ fun WorldBookEntryRow(
             // 正文可能是一整段，两行够看出这条讲什么
             subtitle = if (content.isBlank()) null else content.replace("\n", " ").take(90),
             subtitleMaxLines = 2,
+            onClick = onClick,
             trailing = {
                 Switch(
                     checked = checked,

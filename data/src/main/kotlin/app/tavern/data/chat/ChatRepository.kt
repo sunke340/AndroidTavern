@@ -19,6 +19,8 @@ data class ChatSession(
     val lastMessage: String? = null,
     /** 最后一条是不是用户发的：预览前要加「你：」。 */
     val lastFromUser: Boolean = false,
+    /** 置顶：列表里排在最前（用户 2026-11-25 第 13 条）。 */
+    val pinned: Boolean = false,
 )
 
 /**
@@ -81,6 +83,9 @@ interface ChatRepository {
 
     /** 覆盖一条消息的 swipe 备选（不动 `messages.content` 与时间）。 */
     fun setSwipes(messageId: Long, swipes: List<String>)
+
+    /** 置顶 / 取消置顶（只动排序用的标记，不碰消息）。 */
+    fun setSessionPinned(id: String, pinned: Boolean)
 
     /** 删掉某张卡的全部会话（连带消息）。返回删掉的会话数。 */
     fun deleteSessionsForCard(cardId: String): Int

@@ -41,13 +41,20 @@ internal class TavernDatabase(context: Context) :
             db.execSQL(CREATE_MESSAGE_SWIPES)
             version = 3
         }
+        // v3 → v4：会话表加「置顶」列（用户 2026-11-25 第 13 条）。只加列，不动任何一行数据。
+        if (version < 4) {
+            db.execSQL(
+                "ALTER TABLE $TABLE_SESSIONS ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            )
+            version = 4
+        }
         // 漏写迁移就炸出来，绝不用 DROP 了事
         if (version != newVersion) error("没有 $oldVersion → $newVersion 的迁移")
     }
 
     companion object {
         const val DATABASE_NAME = "tavern.db"
-        const val VERSION = 3
+        const val VERSION = 4
         const val TABLE_SESSIONS = "sessions"
         const val TABLE_MESSAGES = "messages"
         const val TABLE_PROFILES = "model_profiles"
@@ -59,7 +66,9 @@ internal class TavernDatabase(context: Context) :
             "card_name TEXT NOT NULL," +
             "title TEXT NOT NULL," +
             "created_at INTEGER NOT NULL," +
-            "updated_at INTEGER NOT NULL)"
+            "updated_at INTEGER NOT NULL," +
+            // 置顶（v4）：只影响列表排序，不影响聊天内容
+            "pinned INTEGER NOT NULL DEFAULT 0)"
 
         private const val CREATE_MESSAGES = "CREATE TABLE IF NOT EXISTS $TABLE_MESSAGES (" +
             "id INTEGER PRIMARY KEY AUTOINCREMENT," +

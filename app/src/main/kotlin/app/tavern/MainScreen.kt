@@ -116,6 +116,8 @@ internal sealed interface Destination {
     data object ProfileEdit : Destination
     /** 设置 → 世界书 → 某一本（三级）。 */
     data class WorldBookEntries(val name: String) : Destination
+    /** 世界书条目 / 卡内嵌书条目 → 看全文（三级）。 */
+    data object WorldBookEntry : Destination
     /** 组件预览（debug only，从 设置 → 关于 进）。 */
     data object Gallery : Destination
     /** 设置 → 预设 → 某一份（三级）：提示词顺序的开关与拖动。 */
@@ -139,6 +141,7 @@ private fun depthOf(destination: Destination): Int = when (destination) {
     is Destination.CardConfig -> 2
     Destination.ProfileEdit -> 2
     is Destination.WorldBookEntries -> 2
+    Destination.WorldBookEntry -> 3
     Destination.Gallery -> 2
     is Destination.PresetEdit -> 2
     Destination.SessionConfig -> 3
@@ -155,6 +158,7 @@ private fun labelOf(destination: Destination): String = when (destination) {
     is Destination.CardConfig -> "card-config/${destination.page.name}"
     Destination.ProfileEdit -> "profile-edit"
     is Destination.WorldBookEntries -> "worldbook"
+    Destination.WorldBookEntry -> "wb-entry"
     Destination.Gallery -> "gallery"
     is Destination.PresetEdit -> "preset-edit"
     Destination.SessionConfig -> "session-config"
@@ -183,6 +187,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val configPicker = state.configPicker
 
             val destination: Destination = when {
+                // 条目全文叠在最上面（从书条目页或卡配置页进）：返回各自落回原来的页
+                state.worldBookEntry != null -> Destination.WorldBookEntry
                 // 选一项的页面叠在最上面：返回落回各自的父页（会话配置 / 角色详情）
                 configPicker != null -> Destination.ConfigPicker(configPicker)
                 // 会话配置叠在聊天页之上：返回落回聊天（chatOpen 保持 true）
@@ -280,6 +286,11 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         is Destination.WorldBookEntries -> {
                             if (live) BackHandler { viewModel.closeWorldBook() }
                             WorldBookEntriesScreen(state = snap, viewModel = viewModel)
+                        }
+
+                        Destination.WorldBookEntry -> {
+                            if (live) BackHandler { viewModel.closeWorldBookEntry() }
+                            WorldBookEntryScreen(state = snap, viewModel = viewModel)
                         }
 
                         is Destination.Detail -> {
