@@ -1129,6 +1129,7 @@ private fun UndoGlyph(tint: Color) {
  *
  * 返回 0 表示"这条请求已经满足"，动画立刻停，位置一点不动。
  */
+@OptIn(ExperimentalFoundationApi::class)
 private val NoFocusScrollSpec = object : BringIntoViewSpec {
     // 一律 0：这个列表里唯一的焦点目标是消息气泡（`SelectionContainer` 要焦点才能出手柄），
     // 而"因为选中了一段文字就把阅读位置挪走"在任何情况下都是错的 —— 普通长度的气泡同样是跳一下。
