@@ -145,7 +145,7 @@
 配置行、聊天页长按、页面级确认框**全都静默失效**。修法与日志见
 [pitfalls「CompositionLocal 在骨架之前读就是空壳」](pitfalls.md)。
 
-**装包**：`artifacts/app-v136-6139ec8.apk`（同签名，直接覆盖安装）。
+**装包**：`artifacts/app-v137-28fbce1.apk`（同签名，直接覆盖安装）。
 
 ### 逐条对照（编号 = 你 2026-11-25 早上那份清单）
 

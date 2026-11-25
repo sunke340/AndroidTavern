@@ -10,8 +10,8 @@
 
 | | |
 |---|---|
-| 代码 | `6139ec8`（tag `apk-m167`） |
-| 最新交付 | `artifacts/app-v136-6139ec8.apk`（签名与 dex `BUILD_ID` 都核过） |
+| 代码 | `28fbce1`（tag `apk-m168`） |
+| 最新交付 | `artifacts/app-v137-28fbce1.apk`（签名与 dex `BUILD_ID` 都核过） |
 | 真机验过的最后一版 | `artifacts/app-v117-0631bff.apk`（串流跟随那一轮） |
 | CI | 铁律 / 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（9 个模块，89 条）+ 三个 `check-*.sh` |
