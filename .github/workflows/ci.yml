@@ -94,22 +94,20 @@ jobs:
 
       # 这台机器没有 PAT，Actions 日志登录才看得到；失败时把日志挂成 release，
       # 公开可读，排查不依赖任何人的账号。
+      # 失败时把日志暴露成**不需要登录**能看到的东西（这台机器没有 PAT）：
+      # ① 关键行打成 annotation（run 页面直接显示）；② 按 sha 命名的日志挂到 release。
+      # 2026-11-26 踩过：用 action-gh-release 上传固定名 build.log，同名资产撞名导致这一步自己红了。
       - name: 失败时公开日志
         if: failure()
-        # 文件名带上 sha：固定叫 build.log 时，同名资产上传会失败（2026-11-26 踩过：
-        # 日志发布步骤本身红了，等于失败时没有日志可看）。
-        run: cp build.log "build-${GITHUB_SHA::7}.log"
-        continue-on-error: true
-
-      - name: 公开失败日志（按 sha 命名）
-        if: failure()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ci-log-jvm
-          name: CI 失败日志（jvm-tests）
-          prerelease: true
-          files: build-*.log
-          body: 自动发布，按提交 sha 命名的 jvm-tests 失败构建日志。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          grep -E '^e: |FAILED|FAILURE:|There were failing tests|AssertionFailedError|expected:' build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          cp build.log "build-${GITHUB_SHA::7}.log" || true
+          gh release upload ci-log-jvm "build-${GITHUB_SHA::7}.log" --clobber || true
 
   android-build:
     name: 出 debug APK
@@ -227,15 +225,12 @@ jobs:
 
       - name: 失败时公开日志
         if: failure()
-        run: cp build.log "build-${GITHUB_SHA::7}.log"
-        continue-on-error: true
-
-      - name: 公开失败日志（按 sha 命名）
-        if: failure()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ci-log-android
-          name: CI 失败日志（android-build）
-          prerelease: true
-          files: build-*.log
-          body: 自动发布，按提交 sha 命名的 android-build 失败构建日志。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          grep -E '^e: |FAILED|FAILURE:|error:' build.log | head -40 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          cp build.log "build-${GITHUB_SHA::7}.log" || true
+          gh release upload ci-log-android "build-${GITHUB_SHA::7}.log" --clobber || true
