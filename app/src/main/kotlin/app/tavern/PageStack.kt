@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -18,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
@@ -49,6 +51,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    动画再开始 —— 代价是响应多约 1 帧，换动画满帧。日志 `tag=nav` 的「新页首帧 Xms」
  *    就是这笔钱；它应该出现在「转场」那行**之前**。
  */
+/**
+ * 这一页现在是不是**栈顶**。
+ *
+ * 离场页为了转场会留在组合树里（`PageStack` 的既定做法），但它在视觉上已经开始滑走。
+ * 这时页面里的"浮在窗口上的东西"（输入框光标、选文字手柄、系统键盘）**不会跟着 graphicsLayer 位移**，
+ * 会钉在原处直到转场结束（用户 2026-11-25 报的）。页面可以读这个值，在离场那一帧把它们收掉。
+ */
+val LocalPageIsCurrent = staticCompositionLocalOf { true }
+
 @Composable
 internal fun <S> PageStack(
     target: Destination,
@@ -199,7 +210,9 @@ internal fun <S> PageStack(
                         },
                 ) {
                     // 当前页用实时状态；离场页用它自己那份快照
-                    content(dest, if (dest == target) state else snapshots[dest] ?: state)
+                    CompositionLocalProvider(LocalPageIsCurrent provides (dest == target)) {
+                        content(dest, if (dest == target) state else snapshots[dest] ?: state)
+                    }
                 }
             }
         }

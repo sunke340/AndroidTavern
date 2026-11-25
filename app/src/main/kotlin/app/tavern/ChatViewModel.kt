@@ -2773,45 +2773,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 改一条消息的正文。只改库与内存，不重新请求（重新生成是另一件事）。 */
-    fun editMessageAt(index: Int, content: String) {
-        val text = content.trim()
-        if (text.isEmpty()) return
-        val snapshot = _state.value
-        val sessionId = snapshot.sessionId ?: return
-        if (snapshot.isStreaming) {
-            notify("正在生成，等它写完再改")
-            return
-        }
-        if (snapshot.transcript.getOrNull(index)?.content == text) return
-        viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            stored.getOrNull(index)?.let { row ->
-                withContext(Dispatchers.IO) { chatRepository.updateMessage(row.id, text) }
-            }
-            _state.update { current ->
-                if (current.sessionId != sessionId) current
-                else current.copy(
-                    transcript = current.transcript.mapIndexed { i, message ->
-                        if (i == index) message.copy(content = text) else message
-                    },
-                    // 改的如果正好是最后一条，swipe 里那一份也要跟着改，否则翻一次就回退成旧文
-                    lastSwipes = if (index == current.transcript.lastIndex &&
-                        current.lastSwipes.isNotEmpty()
-                    ) {
-                        // 下标夹一下：删过消息或老数据可能让 swipeId 越界，越界就是崩
-                        current.lastSwipes.toMutableList().also {
-                            it[current.lastSwipeId.coerceIn(0, it.lastIndex)] = text
-                        }
-                    } else {
-                        current.lastSwipes
-                    },
-                )
-            }
-            AppLog.i("chat", "改单条 index=$index ${text.length} 字")
-        }
-    }
-
     private fun stamp(): String =
         formatter.format(Instant.ofEpochMilli(System.currentTimeMillis()))
 

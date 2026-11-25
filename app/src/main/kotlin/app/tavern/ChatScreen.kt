@@ -56,7 +56,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
@@ -88,7 +87,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -150,8 +148,19 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
     // 长按交给文字选择（正文在外面包了 SelectionContainer）。
     val clipboard = LocalClipboardManager.current
-    var editingIndex by remember { mutableStateOf<Int?>(null) }
     var deletingIndex by remember { mutableStateOf<Int?>(null) }
+
+    // 离场页还在组合树里（转场需要），但输入框光标与"选文字"手柄是**独立弹层**，
+    // 不会跟 graphicsLayer 一起位移 —— 页面滑走了它们还钉在屏幕上（用户 2026-11-25 报的）。
+    // 离场那一帧收焦点、并把气泡正文切回不可选，弹层就立刻消失。
+    val pageIsCurrent = LocalPageIsCurrent.current
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(pageIsCurrent) {
+        if (!pageIsCurrent) {
+            focusManager.clearFocus(force = true)
+            AppLog.i("ui", "离场：收掉输入焦点与选区")
+        }
+    }
     // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
     // 会拿到没有宿主的实例，确认框静默不弹（2026-11-25 真机清单的根因）。自己建一个传进去。
     val confirm = remember { ConfirmController() }
@@ -468,6 +477,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             message = message,
                             style = state.effectiveMessageStyle,
                             displayText = displayText,
+                            selectable = pageIsCurrent,
                         )
                         if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
@@ -501,7 +511,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 canContinue = isAssistant && isLast,
                                 onRewind = { viewModel.rewindToMessage(realIndex) },
                                 onCopy = { clipboard.setText(AnnotatedString(message.content)) },
-                                onEdit = { editingIndex = realIndex },
                                 onRegenerate = viewModel::regenerateLast,
                                 onContinue = viewModel::continueLast,
                                 onDelete = { deletingIndex = realIndex },
@@ -516,18 +525,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 
     // 编辑这条：文本编辑弹层（不是玻璃 —— 玻璃只给"确认/动作"，编辑要塞键盘与长文本）
-    editingIndex?.let { index ->
-        val original = state.transcript.getOrNull(index)?.content.orEmpty()
-        EditMessageDialog(
-            initial = original,
-            onDismiss = { editingIndex = null },
-            onSave = { text ->
-                editingIndex = null
-                viewModel.editMessageAt(index, text)
-            },
-        )
-    }
-
     // 删除这条：走统一的玻璃确认框（和删会话/删卡同一个材质与措辞规则）
     deletingIndex?.let { index ->
         ConfirmDeleteDialog(
@@ -889,10 +886,12 @@ private fun MessageRow(
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
     displayText: (String) -> String = { it },
+    /** 离场页要传 false：选文字手柄是独立弹层，不跟着页面滑走，会钉在屏幕上。 */
+    selectable: Boolean = true,
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, selectable)
+        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText, selectable)
     }
 }
 
@@ -900,10 +899,11 @@ private fun MessageRow(
  * 一条消息底下那排动作（用户 2026-11-25 第 11 条：长按改成"选文字"，操作改成按钮）。
  * 第 6 条又要求**用图标、不写文字** —— 这里是图标版。
  *
- * 用户气泡：撤回 / 复制 / 编辑 / 删除；
- * 助手气泡：复制 / 编辑 / 重新生成 / 继续 / 删除。后两个只对最后一条助手消息出现。
+ * 用户气泡：撤回 / 复制 / 删除；
+ * 助手气泡：复制 / 重新生成 / 继续 / 删除。后两个只对最后一条助手消息出现。
  *
- * 图标来源：`Edit / Refresh / Delete / ArrowForward` 用 `material-icons-core`
+ * **没有「编辑」**（用户 2026-11-25：撤回已经能改完重发，编辑单条没必要）。
+ * 图标来源：`Refresh / Delete / ArrowForward` 用 `material-icons-core`
  * （`-extended` 多 10MB，不值得）；「复制」「撤回」core 里没有，用 Canvas 画两个简单字形。
  */
 @Composable
@@ -913,7 +913,6 @@ private fun MessageActionRow(
     canContinue: Boolean,
     onRewind: () -> Unit,
     onCopy: () -> Unit,
-    onEdit: () -> Unit,
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
     onDelete: () -> Unit,
@@ -928,17 +927,11 @@ private fun MessageActionRow(
         if (isUser) {
             MessageActionIcon("撤回", onRewind) { tint -> UndoGlyph(tint) }
             MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
-            MessageActionIcon("编辑", onEdit) { tint ->
-                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-            }
             MessageActionIcon("删除", onDelete) { tint ->
                 Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
         } else {
             MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
-            MessageActionIcon("编辑", onEdit) { tint ->
-                Icon(Icons.Filled.Edit, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-            }
             if (canRegenerate) {
                 MessageActionIcon("重新生成", onRegenerate) { tint ->
                     Icon(Icons.Filled.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
@@ -1035,6 +1028,7 @@ private fun BubbleRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
+    selectable: Boolean,
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
@@ -1058,8 +1052,13 @@ private fun BubbleRow(
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
-                    // 长按气泡现在是"选文字"（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里
-                    SelectionContainer {
+                    // 长按气泡现在是"选文字"（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
+                    // 离场页切成普通 Text：SelectionContainer 的手柄在独立弹层，不跟着页面滑。
+                    if (selectable) {
+                        SelectionContainer {
+                            Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    } else {
                         Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                     }
                     if (showCursor) StreamingCursor()
@@ -1076,6 +1075,7 @@ private fun CardRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
+    selectable: Boolean,
 ) {
     val palette = LocalTavernPalette.current
     Surface(
@@ -1091,50 +1091,14 @@ private fun CardRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row {
-                SelectionContainer {
+                if (selectable) {
+                    SelectionContainer {
+                        Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                    }
+                } else {
                     Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
                 }
                 if (showCursor) StreamingCursor()
-            }
-        }
-    }
-}
-
-/**
- * 编辑一条消息的弹层。
- *
- * 为什么不用玻璃：这里要浮起键盘、可能要改一大段文字，玻璃面板在键盘上方既抢注意力
- * 又不好量高度；确认类弹层（删除）才是玻璃的适用场景。
- */
-@Composable
-private fun EditMessageDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var text by remember(initial) { mutableStateOf(initial) }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(Space.l),
-            shape = RoundedCornerShape(Radius.card),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 3.dp,
-        ) {
-            Column(modifier = Modifier.padding(Space.l)) {
-                Text("编辑这条消息", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(Space.m))
-                TextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    maxLines = 12,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 320.dp),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = Space.s),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
-                    TextButton(
-                        enabled = text.isNotBlank() && text != initial,
-                        onClick = { onSave(text) },
-                    ) { Text("保存") }
-                }
             }
         }
     }
