@@ -1,5 +1,7 @@
 package app.tavern
 
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tavern.data.config.ConfigOverride
 
 /** 配置项的作用域：会话级（最内层）还是角色卡级（中间层）。 */
@@ -57,28 +59,31 @@ internal fun showModelSheet(
             }
         }
     }
-    if (scope == ConfigScope.Session) {
-        actions += reasoningRows(state.sessionOverride.reasoningEffort, viewModel)
-    }
-    sheet.show(title = "模型", actions = actions)
-}
-
-/** 思考强度：null = 跟随档案，`"off"` = 明确关掉。 */
-private fun reasoningRows(
-    current: String?,
-    viewModel: ChatViewModel,
-): List<SheetAction> {
-    val rows: List<Pair<String, String?>> = listOf(
-        "跟随档案" to null,
-        "关" to "off",
-        "低" to "low",
-        "中" to "medium",
-        "高" to "high",
+    // 思考强度改成滑块（用户 2026-11-25 第 4 条）：排在标题下面、模型列表上面。
+    // 从聊天页左下角的模型钮进来，调完模型顺手就能调档，不用再绕去会话配置页。
+    //
+    // ⚠️ 这个 lambda 是一次性快照：它捕获的 `state` 是**打开抽屉那一刻**的值。
+    // 所以滑块自己在 lambda 里订阅最新的 state，否则点了"高"圆块不动，得关掉重开才看到。
+    sheet.show(
+        title = "模型",
+        actions = actions,
+        extra = {
+            val live by viewModel.state.collectAsStateWithLifecycle()
+            ThinkingEffortSlider(
+                current = when (scope) {
+                    ConfigScope.Session -> live.sessionOverride.reasoningEffort
+                    ConfigScope.Card -> live.cardOverride.reasoningEffort
+                },
+                effective = live.effectiveReasoningEffort,
+                onSelect = { effort ->
+                    when (scope) {
+                        ConfigScope.Session -> viewModel.useSessionReasoning(effort)
+                        ConfigScope.Card -> viewModel.useCardReasoning(effort)
+                    }
+                },
+            )
+        },
     )
-    return rows.map { (label, value) ->
-        val mark = if (current == value) "✓ " else ""
-        SheetAction("思考强度：$mark$label") { viewModel.useSessionReasoning(value) }
-    }
 }
 
 internal fun showPresetSheet(

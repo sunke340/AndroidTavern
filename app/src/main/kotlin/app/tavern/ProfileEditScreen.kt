@@ -41,11 +41,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val draft = state.profileDraft ?: return
     var confirmDelete by remember { mutableStateOf(false) }
+    // 删除确认在页面这一层发起（骨架之前），控制器要自己建再传进去
+    val confirm = remember { ConfirmController() }
 
     GlassDetailScaffold(
         title = if (draft.isNew) "新建档案" else "编辑档案",
         onBack = viewModel::closeProfileEditor,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        confirmController = confirm,
         actions = {
             CapsuleIcon(
                 icon = Icons.Filled.Check,
@@ -161,6 +164,7 @@ fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     if (confirmDelete) {
         ConfirmDeleteDialog(
+            controller = confirm,
             title = "删除「${draft.name}」？",
             message = "这条档案的 API Key 也会一起删除，删了找不回来。",
             onConfirm = {

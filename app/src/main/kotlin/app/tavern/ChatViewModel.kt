@@ -1205,6 +1205,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 卡级思考强度：null = 跟随全局档案。 */
+    fun useCardReasoning(effort: String?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(reasoningEffort = effort) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(reasoningEffort = effort)) }
+            AppLog.i("config", "卡级思考强度 card=${cardId.take(8)} ${effort ?: "跟随"}")
+        }
+    }
+
     fun useCardPreset(name: String?) {
         val cardId = _state.value.detailCardId ?: return
         viewModelScope.launch {
@@ -2615,6 +2625,44 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             refreshSessions()
             AppLog.i("chat", "删除单条 index=$index role=${target.role}")
             notify("已删除 1 条")
+        }
+    }
+
+    /**
+     * 撤回：回到某条**用户**消息，把它和它之后的所有消息一起删掉，正文放回输入框。
+     *
+     * 用户 2026-11-25 第 11 条要的"像编程工具 rewind"：不是删一条，而是把时间线退到那次提问，
+     * 改完再发 —— 所以这条用户消息本身也删掉（发送时会重新追加，不会出现两条一样的）。
+     */
+    fun rewindToMessage(index: Int) {
+        val snapshot = _state.value
+        val sessionId = snapshot.sessionId ?: return
+        if (snapshot.isStreaming) {
+            notify("正在生成，等它写完再撤回")
+            return
+        }
+        val target = snapshot.transcript.getOrNull(index) ?: return
+        if (target.role != ChatRole.User) {
+            notify("只能撤回到自己发的消息")
+            return
+        }
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            val removed = stored.drop(index)
+            withContext(Dispatchers.IO) { removed.forEach { chatRepository.deleteMessage(it.id) } }
+            _state.update { current ->
+                if (current.sessionId != sessionId) current
+                else current.copy(
+                    transcript = current.transcript.take(index),
+                    input = target.content,
+                    // 被删掉的那批里可能有最后一条助手消息，它的 swipe 备选也跟着没了
+                    lastSwipes = emptyList(),
+                    lastSwipeId = 0,
+                )
+            }
+            refreshSessions()
+            AppLog.i("chat", "撤回到 index=$index，删 ${removed.size} 条")
+            notify("已回退到这条，改完再发")
         }
     }
 

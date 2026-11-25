@@ -76,8 +76,11 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
     // 局部 remember 会归零 —— 表现就是"从会话 tab 进去，返回却停在简介"（用户 2026-11-24 报）。
     val tabIndex = DetailTab.entries.indexOf(state.detailTab).coerceAtLeast(0)
     var confirmDeleteCard by remember { mutableStateOf(false) }
-    // 动作单交给页面骨架渲染（GlassDetailScaffold 的浮层），这里只请求
-    val sheet = LocalSheetController.current
+    // 动作单 / 确认框交给页面骨架渲染。控制器**由本页创建**再传进骨架：这一层在骨架之前，
+    // 直接读 CompositionLocal 会拿到没有宿主的默认实例（2026-11-25 真机：配置行点不开、
+    // 会话行长按没反应）。内容区的子组件仍读 Local，拿到的是同一个实例。
+    val sheet = remember { SheetController() }
+    val confirm = remember { ConfirmController() }
     var pendingDeleteSession by remember { mutableStateOf<ChatSession?>(null) }
 
     GlassDetailScaffold(
@@ -85,6 +88,8 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
         title = "角色详情",
         onBack = viewModel::closeDetail,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
+        sheetController = sheet,
+        confirmController = confirm,
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
@@ -139,15 +144,17 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                     .padding(horizontal = Space.l)
                     .padding(top = Space.s),
             ) {
+                // 卡头（用户 2026-11-25 第 14 条）：200dp 的横条 + Crop 会把竖图裁掉大截，
+                // 改成"模糊底 + 完整竖图"的海报版式（见 CardHero）。高度提到 260dp，
+                // 竖图在 3:4 下能占到 195×260，四周留出的糊面当名字的底。
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(260.dp)
                         .clip(RoundedCornerShape(18.dp)),
                 ) {
-                    CardAvatar(
+                    CardHero(
                         cardId = cardId,
-                        fallbackText = heroName,
                         modifier = Modifier.fillMaxSize(),
                     )
                     // 字压在图上必须自带底：浅色图上白字会糊成一片
@@ -350,6 +357,15 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                 }
                             }
                         }
+
+                        // 卡级思考强度（用户 2026-11-25 追加）：和会话级同一种滑块，
+                        // 这一层存的是"这张卡以后开的会话默认用什么"，会话级还能再盖它。
+                        ThinkingEffortSlider(
+                            current = state.cardOverride.reasoningEffort,
+                            effective = state.effectiveReasoningEffort,
+                            onSelect = viewModel::useCardReasoning,
+                            modifier = Modifier.padding(top = Space.s),
+                        )
                     }
                 }
             }
@@ -358,6 +374,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
     if (confirmDeleteCard) {
         ConfirmDeleteDialog(
+            controller = confirm,
             title = "删除角色卡？",
             message = "「${cardRef?.name ?: "这张卡"}」和它的 ${sessions.size} 个会话会一起删掉，" +
                 "卡文件也会从应用里删除，不能撤销。",
@@ -371,6 +388,7 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
 
     pendingDeleteSession?.let { session ->
         ConfirmDeleteDialog(
+            controller = confirm,
             title = "删除会话？",
             message = "「${session.title}」的 ${session.messageCount} 条消息会一起删掉，不能撤销。",
             onConfirm = {
@@ -420,10 +438,15 @@ private fun GreetingTab(detail: CardDetail?, viewModel: ChatViewModel, defaultIn
                 modifier = Modifier.padding(horizontal = Space.s),
             )
             GreetingChevron("›", enabled = index < greetings.lastIndex) { index += 1 }
-            if (index != preferred) {
-                Spacer(Modifier.weight(1f))
-                // 只在"翻到的不是默认那条"时出现 —— 只是想看看的时候不该冒出一个会改设置的按钮
-                TextButton(onClick = { viewModel.useCardGreeting(index) }) { Text("设为默认") }
+            Spacer(Modifier.weight(1f))
+            // 两个状态**占同样大小**（用户 2026-11-25 第 9 条）：以前只在"不是默认"时才出现
+            // 「设为默认」，它一冒出来就把下面的开场白正文往下压一截。现在默认那条也放一个
+            // 同尺寸的灰字胶囊「当前默认」，翻页时高度不变。
+            TextButton(
+                onClick = { viewModel.useCardGreeting(index) },
+                enabled = index != preferred,
+            ) {
+                Text(if (index == preferred) "当前默认" else "设为默认")
             }
         }
 

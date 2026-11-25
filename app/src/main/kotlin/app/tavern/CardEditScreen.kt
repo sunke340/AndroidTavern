@@ -17,6 +17,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -65,7 +67,10 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         onBack = viewModel::closeCardEditor,
         glass = glass,
         actions = {
-            TextButton(
+            // 右上角用 ✓ 而不是"保存"两个字（用户 2026-11-25 第 19 条）
+            CapsuleIcon(
+                icon = Icons.Filled.Check,
+                contentDescription = "保存",
                 onClick = {
                     viewModel.saveCardFields(
                         name = name,
@@ -79,7 +84,7 @@ fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         postHistoryInstructions = postHistoryInstructions,
                     )
                 },
-            ) { Text("保存") }
+            )
         },
     ) { padding ->
         Column(

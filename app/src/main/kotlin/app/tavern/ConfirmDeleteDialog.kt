@@ -24,7 +24,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,7 +59,13 @@ class ConfirmController {
     internal var spec by mutableStateOf<ConfirmSpec?>(null)
         private set
 
+    /** 是否有页面骨架接了宿主；没接时 `ask()` 会静默落空（同 [SheetController.attached]）。 */
+    internal var attached = false
+
     fun ask(spec: ConfirmSpec) {
+        if (!attached) {
+            AppLog.w("ui", "确认框请求没有宿主：${spec.title}（页面要传 confirmController 或读骨架内的 Local）")
+        }
         this.spec = spec
     }
 
@@ -96,6 +104,8 @@ fun GlassConfirmHost(
     modifier: Modifier = Modifier,
 ) {
     val spec = controller.spec
+    SideEffect { controller.attached = true }
+    DisposableEffect(controller) { onDispose { controller.attached = false } }
     // 退出动画期间 spec 已经清空，留一份最后一次的内容，动画才画得出来
     var lastSpec by remember { mutableStateOf<ConfirmSpec?>(null) }
     LaunchedEffect(spec) {
@@ -200,8 +210,12 @@ fun ConfirmDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     confirmLabel: String = "删除",
+    /**
+     * 页面级确认框要传骨架里那个控制器：默认读的是 CompositionLocal，页面在骨架之前
+     * 调用本函数就会拿到"没有宿主"的实例（点了什么都不弹）。
+     */
+    controller: ConfirmController = LocalConfirmController.current,
 ) {
-    val controller = LocalConfirmController.current
     // 回调可能随重组换新实例，用 rememberUpdatedState 保证弹层里调的是最新那个
     val latestConfirm by rememberUpdatedState(onConfirm)
     val latestDismiss by rememberUpdatedState(onDismiss)

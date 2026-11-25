@@ -804,3 +804,29 @@ v116 加了"起动画前先预热新页"（`PageStack` 的 `warming`）。真机
 `app/build.gradle.kts` 的依赖是**手写列举**的（没用 convention plugin）。新写代码 `import app.tavern.core.chat.*`
 时本机发现不了（本机不编 `:app`），只有 CI 报 `Unresolved reference 'chat'`。
 本次导出聊天就是：core 里有现成模块，app 没依赖。**先看 app/build.gradle.kts 有没有这一行。**
+
+## 2026-11-25 · CompositionLocal 在骨架「之前」读就是空壳（一批按钮全哑的真因）
+
+真机清单 M3 有一整批诡异现象：会话配置页能进去、能滚，但**每一行都点不开**；详情页新加的
+模型/世界书/正则/预设行同样没反应；聊天页长按气泡什么都不弹；聊天页删一条消息的确认框也不弹。
+日志里只有 `nav` 和 `rubber`，一条请求日志都没有 —— 说明 `show()` / `ask()` 根本没走到宿主。
+
+根因不在手势，在**读取位置**：
+
+```kotlin
+@Composable fun SessionConfigScreen(...) {
+    val sheet = LocalSheetController.current   // ← 这里还在骨架外面
+    GlassDetailScaffold(...) { ... }           // ← 骨架里才 provide 控制器
+}
+```
+
+`LocalSheetController` / `LocalConfirmController` 是 `staticCompositionLocalOf { SheetController() }`，
+默认值是一个**没有宿主的孤儿实例**。在骨架之前读它，`show()` 只是往孤儿身上写了 spec，
+页面上永远不会有反应；`ConfirmDeleteDialog` 同理（它默认读 Local）。
+
+修法：需要从**页面顶层**（页头菜单、列表长按、页面级确认框）发请求的页面，自己
+`remember { SheetController() }` / `remember { ConfirmController() }`，通过
+`GlassDetailScaffold(sheetController = …, confirmController = …)` 传进去；内容区里的子组件仍读
+Local，拿到的是同一个实例。另外给两个控制器加了 `attached` 标记：没宿主的请求会打
+`ui 抽屉请求没有宿主：<标题>` / `ui 确认框请求没有宿主：<标题>`，以后这类问题不用再猜。
+（一级页没这个问题：`TabsRoot` 把 provider 包在整页内容外面，SessionsScreen 等页面读到的就是真的。）

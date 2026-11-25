@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -84,6 +85,53 @@ fun CardAvatar(cardId: String, fallbackText: String, modifier: Modifier = Modifi
                 contentDescription = null,
                 modifier = Modifier.matchParentSize().alpha(alpha),
                 contentScale = ContentScale.Crop,
+            )
+        }
+    }
+}
+
+/** 详情页卡头的大图缓存：几张就够（一屏只有一张），但尺寸要大得多。 */
+private val heroCache = LruCache<String, ImageBitmap>(4)
+
+/**
+ * 详情页卡头的大图（用户 2026-11-25 第 14 条）：
+ *
+ * 角色卡基本都是**竖图**（2:3 / 3:4），而卡头是横的一条 —— 直接 `ContentScale.Crop`
+ * 会把上下截掉一大截（200dp 高的横条里只剩图中间那一小段）。
+ *
+ * 所以改成"海报"排版：背景是同图的**极小块磨砂**拉满（CardFrost，一定糊，不押 RenderEffect），
+ * 前景是**完整竖图**（`ContentScale.Fit`）。两边留出的糊面正好给名字垫底，整张画也都在。
+ *
+ * 前台按 900px 解码：卡头现在是全宽大图，再拿 320px 的网格缩略图会被放大到发虚。
+ */
+@Composable
+fun CardHero(cardId: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val repository = remember(context) { AppGraph.cards(context) }
+    val bitmap by produceState(initialValue = heroCache.get(cardId), cardId) {
+        if (value != null) return@produceState
+        val decoded = withContext(Dispatchers.IO) {
+            heroCache.get(cardId) ?: run {
+                val bytes = repository.load(cardId) ?: return@run null
+                decodeSampled(bytes, target = 900)?.asImageBitmap()?.also { heroCache.put(cardId, it) }
+            }
+        }
+        if (decoded != null) value = decoded
+    }
+    Box(modifier) {
+        Box(
+            modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        // 背景糊片：同一张卡解成 ~24px 再拉满，观感就是"糊掉的卡面"
+        CardFrost(cardId = cardId, modifier = Modifier.matchParentSize())
+        // 压暗一档：浅色卡面不做这一步，压在上面的白字会消失
+        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.34f)))
+        bitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Fit,
             )
         }
     }

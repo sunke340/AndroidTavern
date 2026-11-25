@@ -49,16 +49,24 @@ internal fun GreetingChevron(label: String, enabled: Boolean = true, onClick: ()
 }
 
 /**
- * 聊天页：贴在开场白气泡**上沿**的那一条「‹ 2/4 ›」。
+ * 聊天页：贴在开场白气泡**下沿右侧**的那一条「‹ 2/4 ›」。
  *
  * 气泡是"可以被换掉的那个东西"，控件就贴在它身上 —— 不用去页头找按钮再回头看气泡。
  * 只在"会话还没有用户消息、且这张卡有不止一条开场白"时出现（用户 2026-11-25 的 B 策略）。
+ *
+ * 位置从"上沿左侧"挪到下沿右侧是用户 2026-11-25 第 8 条定的：反排列表的锚点在底部，
+ * 换一条时气泡往上长，贴在上沿的控件会跟着跳；贴在下沿就不动。
  */
 @Composable
-internal fun GreetingSwitchBar(current: Int, total: Int, onSelect: (Int) -> Unit) {
+internal fun GreetingSwitchBar(
+    current: Int,
+    total: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val palette = LocalTavernPalette.current
     Row(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(Radius.pill))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
             .border(1.dp, palette.cardBorder, RoundedCornerShape(Radius.pill))

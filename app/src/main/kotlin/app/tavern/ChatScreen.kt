@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -19,7 +21,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,14 +85,13 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -130,28 +131,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     var inputBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
 
-    // 消息操作（P0-6）：长按气泡出动作单；编辑与删除各自一个弹层
-    // 长按手势的 lambda 会被 pointerInput 记住（只按 realIndex/正文重启），所以里面要读**最新**的
-    // state —— 否则连发几条之后，长按旧气泡还会按"旧的最后一条"去决定有没有「重新生成」。
-    val latestState by rememberUpdatedState(state)
-    val sheet = LocalSheetController.current
+    // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
+    // 长按交给文字选择（正文在外面包了 SelectionContainer）。
     val clipboard = LocalClipboardManager.current
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var deletingIndex by remember { mutableStateOf<Int?>(null) }
-
-    fun messageActions(index: Int): List<SheetAction> {
-        val message = latestState.transcript.getOrNull(index) ?: return emptyList()
-        val actions = mutableListOf<SheetAction>()
-        actions += SheetAction("复制") { clipboard.setText(AnnotatedString(message.content)) }
-        actions += SheetAction("编辑") { editingIndex = index }
-        // 只有最后一条助手消息能重新生成（原版也一样：重新生成作用在最后一条上）
-        if (index == latestState.transcript.lastIndex && message.role == ChatRole.Assistant) {
-            actions += SheetAction("重新生成") { viewModel.regenerateLast() }
-            actions += SheetAction("继续") { viewModel.continueLast() }
-        }
-        actions += SheetAction("删除这条", destructive = true) { deletingIndex = index }
-        return actions
-    }
+    // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
+    // 会拿到没有宿主的实例，确认框静默不弹（2026-11-25 真机清单的根因）。自己建一个传进去。
+    val confirm = remember { ConfirmController() }
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
@@ -310,6 +297,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         subtitle = state.status,
         onBack = viewModel::closeChat,
         glass = glassOn,
+        // 页面顶层（动作行、确认框）也要拿到同一个宿主实例
+        confirmController = confirm,
         // 聊天页是唯一一个"内容一直在标题下面滚"的页头 —— 只有它上磨砂
         frostedHeader = true,
         // 聊天要能滚到玻璃页头下面，所以让位交给列表的 contentPadding
@@ -327,7 +316,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         actions = {
             var menuOpen by remember { mutableStateOf(false) }
             CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
-            val activeProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
             // 导出用系统文件选择器（SAF）：不需要存储权限，用户自己挑位置
             val exportLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("application/jsonl"),
@@ -337,7 +325,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 // 原来是个**不可点的占位**，现在就是「会话配置」的入口（用户 2026-11-25 第 2 条）。
                 DropdownMenuItem(
-                    text = { Text("会话配置：${activeProfile?.name ?: "未配置"}") },
+                    // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
+                    text = { Text("会话配置") },
                     onClick = {
                         menuOpen = false
                         viewModel.openSessionConfig()
@@ -428,48 +417,29 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 itemsIndexed(state.transcript.asReversed()) { index, message ->
                     // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
                     // 位移动画会不断重放，整屏看起来在闪。
-                    // 长按出动作单（P0-6）：复制 / 编辑 / 删除 / 最后一条助手消息可重新生成
+                    //
+                    // 动作入口从"长按出抽屉"改成了气泡底下一排按钮（用户 2026-11-25 第 11 条）：
+                    // 长按现在交给文字选择，按钮常驻可见，不用猜哪里能按。
                     val realIndex = state.transcript.lastIndex - index
+                    val isLast = realIndex == state.transcript.lastIndex
+                    val isAssistant = message.role == ChatRole.Assistant
                     val itemAnim = Modifier
                         .animateItem(
                             fadeInSpec = tween(Motion.Base, easing = Motion.Decelerate),
                             placementSpec = null,
                             fadeOutSpec = tween(Motion.Fast),
                         )
-                        .pointerInput(realIndex, message.content) {
-                            detectTapGestures(
-                                onLongPress = {
-                                    sheet.show(title = "消息", actions = messageActions(realIndex))
-                                },
-                            )
-                        }
                     val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
-                    val showSwipeBar = !isGreetingSlot &&
-                        realIndex == state.transcript.lastIndex &&
-                        message.role == ChatRole.Assistant &&
+                    val showSwipeBar = !isGreetingSlot && isLast && isAssistant &&
                         state.lastSwipes.size > 1
-                    if (isGreetingSlot) {
-                        Column(modifier = itemAnim) {
-                            GreetingSwitchBar(
-                                current = if (shownGreeting >= 0) shownGreeting else 0,
-                                total = state.greetings.size,
-                                onSelect = viewModel::selectGreeting,
-                            )
-                            Spacer(Modifier.height(Space.xs))
-                            MessageRow(
-                                message = message,
-                                style = state.effectiveMessageStyle,
-                                displayText = displayText,
-                            )
-                        }
-                    } else if (showSwipeBar) {
-                        Column(modifier = itemAnim) {
-                            MessageRow(
-                                message = message,
-                                style = state.effectiveMessageStyle,
-                                displayText = displayText,
-                            )
+                    Column(modifier = itemAnim.fillMaxWidth()) {
+                        MessageRow(
+                            message = message,
+                            style = state.effectiveMessageStyle,
+                            displayText = displayText,
+                        )
+                        if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
                             GreetingSwitchBar(
                                 current = state.lastSwipeId.coerceIn(
@@ -478,14 +448,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 ),
                                 total = state.lastSwipes.size,
                                 onSelect = viewModel::selectSwipe,
+                                modifier = Modifier.align(Alignment.End),
                             )
                         }
-                    } else {
-                        MessageRow(
-                            message = message,
-                            style = state.effectiveMessageStyle,
-                            displayText = displayText,
-                            modifier = itemAnim,
+                        // 开场白翻页：贴在气泡**下沿右侧**（用户 2026-11-25 第 8 条）。
+                        // 原来贴在上沿：反排列表的锚点是底部，换一条时气泡往上长，
+                        // 上沿那条控件就跟着跳 —— 挪到底部它就不动了。
+                        if (isGreetingSlot) {
+                            Spacer(Modifier.height(Space.xs))
+                            GreetingSwitchBar(
+                                current = if (shownGreeting >= 0) shownGreeting else 0,
+                                total = state.greetings.size,
+                                onSelect = viewModel::selectGreeting,
+                                modifier = Modifier.align(Alignment.End),
+                            )
+                        }
+                        MessageActionRow(
+                            isUser = !isAssistant,
+                            canRegenerate = isAssistant && isLast,
+                            canContinue = isAssistant && isLast,
+                            onRewind = { viewModel.rewindToMessage(realIndex) },
+                            onCopy = { clipboard.setText(AnnotatedString(message.content)) },
+                            onEdit = { editingIndex = realIndex },
+                            onRegenerate = viewModel::regenerateLast,
+                            onContinue = viewModel::continueLast,
+                            onDelete = { deletingIndex = realIndex },
+                            modifier = Modifier.align(
+                                if (isAssistant) Alignment.Start else Alignment.End,
+                            ),
                         )
                     }
                 }
@@ -508,6 +498,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 删除这条：走统一的玻璃确认框（和删会话/删卡同一个材质与措辞规则）
     deletingIndex?.let { index ->
         ConfirmDeleteDialog(
+            controller = confirm,
             title = "删除这条消息？",
             message = "只删这一条，不能撤销。",
             onConfirm = {
@@ -554,6 +545,9 @@ private fun ChatInputBar(
     val focusManager = LocalFocusManager.current
     val sheet = LocalSheetController.current
     var focused by remember { mutableStateOf(false) }
+    // 展开/收起现在是逐帧动画：高度日志按"变了这么多才记一行"节流，
+    // 否则一次展开刷十几行，把真正有用的日志挤掉。
+    var lastLoggedHeight by remember { mutableIntStateOf(0) }
     // 生效档案：会话指定 → 卡指定 → 全局默认（三级继承的解析在 UiState 里）
     val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
 
@@ -571,7 +565,10 @@ private fun ChatInputBar(
             // 高度也记一行：真机上"最后一条被盖住/列表跳"这类问题，第一件事就是看这个数
             .onSizeChanged {
                 onHeightChanged(it.height)
-                AppLog.i("ui", "输入区高度=${it.height}px")
+                if (kotlin.math.abs(it.height - lastLoggedHeight) >= 40) {
+                    lastLoggedHeight = it.height
+                    AppLog.i("ui", "输入区高度=${it.height}px")
+                }
             },
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -623,8 +620,14 @@ private fun ChatInputBar(
                             inner()
                         },
                     )
-                    // 收起态：发送/停止就在文字右边，同一个胶囊里
-                    if (!focused) {
+                    // 收起态：发送/停止就在文字右边，同一个胶囊里。
+                    // 用淡出而不是直接摘掉：聚焦时它要"变"成下面那一行的发送钮，
+                    // 硬切会让这一格突然空一块（用户 2026-11-25 第 2 条要求的形变动画）。
+                    AnimatedVisibility(
+                        visible = !focused,
+                        enter = fadeIn(tween(Motion.Fast)),
+                        exit = fadeOut(tween(Motion.Fast)),
+                    ) {
                         SendStopButton(
                             streaming = state.isStreaming,
                             glass = glass,
@@ -639,11 +642,21 @@ private fun ChatInputBar(
                     }
                 }
 
-                // 聚焦后展开的按钮行：左模型、右发送（和收起那一行同高 → 看着就是"翻倍"）
+                // 聚焦后展开的按钮行：左模型、右发送（和收起那一行同高 → 看着就是"翻倍"）。
+                //
+                // 用户 2026-11-25 第 2 条：以前这里只有淡入，高度是"啪"地跳过去的。
+                // 现在让**高度**一起过渡（expand/shrink），胶囊才是"长出来"而不是"换了个尺寸"。
+                // 这是用户明确要的一次性形变；玻璃面逐帧重建着色器的开销，只在点输入框那 200ms 里。
                 AnimatedVisibility(
                     visible = focused,
-                    enter = fadeIn(tween(Motion.Fast)),
-                    exit = fadeOut(tween(Motion.Fast)),
+                    enter = expandVertically(
+                        animationSpec = tween(Motion.Base, easing = Motion.Decelerate),
+                        expandFrom = Alignment.Bottom,
+                    ) + fadeIn(tween(Motion.Base)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(Motion.Fast, easing = Motion.Standard),
+                        shrinkTowards = Alignment.Bottom,
+                    ) + fadeOut(tween(Motion.Fast)),
                 ) {
                     Row(
                         modifier = Modifier
@@ -826,6 +839,64 @@ private fun MessageRow(
     }
 }
 
+/**
+ * 一条消息底下那排动作（用户 2026-11-25 第 11 条：长按改成"选文字"，操作改成常驻按钮）。
+ *
+ * 用户气泡：撤回（回退到这条并重新编辑）/ 复制 / 删除；
+ * 助手气泡：复制 / 编辑 / 重新生成 / 继续 / 删除。后两个只对**最后一条**助手消息出现
+ * （原版语义：重新生成与继续都作用在最后一条上）。
+ *
+ * 不用图标：`material-icons-core` 里没有"重新生成/撤回"这类语义，用两个字反而更清楚，
+ * 也省得为几个图标引 10MB。
+ */
+@Composable
+private fun MessageActionRow(
+    isUser: Boolean,
+    canRegenerate: Boolean,
+    canContinue: Boolean,
+    onRewind: () -> Unit,
+    onCopy: () -> Unit,
+    onEdit: () -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 不 fillMaxWidth：整行要按在气泡哪一侧（调用方用 Column 的 align 定位）
+    Row(
+        modifier = modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isUser) {
+            MessageActionText("撤回", onRewind)
+        }
+        MessageActionText("复制", onCopy)
+        // 用户消息也能改：撤回是"连后面一起退"，编辑只改这一条
+        MessageActionText("编辑", onEdit)
+        if (!isUser && canRegenerate) MessageActionText("重新生成", onRegenerate)
+        if (!isUser && canContinue) MessageActionText("继续", onContinue)
+        MessageActionText("删除", onDelete)
+    }
+}
+
+/** 动作行里的一个小按钮：11sp、低对比，不抢消息正文。 */
+@Composable
+private fun MessageActionText(label: String, onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+            alpha = if (press.collectIsPressedAsState().value) 1f else 0.62f,
+        ),
+        modifier = Modifier
+            .clip(RoundedCornerShape(Radius.pill))
+            .clickable(interactionSource = press, indication = null, onClick = onClick)
+            .padding(horizontal = Space.s, vertical = 6.dp),
+    )
+}
+
 @Composable
 private fun BubbleRow(
     message: ChatMessage,
@@ -855,7 +926,10 @@ private fun BubbleRow(
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
-                    Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                    // 长按气泡现在是"选文字"（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里
+                    SelectionContainer {
+                        Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                    }
                     if (showCursor) StreamingCursor()
                 }
             }
@@ -885,7 +959,9 @@ private fun CardRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row {
-                Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                SelectionContainer {
+                    Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                }
                 if (showCursor) StreamingCursor()
             }
         }

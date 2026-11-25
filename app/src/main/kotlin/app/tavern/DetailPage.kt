@@ -89,6 +89,20 @@ fun GlassDetailScaffold(
     frostedHeader: Boolean = false,
     /** 内容区顶部让位。传 0 表示页面自己用 `contentPadding` 让位，这样内容能滚到玻璃页头下面。 */
     contentTopInset: Dp = DetailHeaderHeight,
+    /**
+     * 页面自己创建的浮层控制器（可选）。
+     *
+     * 为什么需要它：`LocalSheetController` / `LocalConfirmController` 是**由本骨架提供**的，
+     * 而页面在调用本函数**之前**就读 `.current` 的话，读到的是没有宿主的默认实例 ——
+     * `show()` / `ask()` 静悄悄落空。2026-11-25 真机清单里"会话配置点不进去""长按没反应"
+     * 就是这一条（页面顶部读了 Local，再往下才进骨架）。
+     *
+     * 需要从页面顶层（页头菜单、列表长按、页面级确认框）发请求的页面，自己
+     * `remember { SheetController() }` / `remember { ConfirmController() }` 传进来；
+     * 内容区里的子组件仍然读 CompositionLocal，拿到的是同一个实例。
+     */
+    sheetController: SheetController? = null,
+    confirmController: ConfirmController? = null,
     actions: (@Composable () -> Unit)? = null,
     snackbarHost: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -101,10 +115,11 @@ fun GlassDetailScaffold(
 ) {
     val background = MaterialTheme.colorScheme.background
     val layer = rememberGraphicsLayer()
-    // 动作单宿主：二级页自己的录图层（frost）喂给弹层，弹的才是这一页的内容
-    val sheet = remember { SheetController() }
+    // 动作单宿主：二级页自己的录图层（frost）喂给弹层，弹的才是这一页的内容。
+    // 页面传进来的优先（那样页面顶层也能 show，不会落到没有宿主的默认实例上）。
+    val sheet = sheetController ?: remember { SheetController() }
     // 确认框宿主：同一个理由（AlertDialog 是独立窗口，采不到内容层，做不成玻璃）
-    val confirm = remember { ConfirmController() }
+    val confirm = confirmController ?: remember { ConfirmController() }
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()

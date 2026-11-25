@@ -32,7 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,10 +65,16 @@ class SheetAction(
     val onClick: () -> Unit,
 )
 
-/** 一次动作单请求：标题 + 若干动作。 */
+/**
+ * 一次动作单请求：标题 + 可选的自定义内容 + 若干动作。
+ *
+ * [extra] 用来放"不适合做成一行选项"的控件（思考强度滑块）：它排在标题下面、动作列表上面。
+ * 抽屉本来就画在录图层之外，放控件不会采到自己。
+ */
 class SheetSpec(
     val title: String,
     val actions: List<SheetAction>,
+    val extra: (@Composable () -> Unit)? = null,
 )
 
 /**
@@ -80,8 +88,24 @@ class SheetController {
     internal var spec by mutableStateOf<SheetSpec?>(null)
         private set
 
-    fun show(title: String, actions: List<SheetAction>) {
-        spec = SheetSpec(title, actions)
+    /**
+     * 是否有页面骨架接了宿主。
+     *
+     * 没接的时候 `show()` 什么都不会发生 —— 这是本模块最容易静默失败的地方
+     * （页面在骨架**之前**读 CompositionLocal 就会拿到这种孤儿实例）。所以这里留一行日志：
+     * 真机清单里"点不进去/长按没反应"直接看 `ui 抽屉请求没有宿主`。
+     */
+    internal var attached = false
+
+    fun show(
+        title: String,
+        actions: List<SheetAction>,
+        extra: (@Composable () -> Unit)? = null,
+    ) {
+        if (!attached) {
+            AppLog.w("ui", "抽屉请求没有宿主：$title（页面要传 sheetController 或读骨架内的 Local）")
+        }
+        spec = SheetSpec(title, actions, extra)
     }
 
     fun dismiss() {
@@ -174,7 +198,8 @@ private fun GlassSheetPlate(
     //
     // 为什么跟手用 translationY 而不是改高度：弹层高度由内容决定，改高度会让整块重新测量，
     // 拖到一半内容就换行了。位移只落在绘制上，最便宜也最像"纸片被拖下去"。
-    // 收紧的判据取**弹层自身高度**的 1/4（不是屏高）：短弹层拖过半个屏太累，长弹层又太敏感。
+    // 收紧的判据取**弹层自身高度**的 1/2（不是屏高，用户 2026-11-25 第 1 条把 1/4 改成 1/2：
+    // 之前手一抖就收，想"拉下来看看"根本停不住）。往下甩得够快仍然直接收。
     val density = LocalDensity.current
     var dragY by remember { mutableFloatStateOf(0f) }
     var plateHeightPx by remember { mutableFloatStateOf(0f) }
@@ -212,7 +237,7 @@ private fun GlassSheetPlate(
                         state = dragState,
                         orientation = Orientation.Vertical,
                         onDragStopped = { velocity ->
-                            val closeByDrag = dragY > plateHeightPx * 0.25f
+                            val closeByDrag = dragY > plateHeightPx * 0.5f
                             val closeByFling = velocity > with(density) { 800.dp.toPx() }
                             if (closeByDrag || closeByFling) {
                                 AppLog.i(
@@ -276,6 +301,9 @@ fun GlassActionSheetHost(
     enterDelayMillis: Int = 0,
 ) {
     val spec = controller.spec
+    // 宿主已接上（没接上的 show() 只会在日志里留一行，界面上什么都不发生）
+    SideEffect { controller.attached = true }
+    DisposableEffect(controller) { onDispose { controller.attached = false } }
     // 退出动画期间内容已经清空，留一份最后一次的，动画才画得出来
     var lastSpec by remember { mutableStateOf<SheetSpec?>(null) }
     LaunchedEffect(spec) {
@@ -293,6 +321,14 @@ fun GlassActionSheetHost(
         enterDelayMillis = enterDelayMillis,
         title = content?.title,
     ) {
+        // 自定义控件（滑块这类）：放在标题下、动作列表上
+        content?.extra?.let { extra ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.l, vertical = Space.xs),
+            ) { extra() }
+        }
         content?.actions?.forEach { action ->
             SheetActionRow(action = action) {
                 // 先关弹层再执行：动作通常会弹确认框或换页，弹层留着会看到两层遮罩
