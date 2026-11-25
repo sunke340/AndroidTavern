@@ -3,10 +3,9 @@ package app.tavern
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -614,20 +613,56 @@ private fun ChatInputBar(
             shadowScale = 0.5f,
             modifier = Modifier.weight(1f),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 点胶囊空白处也是"点输入框"（不然只有文字那一小条能点）
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        focusRequester.requestFocus()
-                        // 焦点还在、但键盘是被用户收起来的：requestFocus 不会重新弹键盘
-                        keyboard?.show()
+            // 布局说明（2026-11-25 第四轮）：膨胀出来的**那一行只负责高度**，
+            // 按钮全部是浮层。之前把发送钮放在会逐帧变矮的行里 —— expand/shrink 会裁剪内容，
+            // 变形过程中它就被切掉一块（用户报的"变形时对发送按钮有遮挡"）。
+            // 现在发送钮钉在胶囊右下：胶囊向上长、下沿不动，所以它在屏幕上几乎不动，也不会被裁。
+            Box(Modifier.fillMaxWidth()) {
+                val extraHeight by animateDpAsState(
+                    targetValue = if (expanded) 46.dp else 0.dp,
+                    animationSpec = if (expanded) {
+                        tween(Motion.InputExpand, easing = Motion.Decelerate)
+                    } else {
+                        tween(Motion.InputCollapse, easing = Motion.Standard)
                     },
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                    label = "input-extra-height",
+                )
+                // 收起时文字右边给发送钮让位；展开后文字独占上行
+                val sendReserve by animateDpAsState(
+                    targetValue = if (expanded) Space.s else 46.dp,
+                    animationSpec = tween(Motion.InputExpand, easing = Motion.Decelerate),
+                    label = "input-send-reserve",
+                )
+                // 模型钮：展开后从 0 淡入 + 轻微放大；它也在动画行之外，不会被裁
+                val modelAlpha by animateFloatAsState(
+                    targetValue = if (expanded) 1f else 0f,
+                    animationSpec = tween(
+                        durationMillis = Motion.Fast + 60,
+                        delayMillis = if (expanded) Motion.InputExpand - 180 else 0,
+                    ),
+                    label = "input-model-alpha",
+                )
+                val modelScale by animateFloatAsState(
+                    targetValue = if (expanded) 1f else 0.86f,
+                    animationSpec = tween(Motion.InputCollapse, easing = Motion.Decelerate),
+                    label = "input-model-scale",
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 兜底高度：发送钮要 40 + 6 的贴边留白，不能比它矮
+                        .heightIn(min = 48.dp)
+                        // 点胶囊空白处也是"点输入框"（不然只有文字那一小条能点）
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            focusRequester.requestFocus()
+                            // 焦点还在、但键盘是被用户收起来的：requestFocus 不会重新弹键盘
+                            keyboard?.show()
+                        },
+                ) {
                     BasicTextField(
                         value = state.input,
                         onValueChange = viewModel::onInputChange,
@@ -638,10 +673,10 @@ private fun ChatInputBar(
                         // 最多 5 行：再多就让文字在自己那一行里滚（输入区不能无限长）
                         maxLines = 5,
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .padding(
                                 start = Space.l,
-                                end = Space.s,
+                                end = sendReserve,
                                 top = 14.dp,
                                 bottom = 14.dp,
                             )
@@ -658,69 +693,41 @@ private fun ChatInputBar(
                             inner()
                         },
                     )
-                    // 收起态：发送/停止就在文字右边，同一个胶囊里。
-                    // 用淡出而不是直接摘掉：聚焦时它要"变"成下面那一行的发送钮，
-                    // 硬切会让这一格突然空一块（用户 2026-11-25 第 2 条要求的形变动画）。
-                    AnimatedVisibility(
-                        visible = !expanded,
-                        enter = fadeIn(tween(Motion.Fast)),
-                        exit = fadeOut(tween(Motion.Fast)),
-                    ) {
-                        SendStopButton(
-                            streaming = state.isStreaming,
-                            glass = glass,
-                            backdrop = backdrop,
-                            onSend = {
-                                viewModel.send()
-                                focusManager.clearFocus()
-                            },
-                            onStop = viewModel::stop,
-                            modifier = Modifier.padding(end = 6.dp),
-                        )
-                    }
+                    // 展开多出来的那一行：不装任何东西，只让胶囊长高
+                    Spacer(Modifier.height(extraHeight))
                 }
 
-                // 聚焦后展开的按钮行：左模型、右发送（和收起那一行同高 → 看着就是"翻倍"）。
-                //
-                // 用户 2026-11-25 第 2 条：以前这里只有淡入，高度是"啪"地跳过去的。
-                // 现在让**高度**一起过渡（expand/shrink），胶囊才是"长出来"而不是"换了个尺寸"。
-                // 这是用户明确要的一次性形变；玻璃面逐帧重建着色器的开销，只在点输入框那 200ms 里。
-                AnimatedVisibility(
-                    visible = expanded,
-                    // 用户 2026-11-25：180ms 太快，看不见"变形"；320 仍嫌快，现在 400 / 300。
-                    enter = expandVertically(
-                        animationSpec = tween(Motion.InputExpand, easing = Motion.Decelerate),
-                        expandFrom = Alignment.Bottom,
-                    ) + fadeIn(tween(Motion.InputExpand)),
-                    exit = shrinkVertically(
-                        animationSpec = tween(Motion.InputCollapse, easing = Motion.Standard),
-                        shrinkTowards = Alignment.Bottom,
-                    ) + fadeOut(tween(Motion.InputCollapse)),
-                ) {
-                    Row(
+                // 发送 / 停止：常驻右下，**不参与高度动画**
+                SendStopButton(
+                    streaming = state.isStreaming,
+                    glass = glass,
+                    backdrop = backdrop,
+                    onSend = {
+                        viewModel.send()
+                        focusManager.clearFocus()
+                    },
+                    onStop = viewModel::stop,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 6.dp),
+                )
+
+                // 左下模型钮：展开后出现（淡入 + 放大），位置固定
+                if (modelAlpha > 0.01f) {
+                    ModelButton(
+                        badge = modelBadge(currentProfile?.name),
+                        glass = glass,
+                        backdrop = backdrop,
+                        onClick = openModelSheet,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ModelButton(
-                            badge = modelBadge(currentProfile?.name),
-                            glass = glass,
-                            backdrop = backdrop,
-                            onClick = openModelSheet,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        SendStopButton(
-                            streaming = state.isStreaming,
-                            glass = glass,
-                            backdrop = backdrop,
-                            onSend = {
-                                viewModel.send()
-                                focusManager.clearFocus()
+                            .align(Alignment.BottomStart)
+                            .padding(start = 6.dp, bottom = 6.dp)
+                            .graphicsLayer {
+                                alpha = modelAlpha
+                                scaleX = modelScale
+                                scaleY = modelScale
                             },
-                            onStop = viewModel::stop,
-                        )
-                    }
+                    )
                 }
             }
         }
