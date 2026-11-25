@@ -20,6 +20,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -88,10 +89,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -112,6 +115,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -1098,6 +1102,48 @@ private fun UndoGlyph(tint: Color) {
     }
 }
 
+/**
+ * 消息底板：**背景 + 描边**，刻意不用 Material3 的 `Surface`。
+ *
+ * 为什么不能用 `Surface`（2026-11-25 真机定位）：它内部会加一层 `Modifier.clip(shape)`。
+ * 落在一条 **18900px 高**的气泡上时，那层裁剪会让**整棵子树在离气泡上沿约 8k px 之后不再参与
+ * 命中测试** —— 手指按在正文上，事件只到气泡这一层就停了，正文的选字手势根本没启动，
+ * 于是"长按没反应、连高亮都没有"，而画面照旧有字（渲染不受影响，所以更难发现）。
+ *
+ * 真机日志 `tag=sel` 的对照（同一个气泡、同一份内容）：
+ * 气泡内局部 y=5100 → 气泡 / 选区容器 / 正文 三层都有 `按下`；
+ * 局部 y=9910 / 14620 / 16888 → **只有气泡有** `按下`。
+ *
+ * 背景与描边的视觉和 `Surface(color=…, shape=…, border=…)` 等价（它当时没有 elevation），
+ * 所以替换不改变观感；换来的是子树在任何高度都还能被按到。
+ *
+ * 以后要加投影/抬升，别退回 `Surface` —— 用 `Modifier.drawWithContent` 或给外层加，
+ * 任何会生成本地渲染层的 modifier 都要先想一遍"这条消息可能有多高"。
+ */
+@Composable
+private fun MessagePanel(
+    backgroundColor: Color,
+    contentColor: Color,
+    shape: Shape,
+    border: BorderStroke?,
+    probe: ProbeBounds,
+    probeTag: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .trackProbe(probe)
+            .selectionProbe(tag = probeTag, ref = probe)
+            .background(backgroundColor, shape)
+            .then(if (border == null) Modifier else Modifier.border(border, shape)),
+    ) {
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            content()
+        }
+    }
+}
+
 @Composable
 private fun BubbleRow(
     message: ChatMessage,
@@ -1113,6 +1159,7 @@ private fun BubbleRow(
     val bubbleProbe = remember { ProbeBounds() }
     val textProbe = remember { ProbeBounds() }
     val selProbe = remember { ProbeBounds() }
+    val panelProbe = remember { ProbeBounds() }
 
     Row(
         modifier = modifier
@@ -1133,8 +1180,8 @@ private fun BubbleRow(
                 .weight(0.86f)
                 .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start),
         ) {
-            Surface(
-                color = if (isUser) palette.userBubble else MaterialTheme.colorScheme.surface,
+            MessagePanel(
+                backgroundColor = if (isUser) palette.userBubble else MaterialTheme.colorScheme.surface,
                 contentColor = if (isUser) palette.onUserBubble else MaterialTheme.colorScheme.onSurface,
                 shape = RoundedCornerShape(
                     topStart = Radius.bubble,
@@ -1143,6 +1190,8 @@ private fun BubbleRow(
                     bottomEnd = if (isUser) 5.dp else Radius.bubble,
                 ),
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
+                probe = panelProbe,
+                probeTag = "气泡面板",
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
                     // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
@@ -1175,11 +1224,15 @@ private fun CardRow(
     displayText: (String) -> String,
 ) {
     val palette = LocalTavernPalette.current
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+    val panelProbe = remember { ProbeBounds() }
+    MessagePanel(
+        backgroundColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(Radius.card),
         border = BorderStroke(1.dp, palette.cardBorder),
+        probe = panelProbe,
+        probeTag = "卡片面板",
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(Space.m)) {
             Text(
