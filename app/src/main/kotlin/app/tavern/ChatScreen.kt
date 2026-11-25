@@ -178,6 +178,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
+    // 选字诊断（2026-11-25 临时）：按下点到底落在列表 / 气泡正文的哪个矩形上，见 SelectionProbe.kt
+    val listProbe = remember { ProbeBounds() }
 
     // 撤回会把列表削短：视口可能停在中段、下面留一片空白。这里收到一次性信号就贴底。
     // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
@@ -418,14 +420,33 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 位移只落在绘制上，两者都是"追上布局"用的短命差量：
                 // - 贴底：布局已经跑到前面去了，差多少就下移多少，再平滑追上去；
                 // - 读气泡自己：长高的差量先在这里顶住，等上面那笔滚动补偿落地，两边同时归零。
+                //
+                // ⚠️ **只有串流期间才允许有这笔位移**：这两个差量都是"布局与滚动还没对齐"的中间态，
+                // 串流一结束它们就该归零。留着非零残值等于让内容和命中区长期错位 ——
+                // 用户 2026-11-25 报的"最新气泡长按没反应、滑一下才好"就是这一类症状，
+                // 所以非串流时一律写死 0（真机日志 tag=sel 里能看到这行的实时值）。
                 .graphicsLayer {
-                    translationY = when {
-                        atBottom -> streamHeight - smoothHeight.value
-                        readingBubble -> (streamHeight - anchoredHeight).toFloat().coerceAtLeast(0f)
-                        else -> 0f
+                    translationY = if (!state.isStreaming) {
+                        0f
+                    } else if (atBottom) {
+                        streamHeight - smoothHeight.value
+                    } else if (readingBubble) {
+                        (streamHeight - anchoredHeight).toFloat().coerceAtLeast(0f)
+                    } else {
+                        0f
                     }
                 }
-                .rubberOverscroll(overscroll),
+                .rubberOverscroll(overscroll)
+                .trackProbe(listProbe)
+                .selectionProbe(
+                    tag = "列表",
+                    ref = listProbe,
+                    extra = {
+                        "atBottom=$atBottom 下标=${listState.firstVisibleItemIndex} " +
+                            "偏移=${listState.firstVisibleItemScrollOffset} " +
+                            "轴移=${streamHeight - smoothHeight.value} 输入区高=$inputBarHeightPx"
+                    },
+                ),
             contentPadding = PaddingValues(
                 // 页头铺到状态栏后面，列表顶部让位要带上状态栏高度
                 // 8 → 16：磨砂页头下面再多留一点，首条消息不贴着头（用户 2026-11-24）
@@ -453,6 +474,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             style = state.effectiveMessageStyle,
                             showCursor = true,
                             displayText = displayText,
+                            probeTag = "气泡[串流]",
                             // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
                             // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
                             modifier = Modifier
@@ -496,6 +518,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             message = message,
                             style = state.effectiveMessageStyle,
                             displayText = displayText,
+                            probeTag = "气泡[i=$index ${if (isAssistant) "助手" else "用户"}]",
                         )
                         if (showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
@@ -609,6 +632,8 @@ private fun ChatInputBar(
     var lastLoggedHeight by remember { mutableIntStateOf(0) }
     // 生效档案：会话指定 → 卡指定 → 全局默认（三级继承的解析在 UiState 里）
     val currentProfile = state.profiles.firstOrNull { it.id == state.effectiveProfileId }
+    // 选字诊断（临时）：如果按下点落在输入区这块矩形里，日志会明说是"输入区"而不是气泡
+    val barProbe = remember { ProbeBounds() }
 
     val openModelSheet = {
         // 抽屉从屏幕底部上来，键盘会把它盖掉一半：先收键盘
@@ -619,6 +644,12 @@ private fun ChatInputBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .trackProbe(barProbe)
+            .selectionProbe(
+                tag = "输入区",
+                ref = barProbe,
+                extra = { "展开=$expanded 键盘=$imeVisible" },
+            )
             .padding(horizontal = Space.m, vertical = Space.s)
             // 列表底部让位跟着**实测高度**走：聚焦翻倍后若还用常量 80dp，最后一条会被盖住。
             // 高度也记一行：真机上"最后一条被盖住/列表跳"这类问题，第一件事就是看这个数
@@ -931,9 +962,11 @@ private fun MessageRow(
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
     displayText: (String) -> String = { it },
+    /** 选字诊断用：日志里认得出是哪一条（见 SelectionProbe.kt）。 */
+    probeTag: String = "",
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, probeTag)
         MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText)
     }
 }
@@ -1071,11 +1104,28 @@ private fun BubbleRow(
     modifier: Modifier,
     showCursor: Boolean,
     displayText: (String) -> String,
+    probeTag: String = "",
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
+    // 选字诊断（临时）：气泡矩形 + 正文（Text）矩形分别记下来，按下时一起打一行日志。
+    // 正文的矩形比气泡小一圈（气泡有 12dp/10dp 内边距），"按到气泡但没按到正文"就是选不中的死法之一。
+    val bubbleProbe = remember { ProbeBounds() }
+    val textProbe = remember { ProbeBounds() }
 
-    Row(modifier = modifier.fillMaxWidth()) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .trackProbe(bubbleProbe)
+            .selectionProbe(
+                tag = probeTag.ifEmpty { "气泡" },
+                ref = bubbleProbe,
+                extra = {
+                    val r = textProbe.inWindow
+                    "正文窗口=(${r.left.toInt()},${r.top.toInt()})-(${r.right.toInt()},${r.bottom.toInt()})"
+                },
+            ),
+    ) {
         if (isUser) Spacer(Modifier.weight(0.14f))
         Box(
             modifier = Modifier
@@ -1099,6 +1149,7 @@ private fun BubbleRow(
                         Text(
                             markupText(displayText(message.content)),
                             style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.trackProbe(textProbe),
                         )
                     }
                     if (showCursor) StreamingCursor()
