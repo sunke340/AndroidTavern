@@ -1,0 +1,38 @@
+{
+  "说明": "SillyTavern 1.19.1 的 showdown + showdown-underscore 对同一段文本的渲染结果。只用来断言强调语义（斜体/粗体/换行），不追求 HTML 逐字节一致。",
+  "来源": "vendor/SillyTavern/node_modules/showdown + public/scripts/showdown-underscore.js",
+  "cases": [
+    {
+      "input": "*笑*",
+      "html": "<p><em>笑</em></p>"
+    },
+    {
+      "input": "**粗**",
+      "html": "<p><strong>粗</strong></p>"
+    },
+    {
+      "input": "***又粗又斜***",
+      "html": "<p><strong><em>又粗又斜</em></strong></p>"
+    },
+    {
+      "input": "_点头_",
+      "html": "<p><em>点头</em></p>"
+    },
+    {
+      "input": "2*3*4",
+      "html": "<p>2<em>3</em>4</p>"
+    },
+    {
+      "input": "动作：*笑*，然后 _点头_，最后 **大声**。",
+      "html": "<p>动作：<em>笑</em>，然后 <em>点头</em>，最后 <strong>大声</strong>。</p>"
+    },
+    {
+      "input": "第一行*笑*\n第二行",
+      "html": "<p>第一行<em>笑</em>\n第二行</p>"
+    },
+    {
+      "input": "foo_bar_baz",
+      "html": "<p>foo<em>bar</em>baz</p>"
+    }
+  ]
+}

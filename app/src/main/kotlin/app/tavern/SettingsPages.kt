@@ -30,6 +30,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import app.tavern.core.regex.BuiltinRegex
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -401,6 +402,30 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
  */
 @Composable
 private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+    // 内置显示规则（用户 2026-11-25 定的形态）：只读、带开关、关掉就是原文。
+    // 它们不写进用户脚本，也不随导入覆盖；只影响气泡显示。
+    SectionLabel("内置")
+    ListGroup(
+        count = BuiltinRegex.features.size,
+        modifier = Modifier.padding(top = Space.s),
+    ) { index, _ ->
+        val feature = BuiltinRegex.features[index]
+        ListRow(
+            title = feature.title,
+            subtitle = feature.description,
+            subtitleMaxLines = 2,
+            trailing = {
+                Switch(
+                    checked = feature.id !in state.builtinRegexDisabled,
+                    onCheckedChange = { enabled ->
+                        viewModel.setBuiltinRegexEnabled(feature.id, enabled)
+                    },
+                )
+            },
+        )
+    }
+
+    SectionLabel("导入的脚本")
     if (state.regexScripts.isEmpty()) {
         EmptyHint("还没有正则脚本。点右上「+」导入 ST 导出的脚本 JSON，或 settings.json 里的 regex 数组。")
     } else {

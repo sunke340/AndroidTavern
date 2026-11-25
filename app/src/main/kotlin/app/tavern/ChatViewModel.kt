@@ -33,6 +33,7 @@ import app.tavern.core.preset.PresetDefaults
 import app.tavern.core.preset.PromptOrderEntry
 import app.tavern.core.preset.SamplingPreset
 import app.tavern.core.prompt.PromptBuilder
+import app.tavern.core.regex.BuiltinRegex
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import app.tavern.core.regex.RegexScript
@@ -219,6 +220,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val presetEditName: String? = null,
         /** 正则脚本（导入自 ST 的脚本数组）。 */
         val regexScripts: List<RegexScript> = emptyList(),
+        /**
+         * 内置显示正则里**关掉**的 id（`core/regex` 的 `BuiltinRegex`）。
+         *
+         * 内置规则是"默认正则"：只影响显示，关掉就等于没这条规则（原文照出）。
+         */
+        val builtinRegexDisabled: Set<String> = emptySet(),
         /** 非 null 时显示某本全局书的条目列表。 */
         val worldBookView: WorldBookView? = null,
         // ---- 采样参数（文本框保留原始输入，避免输入半截被强转） ----
@@ -304,6 +311,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val only = effectiveRegexIds ?: return regexScripts
                 return regexScripts.filter { it.name in only }
             }
+
+        /**
+         * 聊天正文**显示**用的脚本 = 用户脚本（三级过滤后）+ 没关掉的内置规则。
+         *
+         * 内置放在最后：用户脚本先跑，再做"清包裹标签 → 强调"。内置**不受**
+         * 会话/卡级 `regexIds` 过滤（它们不是用户脚本，老会话里存的 id 集合里没有它们）。
+         */
+        val displayRegexScripts: List<RegexScript>
+            get() = effectiveRegexScripts + BuiltinRegex.rules(builtinRegexDisabled)
     }
 
     private val cardRepository = AppGraph.cards(application)
@@ -345,6 +361,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // 首帧就要用的外观项：同步读偏好（**不碰 Keystore**）。否则第一帧只能按默认值画
         // ——「一进来是轻量主题、一瞬间后变玻璃」就是这么来的（用户 2026-11-24 报）。
         val startupAt = SystemClock.elapsedRealtime()
+        // 内置显示正则的开关是同步读偏好：显示路径一进来就要用，别等异步
+        _state.update { it.copy(builtinRegexDisabled = settingsRepository.builtinRegexDisabled()) }
         applyAppearanceSync()
         AppLog.i("startup", "外观预读 ${SystemClock.elapsedRealtime() - startupAt}ms")
 
@@ -2134,6 +2152,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(notice = Notice(System.nanoTime(), "导入失败：${error.message}")) }
             }
         }
+    }
+
+    /** 内置显示正则的开关（只影响气泡显示；关掉 = 原文）。 */
+    fun setBuiltinRegexEnabled(id: String, enabled: Boolean) {
+        val next = if (enabled) _state.value.builtinRegexDisabled - id
+        else _state.value.builtinRegexDisabled + id
+        _state.update { it.copy(builtinRegexDisabled = next) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { settingsRepository.saveBuiltinRegexDisabled(next) }
+        }
+        AppLog.i("config", "内置正则 ${if (enabled) "开" else "关"} id=$id")
     }
 
     fun setRegexScriptDisabled(name: String, disabled: Boolean) {

@@ -47,6 +47,16 @@ interface SettingsRepository {
     fun saveVisualEffects(name: String)
 
     /**
+     * 内置显示正则的**关闭**集合（id 见 `core/regex` 的 `BuiltinRegex`）。
+     *
+     * 为什么单独存：内置规则不属于用户脚本（不写进导入的 JSON、不随导入覆盖），
+     * 只有开关状态需要记住；关掉就是"不跑这条"。
+     */
+    fun builtinRegexDisabled(): Set<String>
+
+    fun saveBuiltinRegexDisabled(ids: Set<String>)
+
+    /**
      * **首帧就要用**的外观项：只读 SharedPreferences，**不碰 Keystore**。
      *
      * 为什么要单独一个口子：`load()` 会解密 API Key（Keystore 冷启动几十到几百 ms），

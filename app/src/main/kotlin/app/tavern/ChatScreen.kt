@@ -69,6 +69,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -91,6 +95,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import app.tavern.core.regex.InlineMarkup
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
@@ -325,8 +330,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             anchorDiag.finish()
         }
     }
-    // 用"生效中"的那份：会话/卡可能把某些脚本关了，显示侧与输入侧必须读同一个集合
-    val regexScripts = state.effectiveRegexScripts
+    // 显示用的脚本 = 生效中的用户脚本 + 没关掉的内置规则（清包裹标签 / 动作强调）。
+    // 只走显示：存档、导出、看请求、发给模型的提示词都是原文（用户 2026-11-25 定的方案）。
+    // remember 住脚本列表：内置规则每次 getter 都会新建实例，直接当 key 会每帧重算
+    val regexScripts = remember(state.builtinRegexDisabled, state.effectiveRegexScripts) {
+        state.displayRegexScripts
+    }
     val displayText: (String) -> String = remember(regexScripts) {
         { text ->
             if (regexScripts.isEmpty()) text
@@ -885,6 +894,33 @@ private fun modelBadge(name: String?): String {
 }
 
 /**
+ * 把正则输出里的内联标签（`<i>` / `<b>` / `<br>`）变成带样式的文本。
+ *
+ * 只认 `core/regex` 的 [InlineMarkup] 支持的那一小撮：不做 HTML 渲染，
+ * 用户脚本里其他标签照旧按正文显示。
+ */
+private fun markupText(text: String): AnnotatedString = buildAnnotatedString {
+    for (run in InlineMarkup.parse(text)) {
+        if (run.lineBreak) {
+            append('\n')
+            continue
+        }
+        val start = length
+        append(run.text)
+        if (run.italic || run.bold) {
+            addStyle(
+                SpanStyle(
+                    fontStyle = if (run.italic) FontStyle.Italic else null,
+                    fontWeight = if (run.bold) FontWeight.Bold else null,
+                ),
+                start,
+                length,
+            )
+        }
+    }
+}
+
+/**
  * 消息渲染的唯一入口：样式切换只在这里分叉。
  * 气泡是默认样式，整行卡片保留为可选项（设置 → 外观里能切）。
  */
@@ -1060,7 +1096,10 @@ private fun BubbleRow(
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
                     // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
                     SelectionContainer {
-                        Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            markupText(displayText(message.content)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
                     if (showCursor) StreamingCursor()
                 }
@@ -1092,7 +1131,10 @@ private fun CardRow(
             )
             Row {
                 SelectionContainer {
-                    Text(displayText(message.content), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        markupText(displayText(message.content)),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 if (showCursor) StreamingCursor()
             }

@@ -106,6 +106,13 @@ class PreferencesSettingsRepository(
         prefs.edit().putString(KEY_NAV_ANIMATION, name).apply()
     }
 
+    override fun builtinRegexDisabled(): Set<String> =
+        prefs.getStringSet(KEY_BUILTIN_REGEX_DISABLED, emptySet()).orEmpty().toSet()
+
+    override fun saveBuiltinRegexDisabled(ids: Set<String>) {
+        prefs.edit().putStringSet(KEY_BUILTIN_REGEX_DISABLED, ids).apply()
+    }
+
     override fun saveVisualEffects(name: String) {
         prefs.edit().putString(KEY_VISUAL_EFFECTS, name).apply()
     }
@@ -148,6 +155,7 @@ class PreferencesSettingsRepository(
     }
 
     private companion object {
+        const val KEY_BUILTIN_REGEX_DISABLED = "builtin_regex_disabled"
         const val PREFS = "tavern.settings"
         const val KEY_BASE_URL = "base_url"
         const val KEY_MODEL = "model"
