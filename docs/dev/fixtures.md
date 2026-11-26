@@ -162,6 +162,10 @@ body 用 `group-chats.js` 里 `createGroup()` 那份 `groupCreateModel`：
    推完 `openGroupChat()` 仍然走不到（它还要求 `group.chats.includes(chatId)`，新群 `chats` 是空的，
    得先 `createNewGroupChat(groupId)`）。
 
+⚠️ 那晚试过 `--group-name`（选一个**已存在**的群）这条加法也没验完：本机 1.7 GiB，
+chromium 一起就 OOM（SIGKILL）。所以 `capture.mjs` 里**没有**留这份代码 —— 先别照着改，
+按下面三条从"能跑起来"开始。
+
 **下一轮建议的顺序**（都比 reload 稳）：
 1. `createNewGroupChat(groupId)` 之后再 `Generate` —— 它内部会补齐 chats 并切过去（没试完）；
 2. 或者干脆**用两个进程**：先跑一次"建群"的小脚本（页面里 fetch 完就退），再跑一次 capture ——
