@@ -5,7 +5,7 @@
 > 需求批的口径与排期 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)；
 > 词表（怎么称呼界面上每个东西）→ [ui-map.md](../ui-map.md)；
 > 必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
-> 真机验证记录 → [device-verification.md](device-verification.md)；历史细节 → [pitfalls.md](pitfalls.md)。
+> 真机验证记录 → [verification/](verification/)（一批一个文件，索引在 README）；M0–M16 归档在 [device-verification.md](device-verification.md)；历史细节 → [pitfalls.md](pitfalls.md)。
 
 ## 30 秒
 
