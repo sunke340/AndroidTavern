@@ -23,10 +23,16 @@ for path in glob.glob('**/src/test/**/*.kt', recursive=True):
         declared[module] = declared.get(module, 0) + count
 
 ran = {}
-for path in glob.glob('**/build/test-results/test/TEST-*.xml', recursive=True):
-    module = path.split('/build/')[0]
-    match = re.search(r'tests="(\d+)"', open(path, encoding='utf-8').read())
-    ran[module] = ran.get(module, 0) + (int(match.group(1)) if match else 0)
+# 纯 JVM 模块的结果在 build/test-results/test/；
+# Android 模块（:data / :app）是 build/test-results/testDebugUnitTest/ —— 两个都要看，
+# 否则给 :data 加测试会被这条守卫误判成"一个都没跑"（2026-11-27 真踩）。
+PATTERNS = ('**/build/test-results/test/TEST-*.xml',
+            '**/build/test-results/testDebugUnitTest/TEST-*.xml')
+for pattern in PATTERNS:
+    for path in glob.glob(pattern, recursive=True):
+        module = path.split('/build/')[0]
+        match = re.search(r'tests="(\d+)"', open(path, encoding='utf-8').read())
+        ran[module] = ran.get(module, 0) + (int(match.group(1)) if match else 0)
 
 failures, warnings = [], []
 for module, expected in sorted(declared.items()):
