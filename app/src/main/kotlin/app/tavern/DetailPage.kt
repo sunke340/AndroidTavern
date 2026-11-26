@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -144,6 +145,9 @@ fun GlassDetailScaffold(
     val sheet = sheetController ?: remember { SheetController() }
     // 确认框宿主：同一个理由（AlertDialog 是独立窗口，采不到内容层，做不成玻璃）
     val confirm = confirmController ?: remember { ConfirmController() }
+    // 胶囊菜单宿主（需求批 E）：`DropdownMenu` 也是独立窗口，采不到内容层
+    val capsuleMenu = remember { CapsuleMenuController() }
+    SideEffect { capsuleMenu.attached = true }
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -191,6 +195,7 @@ fun GlassDetailScaffold(
                 CompositionLocalProvider(
                     LocalSheetController provides sheet,
                     LocalConfirmController provides confirm,
+                    LocalCapsuleMenu provides capsuleMenu,
                 ) {
                     content(
                         PaddingValues(
@@ -207,6 +212,7 @@ fun GlassDetailScaffold(
                 CompositionLocalProvider(
                     LocalSheetController provides sheet,
                     LocalConfirmController provides confirm,
+                    LocalCapsuleMenu provides capsuleMenu,
                 ) {
                     Box(
                         Modifier
@@ -251,6 +257,14 @@ fun GlassDetailScaffold(
             // 确认框压在最上面一档（它通常从动作单里发起，弹层刚收就出现）
             GlassConfirmHost(
                 controller = confirm,
+                frost = frost,
+                contentOrigin = { origin.value },
+                glass = glass,
+            )
+
+            // 胶囊菜单（需求批 E 原型）：同样在录图层之外，才采得到磨砂底片
+            GlassCapsuleMenuHost(
+                controller = capsuleMenu,
                 frost = frost,
                 contentOrigin = { origin.value },
                 glass = glass,

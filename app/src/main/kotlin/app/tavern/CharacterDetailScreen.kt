@@ -35,8 +35,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
@@ -50,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -98,38 +97,28 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
         sheetController = sheet,
         confirmController = confirm,
         actions = {
-            var menuOpen by remember { mutableStateOf(false) }
-            CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
+            // 胶囊点开 = 液态玻璃菜单（需求批 E 原型的第二处）。宿主在 DetailPage 的骨架里。
+            val capsuleMenu = LocalCapsuleMenu.current
+            var anchor by remember { mutableStateOf(Rect.Zero) }
             // 导入聊天：.jsonl 的 MIME 各家文件管理器报得不一样，多收几个类型
             val importChatLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocument(),
             ) { uri -> if (uri != null) viewModel.importChat(cardId, uri) }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text("编辑卡片") },
-                    onClick = {
-                        menuOpen = false
-                        viewModel.openCardEditor()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("导入聊天记录") },
-                    onClick = {
-                        menuOpen = false
-                        importChatLauncher.launch(
-                            arrayOf("application/jsonl", "text/plain", "application/octet-stream"),
-                        )
-                    },
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text("删除这张卡", color = MaterialTheme.colorScheme.error)
-                    },
-                    onClick = {
-                        menuOpen = false
-                        confirmDeleteCard = true
-                    },
-                )
+            Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
+                CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
+                    capsuleMenu.show(
+                        anchor = anchor,
+                        items = listOf(
+                            CapsuleMenuItem("编辑卡片") { viewModel.openCardEditor() },
+                            CapsuleMenuItem("导入聊天记录") {
+                                importChatLauncher.launch(
+                                    arrayOf("application/jsonl", "text/plain", "application/octet-stream"),
+                                )
+                            },
+                            CapsuleMenuItem("删除这张卡") { confirmDeleteCard = true },
+                        ),
+                    )
+                }
             }
         },
     ) { padding ->

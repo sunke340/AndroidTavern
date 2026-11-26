@@ -65,6 +65,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -456,6 +457,9 @@ private fun TabsRoot(
     val glassOn = state.visualEffects.effective() == VisualEffects.Glass
     // 动作单的宿主状态：页面通过 CompositionLocal 请求，这里渲染（在录图层之外，能采真磨砂）
     val sheet = remember { SheetController() }
+    val capsuleMenu = remember { CapsuleMenuController() }
+    // 标记"有宿主"：页面在骨架之前拿到的是孤儿实例，那时 show() 只会留一行日志
+    SideEffect { capsuleMenu.attached = true }
     // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
     val confirm = remember { ConfirmController() }
     val view = LocalView.current
@@ -526,6 +530,7 @@ private fun TabsRoot(
             CompositionLocalProvider(
                 LocalSheetController provides sheet,
                 LocalConfirmController provides confirm,
+                LocalCapsuleMenu provides capsuleMenu,
             ) {
             Box(
                 modifier = Modifier
@@ -643,6 +648,14 @@ private fun TabsRoot(
             // 确认框压在最上面一档
             GlassConfirmHost(
                 controller = confirm,
+                frost = frostLayer,
+                contentOrigin = { contentOrigin.value },
+                glass = glassOn,
+            )
+
+            // 胶囊菜单（需求批 E 原型）：也在录图层之外，采得到磨砂底片
+            GlassCapsuleMenuHost(
+                controller = capsuleMenu,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
                 glass = glassOn,

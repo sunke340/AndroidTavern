@@ -64,8 +64,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -115,12 +113,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.contentDescription
@@ -763,39 +763,31 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
         },
         actions = {
-            var menuOpen by remember { mutableStateOf(false) }
-            CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") { menuOpen = true }
+            // 胶囊点开 = 液态玻璃菜单（需求批 E 原型）。不用 `DropdownMenu`：那是独立窗口，
+            // 采不到内容层，只能画成纯色板；宿主在骨架里（录图层之外），见 CapsuleMenu.kt。
+            val capsuleMenu = LocalCapsuleMenu.current
+            var anchor by remember { mutableStateOf(Rect.Zero) }
             // 导出用系统文件选择器（SAF）：不需要存储权限，用户自己挑位置
             val exportLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("application/jsonl"),
             ) { uri ->
                 if (uri != null) viewModel.exportChat(uri)
             }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                // 原来是个**不可点的占位**，现在就是「会话配置」的入口（用户 2026-11-25 第 2 条）。
-                DropdownMenuItem(
-                    // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
-                    text = { Text("会话配置") },
-                    onClick = {
-                        menuOpen = false
-                        viewModel.openSessionConfig()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("查看本次请求") },
-                    onClick = {
-                        menuOpen = false
-                        viewModel.toggleRequest()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("导出聊天记录") },
-                    onClick = {
-                        menuOpen = false
-                        // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
-                        exportLauncher.launch("${state.cardName.ifBlank { "chat" }}.jsonl")
-                    },
-                )
+            Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
+                CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
+                    capsuleMenu.show(
+                        anchor = anchor,
+                        items = listOf(
+                            // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
+                            CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() },
+                            CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() },
+                            CapsuleMenuItem("导出聊天记录") {
+                                // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
+                                exportLauncher.launch("${state.cardName.ifBlank { "chat" }}.jsonl")
+                            },
+                        ),
+                    )
+                }
             }
         },
     ) { padding ->
