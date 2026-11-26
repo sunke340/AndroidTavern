@@ -47,7 +47,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -174,7 +173,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
     // 长按交给文字选择（正文在外面包了 SelectionContainer）。
     val clipboard = LocalClipboardManager.current
-    var deletingIndex by remember { mutableStateOf<Int?>(null) }
+    // 删除确认：记的是**行身份**（`uiKey`），不是下标 —— 下标会随增删漂
+    var deletingKey by remember { mutableStateOf<String?>(null) }
 
     // 离场页还在组合树里（转场需要），但输入框光标与"选文字"手柄是**独立弹层**，
     // 不会跟 graphicsLayer 一起位移 —— 页面滑走了它们还钉在屏幕上（用户 2026-11-25 报的）。
@@ -186,7 +186,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val focusManager = LocalFocusManager.current
     var selectionEpoch by remember { mutableIntStateOf(0) }
     // 重建会连带重播每个气泡的 `animateItem` 淡入 —— 页面正滑走时那一下就是"闪"（用户 2026-11-25）。
-    // 所以离场这一帧起关掉淡入，回来时再打开（见 itemsIndexed 里的 itemAnim）。
+    // 所以离场这一帧起关掉淡入，回来时再打开（见 itemsIndexed 的 itemAnim）。
     var suppressItemFade by remember { mutableStateOf(false) }
     LaunchedEffect(pageIsCurrent) {
         if (pageIsCurrent) {
@@ -222,7 +222,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
     val scrollToBottomSignal = state.scrollToBottomSignal
     LaunchedEffect(scrollToBottomSignal) {
-        if (scrollToBottomSignal > 0 && state.transcript.isNotEmpty()) {
+        if (scrollToBottomSignal > 0 && state.rows.isNotEmpty()) {
             // 用 animate 而不是瞬间跳：撤掉一大段后，滑回底部能看清"现在剩到哪"
             listState.animateScrollToItem(0)
             AppLog.i("scroll", "回到列表底部 signal=$scrollToBottomSignal")
@@ -238,8 +238,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 观感就是"掉到输入框下面、不会自动滚到底部"（用户 2026-11-26 报的）。
     // 所以贴底时显式回 index 0；自己发的那条无论如何都回底（发了就该看见），
     // 而读历史时到达的回复不动阅读位置。
-    LaunchedEffect(state.transcript.size) {
-        val mine = state.transcript.lastOrNull()?.role == ChatRole.User
+    LaunchedEffect(state.rows.size) {
+        val mine = state.rows.lastOrNull()?.role == ChatRole.User
         if (atBottom || mine) listState.scrollToItem(0)
     }
 
@@ -513,6 +513,20 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // key(selectionEpoch)：离场时 epoch +1，这一整层重建 —— SelectionContainer 随旧组合销毁，
         // 选文字手柄/工具栏立刻消失（它们是窗口级弹层，不跟页面滑动）。
         key(selectionEpoch) {
+        // ── 唯一的行数据源（必须在 composable 里算，LazyColumn 的 DSL 不是 composable）──
+        // 显示行 = 已提交的行 + （可能）正在生成的那一行。
+        // 生成行在这里**合成**，不进 `state.rows`：所以它不会被当成"已保存的消息"，
+        // 也不会进提示词/导出。占位/流式/定稿三态用**同一个 uiKey**，
+        // 落库那一帧只是数据变化 —— 不删条目、不建条目、不重播淡入、不重排长文本。
+        val inflightNow = state.inflight
+        val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
+            if (inflightNow == null || inflightNow.text.isEmpty()) state.rows
+            else state.rows + ChatViewModel.ChatRow(
+                uiKey = inflightNow.uiKey,
+                role = ChatRole.Assistant,
+                content = inflightNow.text,
+            )
+        }
         // 选字要拿焦点才能出手柄/工具栏，而焦点系统会请求 bringIntoView ——
         // 消息节点比视口高得多时，默认算法会把列表挪一小段（用户 2026-11-25 报的"长按一下列表就跳"）。
         // 这里把焦点滚动关掉：这个列表的阅读位置只由三种东西决定 —— 手指滚动、串流跟随、撤回回底。
@@ -553,42 +567,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-                if (shownStream.isNotEmpty()) {
-                    // 显式 key：没有 key 时列表按"下标"认条目 —— 在头部插一条会让**所有**
-                    // 已有气泡换槽位，于是整屏一起播淡入/淡出（用户 2026-11-26：发一条新消息
-                    // 整个列表会突然显示一下）。串流气泡与空状态也各占一个固定 key。
-                    item(key = "stream") {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            MessageRow(
-                                message = ChatMessage(ChatRole.Assistant, shownStream),
-                                style = state.effectiveMessageStyle,
-                                showCursor = true,
-                                displayText = displayText,
-                                fontSizeSp = state.effectiveBubbleFontSize,
-                                // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
-                                // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
-                                modifier = Modifier
-                                    .onSizeChanged { streamHeight = it.height }
-                                    .onGloballyPositioned {
-                                        streamProbe.topY = it.positionInWindow().y.toInt()
-                                    },
-                            )
-                            // 落库那一帧这条会多出「动作行」（+34dp；重新生成还会多出「版本条」+40dp）。
-                            // 先把这块高度占住 —— 否则流式气泡被替换的那一帧，整条列表会往上跳一截，
-                            // 看起来就是"生成完毕/点停止时列表闪一下"（用户 2026-11-26）。
-                            Spacer(
-                                Modifier.height(
-                                    ActionRowHeight + if (state.isStreaming && state.streamingRegenerate) {
-                                        SwipeBarBlockHeight
-                                    } else {
-                                        0.dp
-                                    },
-                                ),
-                            )
-                        }
-                    }
-                }
-                if (state.transcript.isEmpty() && state.streamingText.isEmpty()) {
+                if (displayRows.isEmpty() && state.streamingText.isEmpty()) {
                     item(key = "empty") {
                         EmptyHint("还没有消息。发一句开始；点右上「请求」可以看到实际发出去的提示词。")
                     }
@@ -596,26 +575,28 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 开场白翻页（用户 2026-11-25 第 3 条）：只在"还没说过话 + 不止一条"时出现。
                 // 箭头贴在第一屏最上面那条气泡的**上沿**，和气泡同一个 item —— 翻页时一起动，不会脱节。
                 val canSwitchGreeting = state.greetings.size > 1 &&
-                    state.transcript.none { it.role == ChatRole.User }
+                    state.rows.none { it.role == ChatRole.User }
                 val shownGreeting = greetingIndexOf(
                     state.greetings,
-                    state.transcript.firstOrNull()?.content,
+                    state.rows.firstOrNull()?.content,
                 )
-                // key 用**原 transcript 下标**（反排显示的下标在追加时会整体 +1）：
-                // 这样追加一条新消息只让新条目淡入，已有气泡原地不动。
+                // key = 行的**身份**（`uiKey`），不是下标：
+                // 下标键在中间删一条之后会把后面每条都换 key → 整列重播淡入（v161 的病根）。
                 itemsIndexed(
-                    items = state.transcript.asReversed(),
-                    key = { index, _ -> "msg-" + (state.transcript.lastIndex - index) },
-                ) { index, message ->
+                    items = displayRows.asReversed(),
+                    key = { _, row -> row.uiKey },
+                ) { index, row ->
+                    val isInflightRow = inflightNow != null && row.uiKey == inflightNow.uiKey
+                    val isLastSettled = row.uiKey == state.rows.lastOrNull()?.uiKey
+                    val isFirstSettled = row.uiKey == state.rows.firstOrNull()?.uiKey
                     // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
                     // 位移动画会不断重放，整屏看起来在闪。
                     //
                     // 动作入口从"长按出抽屉"改成了气泡底下一排按钮（用户 2026-11-25 第 11 条）：
                     // 长按现在交给文字选择，按钮常驻可见，不用猜哪里能按。
-                    val realIndex = state.transcript.lastIndex - index
-                    val isLast = realIndex == state.transcript.lastIndex
-                    val isAssistant = message.role == ChatRole.Assistant
-                    val itemAnim = if (suppressItemFade ||
+                    val isLast = isLastSettled
+                    val isAssistant = row.role == ChatRole.Assistant
+                    val itemAnim = if (isInflightRow || suppressItemFade ||
                         (index == 0 && (justSettled || suppressNewestFade))
                     ) {
                         // 离场重建（销毁 SelectionContainer）这一趟不要淡入：否则整屏闪一下；
@@ -628,24 +609,50 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             fadeOutSpec = tween(Motion.Fast),
                         )
                     }
-                    val isGreetingSlot = canSwitchGreeting && index == state.transcript.lastIndex
+                    val isGreetingSlot = canSwitchGreeting && isFirstSettled
                     // 「这条是不是开场白」和「能不能翻页」是两件事（用户 2026-11-25：
                     // 单开场白的会话里开场白气泡底下还挂着动作行，多开场白时才没有 —— 前后不一致）。
                     // 判据只看"这条是不是那张卡的开场白"：会话第一条 + 还没人说过话 + 内容对得上。
-                    val isGreetingMessage = index == state.transcript.lastIndex &&
+                    val isGreetingMessage = isFirstSettled &&
                         shownGreeting >= 0 &&
-                        state.transcript.none { it.role == ChatRole.User }
+                        state.rows.none { it.role == ChatRole.User }
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
                     val showSwipeBar = !state.isStreaming && !isGreetingMessage &&
                         isLast && isAssistant && state.lastSwipes.size > 1
                     Column(modifier = itemAnim.fillMaxWidth()) {
                         MessageRow(
-                            message = message,
+                            message = ChatMessage(row.role, row.content),
                             style = state.effectiveMessageStyle,
+                            showCursor = isInflightRow,
                             displayText = displayText,
                             fontSizeSp = state.effectiveBubbleFontSize,
+                            // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
+                            // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
+                            modifier = if (isInflightRow) {
+                                Modifier
+                                    .onSizeChanged { streamHeight = it.height }
+                                    .onGloballyPositioned {
+                                        streamProbe.topY = it.positionInWindow().y.toInt()
+                                    }
+                            } else {
+                                Modifier
+                            },
                         )
-                        if (showSwipeBar) {
+                        // 生成中这一行：先把落库后会多出来的高度占住
+                        //（动作行 +34dp；重新生成还会多出「版本条」+40dp），
+                        // 否则定稿那一帧整条列表会往上跳一截（用户 2026-11-26）。
+                        if (isInflightRow) {
+                            Spacer(
+                                Modifier.height(
+                                    ActionRowHeight + if (state.streamingRegenerate) {
+                                        SwipeBarBlockHeight
+                                    } else {
+                                        0.dp
+                                    },
+                                ),
+                            )
+                        }
+                        if (!isInflightRow && showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
                             GreetingSwitchBar(
                                 current = state.lastSwipeId.coerceIn(
@@ -671,16 +678,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                         // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）；
                         // 判据用 isGreetingMessage，和"有几条开场白"无关。
-                        if (!isGreetingMessage) {
+                        if (!isInflightRow && !isGreetingMessage) {
                             MessageActionRow(
                                 isUser = !isAssistant,
                                 canRegenerate = isAssistant && isLast,
                                 canContinue = isAssistant && isLast,
-                                onRewind = { viewModel.rewindToMessage(realIndex) },
-                                onCopy = { clipboard.setText(AnnotatedString(message.content)) },
+                                onRewind = { viewModel.rewindToMessage(row.uiKey) },
+                                onCopy = { clipboard.setText(AnnotatedString(row.content)) },
                                 onRegenerate = viewModel::regenerateLast,
                                 onContinue = viewModel::continueLast,
-                                onDelete = { deletingIndex = realIndex },
+                                onDelete = { deletingKey = row.uiKey },
                                 modifier = Modifier.align(
                                     if (isAssistant) Alignment.Start else Alignment.End,
                                 ),
@@ -694,16 +701,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
 
     // 删除这条：走统一的玻璃确认框（和删会话/删卡同一个材质与措辞规则）
-    deletingIndex?.let { index ->
+    deletingKey?.let { key ->
         ConfirmDeleteDialog(
             controller = confirm,
             title = "删除这条消息？",
             message = "只删这一条，不能撤销。",
             onConfirm = {
-                deletingIndex = null
-                viewModel.deleteMessageAt(index)
+                deletingKey = null
+                viewModel.deleteMessageAt(key)
             },
-            onDismiss = { deletingIndex = null },
+            onDismiss = { deletingKey = null },
         )
     }
 

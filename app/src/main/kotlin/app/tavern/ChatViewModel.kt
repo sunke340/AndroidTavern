@@ -164,14 +164,56 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             get() = name.isNotBlank() && baseUrl.isNotBlank() && model.isNotBlank()
     }
 
+    /**
+     * 一条**已提交**的消息行。
+     *
+     * 身份不变量（K1–K5，改这里之前先读）：
+     * - **K1**：`uiKey` 在行的存活期内**永不改变**（补 `dbId`、换正文、切 swipe、定稿都不变）；
+     * - **K2**：只要求在**一次 ChatScreen 组合的生命周期内**唯一 → 不持久化、不落库；
+     * - **K3**：命名空间不重叠 —— `m{dbId}`（库里读出来的）/ `u{seq}`（本次发的用户消息）/
+     *   `p{seq}`（生成行）/ `r{seq}`（还原）；
+     * - **K4**：组合存活期内**不得从库里重建 `rows`**（撤回改成"按 dbId 删 + 就地移除行"）；
+     *   重建会让本次新建的行换 key → LazyColumn 当新条目、重播淡入；
+     * - **K5**：`dbId` **不参与 key**，它只用于 DB 操作与"是否已落库"。
+     */
+    data class ChatRow(
+        val uiKey: String,
+        val role: ChatRole,
+        val content: String,
+        val dbId: Long? = null,
+    )
+
+    /**
+     * 正在生成的那一轮（**至多一个**）。
+     *
+     * 它不进 [UiState.rows]：占位/流式/定稿都是"rows + 它"合成出来的，
+     * 所以生成中的内容永远不会被误当成"已保存的消息"（也不进提示词、不进导出）。
+     */
+    data class Inflight(
+        val roundId: Long,
+        val sessionId: String,
+        /** 这一轮将来的行 key（`targetDbId == null` 时才有意义）。 */
+        val uiKey: String,
+        /** 非 null = 就地改写这一行（重新生成）。 */
+        val targetDbId: Long?,
+        /** 已收到的正文（空 = 还没吐字）。 */
+        val text: String,
+        /**
+         * **P1 适配器专用**：重新生成开场从 `rows` 里撤下去的那一行（原样），收尾没成就放回来。
+         * P3 改成按 `dbId` 就地改写之后删除。
+         */
+        val removed: ChatRow? = null,
+    )
+
     data class UiState(
         val baseUrl: String = "https://api.deepseek.com/v1",
         val apiKey: String = "",
         val model: String = "deepseek-chat",
         val input: String = "",
-        val transcript: List<ChatMessage> = emptyList(),
-        val streamingText: String = "",
-        val isStreaming: Boolean = false,
+        /** 已提交的消息行（时间线，旧→新）。生成中的那一轮**不在里面**。 */
+        val rows: List<ChatRow> = emptyList(),
+        /** 正在生成的那一轮；null = 没在生成。 */
+        val inflight: Inflight? = null,
         val status: String = "",
         val cards: List<CardRef> = emptyList(),
         /** 卡列表是否读完过一次（同 [sessionsLoaded]：没读完不能显示"还没有卡"）。 */
@@ -300,22 +342,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          * 视图层收到新信号就 `scrollToItem(0)`（反排列表的 0 就是最底部）。
          */
         val scrollToBottomSignal: Long = 0,
+        val notice: Notice? = null,
+    ) {
+
+        /** 已提交的正文（提示词、导出、开场白判据都读它）。生成中的那一轮不在里面。 */
+        val transcript: List<ChatMessage>
+            get() = rows.map { ChatMessage(it.role, it.content) }
+
+        /** 有在跑的生成轮次。 */
+        val isStreaming: Boolean
+            get() = inflight != null
+
+        /** 屏幕上正在长的正文（没有生成时为空串）。 */
+        val streamingText: String
+            get() = inflight?.text.orEmpty()
+
         /**
-         * 正在跑的这一轮是不是「重新生成」（只在 `isStreaming` 为真时有意义）。
+         * 正在跑的这一轮是不是「重新生成」。
          *
          * 界面用它决定串流气泡要不要**预留版本条的高度**：重新生成落库后这条会带 `‹2/2›`，
          * 不预留的话那一帧整列会往上跳（用户 2026-11-26 报的"停止/生成完毕闪一下"）。
          */
-        val streamingRegenerate: Boolean = false,
+        val streamingRegenerate: Boolean
+            get() = inflight?.targetDbId != null
+
         /**
-         * 这一轮生成的轮次号（`GenerationRound.roundId`）；没有在跑时为 null。
+         * 这一轮生成的轮次号；没有在跑时为 null。
          *
          * 收尾时"这条消息/这个状态栏还归不归我"全看它：写完库到提交界面之间，用户可能已经
          * 切了会话或开了新一轮，**旧轮不许碰新轮的界面**（见 `core/generation` 的纪律 3）。
          */
-        val activeRoundId: Long? = null,
-        val notice: Notice? = null,
-    ) {
+        val activeRoundId: Long?
+            get() = inflight?.roundId
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
         val effectiveMessageStyle: MessageStyle
             get() = cardMessageStyle ?: messageStyle
@@ -459,6 +517,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 轮次号：只增不减，用来判断"我还是不是当前那一轮"。 */
     private var roundSeq: Long = 0L
+
+    /**
+     * 行身份序号（K3：命名空间不重叠）。
+     *
+     * `m{dbId}` 从库里读出来的 / `u{seq}` 本次发的用户消息 / `p{seq}` 生成行 / `r{seq}` 还原。
+     * K2：只要求在一次 ChatScreen 组合内唯一，所以**不持久化**。
+     */
+    private var uiKeySeq: Long = 0L
+
+    private fun newUiKey(prefix: String): String = prefix + (++uiKeySeq)
     private var keySaveJob: Job? = null
 
     init {
@@ -870,7 +938,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     sessions = sessions,
                     detailCardId = null,
                     sessionId = if (currentGone) null else it.sessionId,
-                    transcript = if (currentGone) emptyList() else it.transcript,
+                    rows = if (currentGone) emptyList() else it.rows,
                     chatOpen = if (currentGone) false else it.chatOpen,
                 )
             }
@@ -969,11 +1037,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.copy(
                         sessionId = null,
-                        transcript = emptyList(),
-                        streamingText = "",
-                        isStreaming = false,
-                        streamingRegenerate = false,
-                        activeRoundId = null,
+                        rows = emptyList(),
+                        inflight = null,
                         chatOpen = false,
                     )
                 }
@@ -1071,17 +1136,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 sessionId = id,
                 cardId = session.cardId,
                 cardName = loadedCard?.name?.ifBlank { session.cardName } ?: session.cardName,
-                transcript = stored.map { message ->
-                    ChatMessage(
+                rows = stored.map { message ->
+                    ChatRow(
+                        uiKey = "m" + message.id,
                         role = if (message.isUser) ChatRole.User else ChatRole.Assistant,
                         content = message.content,
+                        dbId = message.id,
                     )
                 },
-                // 生成中状态按**归属**算：切回还在跑的那条会话时别把"生成中"清成 false
-                // （以前一律 false → 用户能再发一条，`job` 被覆盖，旧流永远停不掉）
-                streamingText = if (currentRound?.sessionId == id) it.streamingText else "",
-                isStreaming = currentRound?.sessionId == id,
-                activeRoundId = if (currentRound?.sessionId == id) currentRound?.roundId else null,
+                // 生成中状态按**归属**算：切回还在跑的那条会话时别把"生成中"清掉
+                // （以前一律清掉 → 用户能再发一条，旧流永远停不掉）
+                inflight = if (currentRound?.sessionId == id) it.inflight else null,
                 chatOpen = navigate,
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
@@ -1251,7 +1316,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionId = _state.value.sessionId ?: return
         val snapshot = _state.value
         val target = snapshot.greetings.getOrNull(index) ?: return
-        if (snapshot.transcript.any { it.role == ChatRole.User }) {
+        if (snapshot.rows.any { it.role == ChatRole.User }) {
             notify("这条会话已经聊过了：换开场白只能开新会话")
             return
         }
@@ -1263,17 +1328,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { current ->
                     if (current.sessionId != sessionId) current
                     else current.copy(
-                        transcript = listOf(ChatMessage(ChatRole.Assistant, target)) +
-                            current.transcript.drop(1),
+                        // 第一条换掉正文，key / dbId 不动（K1：行身份不因正文变化而变）
+                        rows = current.rows.mapIndexed { i, r ->
+                            if (i == 0) r.copy(content = target) else r
+                        },
                     )
                 }
             } else if (stored.isEmpty()) {
-                withContext(Dispatchers.IO) {
+                val saved = withContext(Dispatchers.IO) {
                     chatRepository.append(sessionId, isUser = false, content = target)
                 }
                 _state.update { current ->
                     if (current.sessionId != sessionId) current
-                    else current.copy(transcript = listOf(ChatMessage(ChatRole.Assistant, target)))
+                    else current.copy(
+                        rows = listOf(
+                            ChatRow("m" + saved.id, ChatRole.Assistant, target, saved.id),
+                        ),
+                    )
                 }
             }
             AppLog.i("chat", "换开场白 index=$index (${snapshot.greetings.size} 条)")
@@ -2716,7 +2787,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val rawText = snapshot.input.trim()
         val text = applyRegex(rawText, RegexPlacement.UserInput, characterCard)
-        beginCompletion(snapshot.transcript + ChatMessage(ChatRole.User, text), userText = text)
+        // 用户消息行与"生成中"必须在**同一次状态更新**里出现：拆成两次会让列表多一次插入，
+        // 反排列表的 atBottom 就会多翻一次（发送时"历史闪一下"的来源之一）。
+        beginCompletion(
+            rows = snapshot.rows + ChatRow(newUiKey("u"), ChatRole.User, text),
+            userText = text,
+        )
     }
 
     /**
@@ -2736,8 +2812,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val rowId: Long,
         /** 已有的 swipe 备选（新的那条会接在它后面）。 */
         val base: List<String>,
-        /** 失败时要还原到界面上那条（开始生成时把它从界面上撤下来了）。 */
-        val restore: ChatMessage,
+        /** 失败时要还原到界面上那条（开始生成时把它从界面上撤下来了，key/dbId 原样带着）。 */
+        val restore: ChatRow,
     )
 
     /** 原版"继续"在请求末尾追加的那条 system 提示（证据：fixtures/expected/P0-6-continue.json）。 */
@@ -2745,7 +2821,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ChatMessage(ChatRole.System, "[Continue your last message without repeating its original content.]")
 
     private fun beginCompletion(
-        history: List<ChatMessage>,
+        /** 这一轮开始时的时间线（已含本轮的用户消息）。生成中的内容**不在**里面。 */
+        rows: List<ChatRow>,
         userText: String?,
         replacing: ReplaceTarget? = null,
         continuation: Boolean = false,
@@ -2774,10 +2851,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val round = GenerationRound(
             roundId = ++roundSeq,
             sessionId = sessionId,
+            // 这一轮的行身份：占位 / 流式 / 定稿三态用同一个 key，LazyColumn 才不换条目。
+            replyUiKey = newUiKey("p"),
             targetDbId = replacing?.rowId,
             userInput = if (userText != null) snapshot.input else null,
             baseSwipes = replacing?.base.orEmpty(),
-            // P0 专用：重新生成开场把原来那条从界面撤下去了，收尾不成功要放回来。
+            // P1 适配器专用：重新生成开场把原来那条从界面撤下去了，收尾不成功要放回来。
             removedContent = replacing?.restore?.content,
         )
         currentRound = round
@@ -2788,18 +2867,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 // 继续现在也落新气泡：旧气泡留在原地，续写从下面长出来（用户 2026-11-26）。
                 // 重新生成才需要把原来那条先撤下去（它要被改写）。
-                transcript = history,
-                streamingText = "",
-                isStreaming = true,
-                // 重新生成落库后会带版本条：让串流气泡预留那块高度（见 UiState.streamingRegenerate）
-                streamingRegenerate = replacing != null,
-                activeRoundId = round.roundId,
+                rows = rows,
+                inflight = Inflight(
+                    roundId = round.roundId,
+                    sessionId = sessionId,
+                    uiKey = round.replyUiKey,
+                    targetDbId = replacing?.rowId,
+                    text = "",
+                    removed = replacing?.restore,
+                ),
                 input = "",
                 status = "准备请求…",
                 requestPreview = "",
             )
         }
 
+        // 提示词只认**已提交**的正文（生成中的那一轮不在 rows 里，天然进不了历史）
+        val history: List<ChatMessage> = rows.map { ChatMessage(it.role, it.content) }
         // 两张 HashMap（世界书计时状态 / 全局书条目）在主线程取值，后台只读快照 ——
         // 后台扫描因此不碰任何共享可变状态
         val scanState = worldInfoStates[sessionId] ?: LorebookScanState()
@@ -2821,11 +2905,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     abandonRound(round)
                     _state.update {
                         it.copy(
-                            transcript = it.transcript.dropLast(1),
-                            streamingText = "",
-                            isStreaming = false,
-                            streamingRegenerate = false,
-                            activeRoundId = null,
+                            rows = it.rows.dropLast(1),
+                            inflight = null,
                             input = snapshot.input,
                             status = "写库失败：这条消息没有发出去",
                         )
@@ -2834,6 +2915,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // 记进这一轮：生成失败时按它撤销（**只删这一条**，绝不碰更早的消息）。
                 round.userRowDbId = userMessageId
+                // 行身份不变（K1），只把 dbId 补上 —— 界面这一帧也不重排（同一个 key、同一个节点）。
+                val userInputKey = _state.value.rows.lastOrNull()?.uiKey
+                _state.update { st ->
+                    if (st.sessionId != sessionId) st
+                    else st.copy(
+                        rows = st.rows.map { row ->
+                            if (row.uiKey == userInputKey) row.copy(dbId = userMessageId) else row
+                        },
+                    )
+                }
                 refreshSessions()
             }
 
@@ -2938,7 +3029,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             _state.update { st ->
                                 // 收尾已经清掉了这一轮：迟到的 token **不许**把气泡又点亮
                                 if (st.activeRoundId != round.roundId) st
-                                else st.copy(streamingText = buffer.toString())
+                                else st.copy(
+                                    inflight = st.inflight?.copy(text = buffer.toString()),
+                                )
                             }
                         }
 
@@ -3040,10 +3133,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val status = okStatus.ifEmpty {
                     if (body.isBlank()) "已停止" else "已停止（保留了 ${body.length} 字）"
                 }
-                val facts = UiFacts(sessionId = _state.value.sessionId, activeRoundId = _state.value.activeRoundId)
+                val now = _state.value
+                val facts = UiFacts(sessionId = now.sessionId, activeRoundId = now.activeRoundId)
                 val effects = round.planEffects(facts, plan, result, status)
+                // 被撤下的那一行只认**本轮**的 inflight（旧轮收尾时新轮可能已经起来了）
+                val removedRow = now.inflight?.takeIf { it.roundId == round.roundId }?.removed
                 // 一次 update 落地全部效果：不露出"行已加、生成中还没清"的中间帧
-                _state.update { applyEffects(it, effects) }
+                _state.update { applyEffects(it, effects, round.replyUiKey, removedRow, result) }
                 refresh = effects.refreshSessions
                 AppLog.i(
                     "chat",
@@ -3060,10 +3156,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { st ->
                 if (st.activeRoundId != round.roundId) st
                 else st.copy(
-                    streamingText = "",
-                    isStreaming = false,
-                    streamingRegenerate = false,
-                    activeRoundId = null,
+                    inflight = null,
                     status = "保存失败：${error.message ?: error::class.simpleName}",
                 )
             }
@@ -3107,44 +3200,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     /** 把收尾效果落到 UI 状态上（一次 update）。语义见 `core/generation` 的 `RowAction`。 */
-    private fun applyEffects(st: UiState, effects: SettleEffects): UiState {
+    private fun applyEffects(
+        st: UiState,
+        effects: SettleEffects,
+        replyUiKey: String,
+        removedRow: ChatRow?,
+        result: WriteResult,
+    ): UiState {
+        // 刚落库那一行的行号：只有"追加成功"这一支拿得到
+        val savedDbId = (result as? WriteResult.Ok)?.dbId
         var next = st
         when (val row = effects.row) {
             RowAction.None -> Unit
 
+            // 新回复定稿：**沿用这一轮的 uiKey** —— 流式那条与定稿这条是同一个 LazyColumn item
+            //（不删、不建、不重播淡入、不重排长文本）。
             is RowAction.Append -> next = next.copy(
-                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                rows = next.rows + ChatRow(replyUiKey, ChatRole.Assistant, row.content, savedDbId),
                 lastSwipes = row.swipes,
                 lastSwipeId = row.swipeId,
             )
 
-            // P0：界面仍是"开场撤下、收尾追加"；P1 改成按 dbId 就地改（不动其它行）。
+            // P1 适配器：重新生成开场仍是"撤下原行、收尾追加新行"（P3 改成按 dbId 就地改写）。
             is RowAction.Rewrite -> next = next.copy(
-                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                rows = next.rows + ChatRow(replyUiKey, ChatRole.Assistant, row.content, row.dbId),
                 lastSwipes = row.swipes,
                 lastSwipeId = row.swipeId,
             )
 
-            // 重新生成开场撤下过、这一轮没写成 → 放回界面（版本表一起回来）
+            // 重新生成开场撤下过、这一轮没写成 → 把**原来那一行**放回界面（key/dbId 原样，K1）
             is RowAction.RestoreRemoved -> next = next.copy(
-                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                rows = next.rows + (
+                    removedRow ?: ChatRow(newUiKey("r"), ChatRole.Assistant, row.content, null)
+                    ),
                 lastSwipes = row.swipes,
                 lastSwipeId = row.swipeId,
             )
 
             is RowAction.RemoveUserRow -> next = next.copy(
-                transcript = next.transcript.dropLast(1),
+                // 按 dbId 精确移除这一轮刚写的那条用户消息（不碰更早的任何一行）
+                rows = next.rows.filterNot { it.dbId == row.dbId },
             )
         }
         effects.restoreInput?.let { input -> next = next.copy(input = input) }
-        if (effects.clearInflight) {
-            next = next.copy(
-                streamingText = "",
-                isStreaming = false,
-                streamingRegenerate = false,
-                activeRoundId = null,
-            )
-        }
+        if (effects.clearInflight) next = next.copy(inflight = null)
         effects.status?.let { kind ->
             next = next.copy(
                 status = when (kind) {
@@ -3156,6 +3255,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         return next
     }
+
 
     private fun WritePlan.logName(): String = when (this) {
         WritePlan.Nothing -> "无"
@@ -3181,9 +3281,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun regenerateLast() {
         val snapshot = _state.value
-        val sessionId = snapshot.sessionId ?: return
         if (snapshot.isStreaming) return
-        val last = snapshot.transcript.lastOrNull()
+        val last = snapshot.rows.lastOrNull()
         if (last == null || last.role != ChatRole.Assistant) {
             notify("最后一条不是角色的回复，没得重新生成")
             return
@@ -3192,23 +3291,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
             return
         }
+        val rowId = last.dbId ?: run {
+            notify("这一条还没有落库，不能重新生成")
+            return
+        }
         viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            val row = stored.lastOrNull()?.takeIf { !it.isUser } ?: run {
-                notify("库里没有可重新生成的那一条")
-                return@launch
-            }
             // swipe 备选只对"当前显示的那条"有效：被打断 / 换过一条之后可能已经过期，
             // 拿它当底本会把上一条的旧文本写到这一条上（2026-11-26 真机：打断后重新生成没有 2/2）
             val base = snapshot.lastSwipes.takeIf {
                 it.isNotEmpty() && it.getOrNull(snapshot.lastSwipeId) == last.content
             } ?: listOf(last.content)
-            withContext(Dispatchers.IO) { chatRepository.setSwipes(row.id, base) }
-            val trimmed = snapshot.transcript.dropLast(1)
+            withContext(Dispatchers.IO) { chatRepository.setSwipes(rowId, base) }
+            val trimmed = snapshot.rows.dropLast(1)
             _state.update {
                 it.copy(
-                    transcript = trimmed,
-                    streamingText = "",
+                    rows = trimmed,
                     status = "重新生成中…",
                     // 这一条的版本表**先摘掉**：原条已从界面上撤下；若还留着这份备选，
                     // 它会被"现在的最后一条"（露出来的上一条助手消息）当成自己的版本显示
@@ -3219,9 +3316,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             AppLog.i("chat", "重新生成：已有 ${base.size} 条备选，生成第 ${base.size + 1} 条")
             beginCompletion(
-                history = trimmed,
+                rows = trimmed,
                 userText = null,
-                replacing = ReplaceTarget(row.id, base, last),
+                replacing = ReplaceTarget(rowId, base, last),
             )
         }
     }
@@ -3242,9 +3339,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun continueLast() {
         val snapshot = _state.value
-        val sessionId = snapshot.sessionId ?: return
         if (snapshot.isStreaming) return
-        val last = snapshot.transcript.lastOrNull()
+        val last = snapshot.rows.lastOrNull()
         if (last == null || last.role != ChatRole.Assistant) {
             notify("最后一条不是角色的回复，没法继续")
             return
@@ -3253,25 +3349,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
             return
         }
-        viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            val row = stored.lastOrNull()?.takeIf { !it.isUser } ?: run {
-                notify("库里没有可继续的那一条")
-                return@launch
-            }
-            // 继续 = 让角色接着说，**结果落成一条新消息**（用户 2026-11-26 定的形态）。
-            // 所以它和普通发送走同一条路：旧气泡留在界面上不动，续写从下面长出来。
-            // 原版 ST 是把 `mes +=` 拼回同一条；这条差异记在 compat-matrix 的 P0-6。
-            AppLog.i(
-                "chat",
-                "继续：历史 ${snapshot.transcript.size} 条（末尾带 continue 提示），落新气泡 row=${row.id}",
-            )
-            beginCompletion(
-                history = snapshot.transcript,
-                userText = null,
-                continuation = true,
-            )
-        }
+        // 继续 = 让角色接着说，**结果落成一条新消息**（用户 2026-11-26 定的形态）。
+        // 所以它和普通发送走同一条路：旧气泡留在界面上不动，续写从下面长出来。
+        // 原版 ST 是把 `mes +=` 拼回同一条；这条差异记在 compat-matrix 的 P0-6。
+        AppLog.i(
+            "chat",
+            "继续：历史 ${snapshot.rows.size} 条（末尾带 continue 提示），落新气泡 row=${last.dbId}",
+        )
+        beginCompletion(
+            rows = snapshot.rows,
+            userText = null,
+            continuation = true,
+        )
     }
 
     /**
@@ -3285,17 +3374,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (snapshot.isStreaming) return
         val text = snapshot.lastSwipes.getOrNull(index) ?: return
         if (index == snapshot.lastSwipeId) return
-        val lastIndex = snapshot.transcript.lastIndex
+        val lastRow = snapshot.rows.lastOrNull() ?: return
         viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            stored.lastOrNull()?.let { row ->
-                withContext(Dispatchers.IO) { chatRepository.updateMessage(row.id, text) }
+            lastRow.dbId?.let { id ->
+                withContext(Dispatchers.IO) { chatRepository.updateMessage(id, text) }
             }
             _state.update { current ->
                 if (current.sessionId != sessionId) current
                 else current.copy(
-                    transcript = current.transcript.mapIndexed { i, message ->
-                        if (i == lastIndex) message.copy(content = text) else message
+                    // 只换这一行的正文：key 与 dbId 不动（K1），其余行原样
+                    rows = current.rows.map { row ->
+                        if (row.uiKey == lastRow.uiKey) row.copy(content = text) else row
                     },
                     lastSwipeId = index,
                 )
@@ -3304,32 +3393,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 删一条消息（index = 在 transcript 里的位置）。库里同下标的行一起删。 */
-    fun deleteMessageAt(index: Int) {
+    /**
+     * 删一条消息（入参是**行身份** `uiKey`，不是下标）。
+     *
+     * 以前按 UI 下标记到库里的行号，中间删一条之后两边就错位；现在按 `dbId` 删，
+     * 界面按 `uiKey` 就地移除（K4：不在组合存活期内重建 rows）。
+     */
+    fun deleteMessageAt(uiKey: String) {
         val snapshot = _state.value
         val sessionId = snapshot.sessionId ?: return
         if (snapshot.isStreaming) {
             notify("正在生成，等它写完再删")
             return
         }
-        val target = snapshot.transcript.getOrNull(index) ?: return
+        val target = snapshot.rows.firstOrNull { it.uiKey == uiKey } ?: return
+        val wasLast = snapshot.rows.lastOrNull()?.uiKey == uiKey
         viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            stored.getOrNull(index)?.let { row ->
-                withContext(Dispatchers.IO) { chatRepository.deleteMessage(row.id) }
+            target.dbId?.let { id ->
+                withContext(Dispatchers.IO) { chatRepository.deleteMessage(id) }
             }
             _state.update { current ->
                 if (current.sessionId != sessionId) current
                 else current.copy(
-                    transcript = current.transcript.filterIndexed { i, _ -> i != index },
+                    rows = current.rows.filterNot { it.uiKey == uiKey },
                     // 删掉最后一条 = swipe 备选也一起没了（库里是 ON DELETE CASCADE）
-                    lastSwipes = if (index == current.transcript.lastIndex) emptyList()
-                    else current.lastSwipes,
-                    lastSwipeId = 0,
+                    lastSwipes = if (wasLast) emptyList() else current.lastSwipes,
+                    lastSwipeId = if (wasLast) 0 else current.lastSwipeId,
                 )
             }
             refreshSessions()
-            AppLog.i("chat", "删除单条 index=$index role=${target.role}")
+            AppLog.i("chat", "删除单条 key=$uiKey role=${target.role}")
             notify("已删除 1 条")
         }
     }
@@ -3340,12 +3433,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * 用户 2026-11-25 第 11 条要的"像编程工具 rewind"：不是删一条，而是把时间线退到那次提问，
      * 改完再发 —— 所以这条用户消息本身也删掉（发送时会重新追加，不会出现两条一样的）。
      */
-    fun rewindToMessage(index: Int) {
+    fun rewindToMessage(uiKey: String) {
         val snapshot = _state.value
         val sessionId = snapshot.sessionId ?: return
-        val target = snapshot.transcript.getOrNull(index) ?: return
+        val index = snapshot.rows.indexOfFirst { it.uiKey == uiKey }
+        if (index < 0) return
+        val target = snapshot.rows[index]
         // 先把"点了哪一个"记下来：真机上这类操作看不出到底走了哪条分支
-        AppLog.i("chat", "撤回请求 index=$index role=${target.role} streaming=${snapshot.isStreaming}")
+        AppLog.i("chat", "撤回请求 index=$index key=$uiKey role=${target.role} streaming=${snapshot.isStreaming}")
         if (snapshot.isStreaming) {
             notify("正在生成：先点停止，再撤回")
             return
@@ -3355,38 +3450,43 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
-            val cut = index.coerceIn(0, stored.size)
-            // 删的是"这条用户消息 + 它之后的所有消息"（**双方都算**：角色回复一起撤）
-            val removed = stored.drop(cut)
+            // 删的是"这条用户消息 + 它之后的所有消息"（**双方都算**：角色回复一起撤）。
+            // 按 dbId 逐条删，不再靠"UI 下标 == 库行号"。
+            val removed = snapshot.rows.drop(index)
+            var failed = 0
             withContext(Dispatchers.IO) {
-                removed.asReversed().forEach { chatRepository.deleteMessage(it.id) }
+                removed.asReversed().forEach { row ->
+                    val id = row.dbId ?: return@forEach
+                    if (runCatching { chatRepository.deleteMessage(id) }.isFailure) failed++
+                }
             }
-            // 以库里剩下的为准重建 transcript：删完之后界面和库不可能再对不上
-            val remaining = withContext(Dispatchers.IO) { chatRepository.messages(sessionId) }
+            // K4：组合存活期内**不从库里重建** —— 那就地移除这一段，其余行的 key 一动不动。
+            // 只有真的全删掉了才动界面；删失败就保留原样并如实提示（重进会话会看到实际结果）。
+            val done = failed == 0
             _state.update { current ->
                 if (current.sessionId != sessionId) current
                 else current.copy(
-                    transcript = remaining.map { message ->
-                        ChatMessage(
-                            role = if (message.isUser) ChatRole.User else ChatRole.Assistant,
-                            content = message.content,
-                        )
-                    },
-                    input = target.content,
+                    rows = if (done) current.rows.take(index) else current.rows,
+                    input = if (done) target.content else current.input,
                     // 被删掉的那批里可能有最后一条助手消息，它的 swipe 备选也跟着没了
-                    lastSwipes = emptyList(),
-                    lastSwipeId = 0,
+                    lastSwipes = if (done) emptyList() else current.lastSwipes,
+                    lastSwipeId = if (done) 0 else current.lastSwipeId,
                     // 列表削短后要回到最底部（用户 2026-11-25：撤回后停在半空）
-                    scrollToBottomSignal = current.scrollToBottomSignal + 1,
+                    scrollToBottomSignal = if (done) current.scrollToBottomSignal + 1
+                    else current.scrollToBottomSignal,
                 )
             }
             refreshSessions()
-            AppLog.i(
-                "chat",
-                "撤回到 index=$index：删 ${removed.size} 条（我方的这条 + 之后双方全部），剩 ${remaining.size} 条",
-            )
-            notify("已撤回 ${removed.size} 条消息，正文回到输入框")
+            if (done) {
+                AppLog.i(
+                    "chat",
+                    "撤回 index=$index：删 ${removed.size} 条（我方的这条 + 之后双方全部），剩 ${snapshot.rows.size - removed.size} 条",
+                )
+                notify("已撤回 ${removed.size} 条消息，正文回到输入框")
+            } else {
+                AppLog.e("chat", "撤回失败：$failed 条没删掉（界面保持原样）")
+                notify("撤回没完成：$failed 条没能删除，重进会话会看到实际结果")
+            }
         }
     }
 

@@ -23,6 +23,12 @@ public class GenerationRound(
     public val roundId: Long,
     /** 这一轮归属的会话。 */
     public val sessionId: String,
+    /**
+     * 这一轮在界面上的**行身份**（组合期稳定）。核心不解释它，只在收尾时原样交回给调用方。
+     *
+     * 占位 / 流式 / 定稿三态用同一个 key，LazyColumn 才不会在落库那一帧换条目。
+     */
+    public val replyUiKey: String,
     /** 重新生成的目标行（`messages.id`）；null = 这一轮落一条**新**消息。 */
     public val targetDbId: Long? = null,
     /** 这一轮刚写进库的用户消息行号；发送时为 null（还没落库），落库成功后由调用方补一次。 */

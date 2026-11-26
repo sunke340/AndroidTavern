@@ -27,6 +27,7 @@ class GenerationRoundTest {
     ) = GenerationRound(
         roundId = roundId,
         sessionId = "s1",
+        replyUiKey = "p$roundId",
         targetDbId = targetDbId,
         userRowDbId = userRowDbId,
         userInput = userInput,
