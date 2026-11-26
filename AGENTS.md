@@ -4,7 +4,7 @@
 单 APK、单进程、无服务端、无 WebView（[ADR 0002](docs/adr/0002-single-process.md)）。
 **现状（2026-11-24）**：M1 已可用（导卡/聊天/流式/开场白/落库/Key 加密/主题/日志导出），
 P1-5 预设与 prompt_order 已被用户验收，当天还修完启动、世界书、详情页导航与聊天串流一批细节。
-接手先看 [接手卡](docs/handoff/2026-11-27-reveal-pacing.md)，当前进度见 [docs/dev/status.md](docs/dev/status.md)。
+接手先看 [接手卡](docs/handoff/2026-11-27-night-batch.md)，当前进度见 [docs/dev/status.md](docs/dev/status.md)。
 
 ## TL;DR — 违反即改动无效
 
@@ -91,7 +91,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | 夹具怎么录、长什么样 | [docs/dev/fixtures.md](docs/dev/fixtures.md) |
 | 原版已实测的行为（别猜） | [docs/dev/original-behavior.md](docs/dev/original-behavior.md) |
 | 具体怎么跑 / 怎么发 / 怎么救 | [docs/dev/runbook.md](docs/dev/runbook.md) |
-| **接手卡（压缩上下文 / 换人时先读这个）** | [docs/handoff/2026-11-27-reveal-pacing.md](docs/handoff/2026-11-27-reveal-pacing.md)（**一次交接一份**，新的一律写 `docs/handoff/YYYY-MM-DD-<主题>.md`；内容：正在悬着的事、待验清单、出包循环） |
+| **接手卡（压缩上下文 / 换人时先读这个）** | [docs/handoff/2026-11-27-night-batch.md](docs/handoff/2026-11-27-night-batch.md)（**一次交接一份**，新的一律写 `docs/handoff/YYYY-MM-DD-<主题>.md`；内容：正在悬着的事、待验清单、出包循环） |
 | **当前状态与下一步** | [docs/dev/status.md](docs/dev/status.md)（**只写现状，每次整篇重写**；不是规则，别当硬性要求引用） |
 | 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
 | **架构审计（2026-11-26，只读）**：实际架构模式、职责边界、God Class/并发/安全/技术债清单 | [docs/dev/architecture-audit.md](docs/dev/architecture-audit.md) |

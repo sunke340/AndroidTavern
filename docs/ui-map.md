@@ -121,6 +121,7 @@
 | 详情页骨架 | 二三级页 | 内容录图层 + 页头浮层 | `GlassDetailScaffold` |
 | 内容首项留白 | 二级页滚动内容 | 列表首项离页头底边 16dp，Column 页贴底边；页面不再自己算 | `contentSpacing`（骨架参数） |
 | 页头右上胶囊 | 页头右侧 | 只吃高度的玻璃胶囊，装图标 | `CapsuleIcon` |
+| 胶囊菜单 | 聊天页 ⋮ / 卡详情 ⋮ | 点胶囊从右下角长出来的液态玻璃菜单（点空白关） | `GlassCapsuleMenuHost` / `CapsuleMenuController` |
 | 搜索框 | 世界书条目页 / 世界书选择页顶部 | 单行输入，左侧放大镜 | `SearchField` |
 | 选择页批量菜单 | 世界书 / 正则选择页右上 | 全部开启 / 全部关闭 / 恢复默认（恢复默认 = 跟随上级） | `PickerBulkMenu` |
 | 页栈转场 | 页面切换 | 进：新页从右滑入；退：整屏滑走 | `PageStack` |
@@ -228,6 +229,7 @@
 | 回到底部按钮 | `JumpToBottomButton`（输入胶囊上方右侧） | 2026-11-26 |
 | 气泡字号 | `BubbleFontSizes`（小 12 / 标准 14 / 大 16 / 特大 18） | 2026-11-26 |
 | 预设点进去看全文 | `PresetPromptScreen`（提示词全文） | 2026-11-26 |
+| 胶囊菜单 | `GlassCapsuleMenuHost`（点页头胶囊弹出） | 2026-11-27 |
 
 ## 七、日志 tag（排障时说"哪条日志"用）
 

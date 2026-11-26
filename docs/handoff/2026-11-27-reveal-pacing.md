@@ -1,6 +1,9 @@
 # 接手卡 · 2026-11-27 凌晨 · 流式回复揭示节奏（方案定稿，待评审 → 待实施）
 
-> 给下一次会话 / 换人接手用。**一次交接一份，本页是最新那份**；上一份（聊天列表 P3/P4 那段）在
+> ⚠️ **已被取代**：最新一份是 [2026-11-27-night-batch.md](2026-11-27-night-batch.md)（凌晨批量之后的状态）。
+> 本页保留「揭示节奏方案定稿那一刻」的上下文；方案本身仍以 [plan-reveal-pacing.md](../plan-reveal-pacing.md) 为准。
+>
+> 给下一次会话 / 换人接手用。**一次交接一份**；上一份（聊天列表 P3/P4 那段）在
 > [2026-11-26-chat-list-p3.md](2026-11-26-chat-list-p3.md)，**只作历史读**。
 > 方案细节**不在这里**，全在 [docs/plan-reveal-pacing.md](../plan-reveal-pacing.md)（定稿，唯一口径）。
 > 现状 → [status.md](../dev/status.md)｜规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)
