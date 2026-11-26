@@ -5,6 +5,7 @@
 
 | 日期 | 主题 | 文件 |
 |---|---|---|
+| 2026-11-26 晚 | **聊天列表重构 P3 收口、P4 前交接（当前）** | [2026-11-26-chat-list-p3.md](../handoff/2026-11-26-chat-list-p3.md) |
 | 2026-11-26 | 聊天列表重构（P0–P2 完成、P3 前交接） | [2026-11-26-chat-list-refactor.md](../handoff/2026-11-26-chat-list-refactor.md) |
 
 **下一次交接**：在 `docs/handoff/` 新建 `YYYY-MM-DD-<主题>.md`（写"别漏掉的"，其余链接出去），
