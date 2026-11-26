@@ -137,6 +137,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tavern.core.model.ChatMessage
+import app.tavern.core.model.countCodePointsIncrementally
+import app.tavern.core.model.takeCodePoints
 import app.tavern.core.model.ChatRole
 import app.tavern.data.log.AppLog
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -381,7 +383,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             val rate = st.revealSpeed.cps.toFloat()
             // ① 增量数码点（只数新增后缀；全文重数只发生在"非追加变化"）
             val text = revealSource()
-            val count = countCodePoints(text, reveal.prevText, reveal.prevCount)
+            val count = countCodePointsIncrementally(text, reveal.prevText, reveal.prevCount)
             reveal.prevText = text
             reveal.prevCount = count
             reveal.receivedCount = count
@@ -1030,7 +1032,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                     // 打印期只画**前缀**；其余情况（不限速 / 减动效 / 已打完）画全文。
                     val shownContent =
-                        if (isPrintingRow && !collapseOpen) takeByCodePoints(fullContent, revealShown)
+                        if (isPrintingRow && !collapseOpen) takeCodePoints(fullContent, revealShown)
                         else fullContent
                     // 还没吐字 → 占位气泡（`生成中` / `重新生成中` + 呼吸点）；
                     // 吐了字就退回正文 + 光标。两者都在**同一行、同一个 item** 里换内容。
@@ -2397,36 +2399,6 @@ private fun logRevealDone(key: String, reveal: RevealState) {
     AppLog.i("chat", "打印完成 uiKey=$key 用时=${round1(seconds)}s 码点=${reveal.receivedCount}")
 }
 
-/** 取前 [codePoints] 个码点的前缀（落在完整码点边界上，不会切出半个代理对）。 */
-private fun takeByCodePoints(text: String, codePoints: Int): String {
-    if (codePoints <= 0) return ""
-    val total = text.codePointCount(0, text.length)
-    if (codePoints >= total) return text
-    return text.substring(0, text.offsetByCodePoints(0, codePoints))
-}
-
-/**
- * 增量码点计数：**只数新增后缀**，不每个 delta 全文扫。
- *
- * 全文重数只发生在：① 新一轮首次取文本（[prevText] 为 null）；
- * ② 非追加变化（swipe 换正文 / 重新生成收尾换正文）。
- * 若上一段末尾是高代理、新段第一个是低代理，这个代理对已经被 [prevCount] 计入过 —— 减 1。
- */
-private fun countCodePoints(newText: String, prevText: String?, prevCount: Int): Int {
-    if (prevText != null && newText === prevText) return prevCount
-    if (prevText != null && newText.length > prevText.length && newText.startsWith(prevText)) {
-        val suffixStart = prevText.length
-        var add = newText.codePointCount(suffixStart, newText.length)
-        if (suffixStart > 0 &&
-            newText[suffixStart - 1].isHighSurrogate() &&
-            newText[suffixStart].isLowSurrogate()
-        ) {
-            add -= 1
-        }
-        return prevCount + add
-    }
-    return newText.codePointCount(0, newText.length)
-}
 
 /**
  * 每 2 秒一条打印帧日志。
