@@ -435,6 +435,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val job: Job,
         /** true = 这一轮的回复已经落库（finish 或 stop 先到先得）。 */
         val written: AtomicBoolean = AtomicBoolean(false),
+        /**
+         * 这一轮是"重新生成 / 继续"时带上目标（普通发送为 null）。
+         * `stop()` 必须知道它：否则半截内容会被当成**一条新消息**追在界面后面，
+         * 而"继续"原先撤下去的那条就再也不会回来（2026-11-26 真机：继续后前一条消失，
+         * 退出会话重进才恢复）。这一条以前只存在于 `finish()` 的闭包里。
+         */
+        val replacing: ReplaceTarget? = null,
     )
 
     private var streaming: StreamingTask? = null
@@ -2080,28 +2087,120 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         // 半截内容只能进**它自己那条会话**：切换会话时流已被取消，这里再兜一层
         val sameSession = _state.value.sessionId == active.sessionId
-        _state.update {
-            it.copy(
-                transcript = if (partial.isBlank() || !sameSession) {
-                    it.transcript
-                } else {
-                    it.transcript + ChatMessage(ChatRole.Assistant, partial)
-                },
-                streamingText = "",
-                isStreaming = false,
-                status = if (partial.isBlank()) "已停止" else "已停止（保留了 ${partial.length} 字）",
-            )
-        }
+        val target = active.replacing
+        val status = if (partial.isBlank()) "已停止" else "已停止（保留了 ${partial.length} 字）"
 
-        if (partial.isNotBlank()) {
-            viewModelScope.launch {
-                withContext(Dispatchers.IO) {
-                    chatRepository.append(active.sessionId, isUser = false, content = partial)
+        when {
+            // 普通发送：半截内容单独存成一条（原来那条用户消息不动）
+            target == null -> {
+                _state.update {
+                    it.copy(
+                        transcript = if (partial.isBlank() || !sameSession) {
+                            it.transcript
+                        } else {
+                            it.transcript + ChatMessage(ChatRole.Assistant, partial)
+                        },
+                        // 这条新回复尚无其它版本；上一轮的 swipe 备选不能留着 ——
+                        // 留着的话，下一次「重新生成」会把上一条消息的底本写到这条上
+                        lastSwipes = if (partial.isBlank()) emptyList() else listOf(partial),
+                        lastSwipeId = 0,
+                        streamingText = "",
+                        isStreaming = false,
+                        status = status,
+                    )
                 }
-                refreshSessions()
+                if (partial.isNotBlank() && sameSession) {
+                    viewModelScope.launch {
+                        withContext(Dispatchers.IO) {
+                            chatRepository.append(active.sessionId, isUser = false, content = partial)
+                        }
+                        refreshSessions()
+                    }
+                }
+            }
+
+            // 继续：拼回**原来那一条**；一个字都没收到就原样放回（绝不新开一条）
+            target.append -> {
+                if (partial.isBlank()) {
+                    _state.update {
+                        it.copy(
+                            transcript = if (sameSession) it.transcript + target.restore else it.transcript,
+                            streamingText = "",
+                            isStreaming = false,
+                            status = status,
+                        )
+                    }
+                } else {
+                    val merged = target.restore.content + partial
+                    val next = target.base.toMutableList().also {
+                        it[target.swipeId.coerceIn(0, it.lastIndex)] = merged
+                    }
+                    _state.update {
+                        it.copy(
+                            transcript = if (sameSession) {
+                                it.transcript + ChatMessage(ChatRole.Assistant, merged)
+                            } else {
+                                it.transcript
+                            },
+                            lastSwipes = next,
+                            lastSwipeId = target.swipeId.coerceIn(0, next.lastIndex),
+                            streamingText = "",
+                            isStreaming = false,
+                            status = status,
+                        )
+                    }
+                    viewModelScope.launch {
+                        withContext(Dispatchers.IO) {
+                            chatRepository.updateMessage(target.rowId, merged)
+                            chatRepository.setSwipes(target.rowId, next)
+                        }
+                        refreshSessions()
+                    }
+                }
+            }
+
+            // 重新生成：半截内容作为一条**新的 swipe 备选**，旧的那条还留着能翻回去
+            else -> {
+                if (partial.isBlank()) {
+                    _state.update {
+                        it.copy(
+                            transcript = if (sameSession) it.transcript + target.restore else it.transcript,
+                            streamingText = "",
+                            isStreaming = false,
+                            status = status,
+                        )
+                    }
+                } else {
+                    val next = target.base + partial
+                    _state.update {
+                        it.copy(
+                            transcript = if (sameSession) {
+                                it.transcript + ChatMessage(ChatRole.Assistant, partial)
+                            } else {
+                                it.transcript
+                            },
+                            lastSwipes = next,
+                            lastSwipeId = next.lastIndex,
+                            streamingText = "",
+                            isStreaming = false,
+                            status = status,
+                        )
+                    }
+                    viewModelScope.launch {
+                        withContext(Dispatchers.IO) {
+                            chatRepository.updateMessage(target.rowId, partial)
+                            chatRepository.setSwipes(target.rowId, next)
+                        }
+                        refreshSessions()
+                    }
+                }
             }
         }
-        AppLog.i("chat", "停止：保留 ${partial.length} 字 session=${active.sessionId.take(8)}")
+        AppLog.i(
+            "chat",
+            "停止：保留 ${partial.length} 字 session=${active.sessionId.take(8)}" +
+                if (target == null) "" else "（${if (target.append) "继续" else "重新生成"}）",
+        )
     }
 
     /**
@@ -2984,8 +3083,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update {
                 it.copy(
                     status = "已发 ${messages.size} 条消息（${snapshot.model}）",
-                    requestPreview = messages.joinToString("\n\n") { message ->
-                        "[${message.role.wire}] ${message.content}"
+                    // 首行放请求参数：真机上「查看请求」是唯一不靠日志的证据，
+                    // 采样五项有没有按三级生效，只能在这里看见（2026-11-26 用户要验采样）
+                    requestPreview = buildString {
+                        append("model=").append(snapshot.model)
+                        append("  temperature=").append(snapshot.effectiveTemperature)
+                        append("  max_tokens=").append(snapshot.effectiveMaxTokens ?: "不限")
+                        append("  top_p=").append(snapshot.effectiveTopP ?: "不指定")
+                        append("  frequency_penalty=")
+                            .append(snapshot.effectiveFrequencyPenalty ?: "不指定")
+                        append("  presence_penalty=")
+                            .append(snapshot.effectivePresencePenalty ?: "不指定")
+                        messages.forEach { message ->
+                            append("\n\n[${message.role.wire}] ").append(message.content)
+                        }
                     },
                 )
             }
@@ -3069,7 +3180,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             release()
         }
         // 归属位在**这里**登记：先有 job 才有所有权。这一行之后 stop/切会话才找得到它。
-        streaming = StreamingTask(sessionId, task, written)
+        streaming = StreamingTask(sessionId, task, written, replacing)
     }
 
     // ---- 消息操作（P0-6 的一部分：重新生成 / 编辑 / 删除）---------------------
@@ -3100,8 +3211,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 notify("库里没有可重新生成的那一条")
                 return@launch
             }
-            // 老数据可能还没有 swipe 备选：先把"现在显示的这条"写进去，翻回去才有东西可翻
-            val base = snapshot.lastSwipes.ifEmpty { listOf(row.content) }
+            // swipe 备选只对"当前显示的那条"有效：被打断 / 换过一条之后可能已经过期，
+            // 拿它当底本会把上一条的旧文本写到这一条上（2026-11-26 真机：打断后重新生成没有 2/2）
+            val base = snapshot.lastSwipes.takeIf {
+                it.isNotEmpty() && it.getOrNull(snapshot.lastSwipeId) == last.content
+            } ?: listOf(last.content)
             withContext(Dispatchers.IO) { chatRepository.setSwipes(row.id, base) }
             val trimmed = snapshot.transcript.dropLast(1)
             _state.update {
@@ -3150,7 +3264,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 notify("库里没有可继续的那一条")
                 return@launch
             }
-            val base = snapshot.lastSwipes.ifEmpty { listOf(row.content) }
+            // 同上：底本必须就是这一条本身（继续要改的是"现在显示的这条"）
+            val base = snapshot.lastSwipes.takeIf {
+                it.isNotEmpty() && it.getOrNull(snapshot.lastSwipeId) == last.content
+            } ?: listOf(last.content)
             _state.update {
                 it.copy(
                     transcript = it.transcript.dropLast(1),
@@ -3168,7 +3285,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     base = base,
                     restore = last,
                     append = true,
-                    swipeId = snapshot.lastSwipeId.coerceIn(0, base.lastIndex),
+                    swipeId = base.indexOf(last.content).coerceAtLeast(0),
                 ),
                 continuation = true,
             )

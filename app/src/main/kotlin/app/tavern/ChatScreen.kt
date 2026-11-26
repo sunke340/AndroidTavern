@@ -531,7 +531,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
                 if (shownStream.isNotEmpty()) {
-                    item {
+                    // 显式 key：没有 key 时列表按"下标"认条目 —— 在头部插一条会让**所有**
+                    // 已有气泡换槽位，于是整屏一起播淡入/淡出（用户 2026-11-26：发一条新消息
+                    // 整个列表会突然显示一下）。串流气泡与空状态也各占一个固定 key。
+                    item(key = "stream") {
                         MessageRow(
                             message = ChatMessage(ChatRole.Assistant, shownStream),
                             style = state.effectiveMessageStyle,
@@ -547,7 +550,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                 }
                 if (state.transcript.isEmpty() && state.streamingText.isEmpty()) {
-                    item { EmptyHint("还没有消息。发一句开始；点右上「请求」可以看到实际发出去的提示词。") }
+                    item(key = "empty") {
+                        EmptyHint("还没有消息。发一句开始；点右上「请求」可以看到实际发出去的提示词。")
+                    }
                 }
                 // 开场白翻页（用户 2026-11-25 第 3 条）：只在"还没说过话 + 不止一条"时出现。
                 // 箭头贴在第一屏最上面那条气泡的**上沿**，和气泡同一个 item —— 翻页时一起动，不会脱节。
@@ -557,7 +562,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     state.greetings,
                     state.transcript.firstOrNull()?.content,
                 )
-                itemsIndexed(state.transcript.asReversed()) { index, message ->
+                // key 用**原 transcript 下标**（反排显示的下标在追加时会整体 +1）：
+                // 这样追加一条新消息只让新条目淡入，已有气泡原地不动。
+                itemsIndexed(
+                    items = state.transcript.asReversed(),
+                    key = { index, _ -> "msg-" + (state.transcript.lastIndex - index) },
+                ) { index, message ->
                     // 只做淡入/淡出，不做位移动画：串流时列表每帧都在长高，
                     // 位移动画会不断重放，整屏看起来在闪。
                     //
