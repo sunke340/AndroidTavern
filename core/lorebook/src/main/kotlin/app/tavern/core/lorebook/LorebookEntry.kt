@@ -156,6 +156,8 @@ public fun LorebookEntry.withDisabled(disabled: Boolean): LorebookEntry = Lorebo
     selective = selective,
     order = order,
     position = position,
+    // 出口名要跟着走：漏了它，"强制开启"的出口条目就再也取不出来了
+    outletName = outletName,
     disabled = disabled,
     probability = probability,
     useProbability = useProbability,
