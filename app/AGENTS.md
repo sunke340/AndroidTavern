@@ -275,6 +275,9 @@
   预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
   `onPostScroll` 把 available 全报成已消费；回弹必须能被手指打断（代数守卫）。
+  **没得滚就不弹**：内容不满一屏时传 `scrollable = { … }`（聊天列表传
+  `listState.canScrollBackward || canScrollForward`）。不传的话，短列表往任何方向拖都算越界 ——
+  拉→弹→再拉，两个极限交替出现，观感是整列在抖（2026-11-26 用户报的"抽搐"）。
   **拉伸的位移必须裁在自己的槽位里**（`rubberOverscroll` 最外层 `clipToBounds`）：那笔位移是
   绘制量，不裁就会画到邻居身上（2026-11-25 详情页 Tab 栏被内容盖住就是这么来的）。
 

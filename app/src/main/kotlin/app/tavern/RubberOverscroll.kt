@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -119,8 +120,21 @@ fun rememberRubberOverscroll(): RubberOverscrollState = remember { RubberOverscr
 fun Modifier.rubberOverscroll(
     state: RubberOverscrollState,
     reduceMotion: Boolean = rememberReduceMotion(),
+    /**
+     * 这个可滚面**现在有没有得滚**（内容够不够长）。默认恒 true = 老行为。
+     *
+     * 为什么要这个开关（用户 2026-11-26 报的"列表不够一屏时来回抽搐"）：
+     * 内容短到不用滚时，往**任何**方向拖都是"越界" —— 于是拉一下弹回去、再拉再弹，
+     * 手指还在屏幕上，观感就是整个列表在两头上抖。真机上日志能看出来：同一时间窗里
+     * `fling 撞上限 raw=±444` 两个方向交替出现（有滚动距离时只可能撞一头）。
+     * 没得滚就**吃掉位移但不产生拉伸**（不吞掉的话会交给系统的 stretch overscroll，一样抖）。
+     */
+    scrollable: () -> Boolean = { true },
 ): Modifier {
     val density = LocalDensity.current
+    // 用 rememberUpdatedState 而不是把它塞进 `remember` 的 key：调用方每次都传新 lambda，
+    // 塞进 key 会让 nestedScroll 连接每帧重建（手势中途被换掉 = 掉一笔位移）。
+    val scrollableNow by rememberUpdatedState(scrollable)
     state.reduceMotion = reduceMotion
     // 参考尺寸固定 400dp：不随页面高度变，保证"每页拉到头距离一样"
     val referencePx = with(density) { 400.dp.toPx() }
@@ -177,6 +191,8 @@ fun Modifier.rubberOverscroll(
 
             /** 往回拖时先把橡皮筋收回去，再让列表正常滚。 */
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // 没得滚：不接管、不拉伸（位移由 onPostScroll 吃掉）
+                if (!scrollableNow()) return Offset.Zero
                 // fling 不接管：它送来的位移由 onPostScroll 吃掉，绝不能让动画被反复掐死
                 if (state.isFling(source)) return Offset.Zero
                 takeOver()
@@ -199,6 +215,12 @@ fun Modifier.rubberOverscroll(
             /** 列表滚不动了：剩下的滚动量累积成原始越界量（视觉由公式决定，不做逐帧阻尼）。 */
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y == 0f) return Offset.Zero
+                // 没得滚：**吃掉**这笔位移但不动画（返回 available = 全消费）。
+                // 不能返回 Zero —— 那样会落到系统的 stretch overscroll 上，短列表照样抖。
+                if (!scrollableNow()) {
+                    state.flingEaten = false
+                    return Offset(0f, available.y)
+                }
                 val fromFling = state.isFling(source)
                 val limit = state.rawLimit
                 if (fromFling) {
@@ -235,6 +257,7 @@ fun Modifier.rubberOverscroll(
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
+                if (!scrollableNow()) return available   // 没得滚：惯性直接吃掉，别交给系统
                 if (state.raw == 0f) return Velocity.Zero
                 takeOver()
                 startSettle(available.y)

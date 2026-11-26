@@ -210,6 +210,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 滚动之后那一帧才真正组合出来，那时集合里已经有它了，动画整个不播（用户 2026-11-26 问的
     // "是参数没生效吗"就是这个）。水位在进场时记一次，所以离场重建也不会让老行重新入场。
     val bornFloor = remember { state.rows.maxOfOrNull { bornSeq(it.uiKey) } ?: -1L }
+    // 已经播过入场的行（`uiKey`）。**行会被 LazyColumn 回收**：滚出视口即销毁，滚回来重新组合，
+    // `remember` 里的 `Animatable` 于是回到初始值。只按"出厂序号 vs 进页水位"判断的话，
+    // 这一行永远算"新行"→ 每次滚回视口都重播一遍入场（用户 2026-11-26 报的
+    // "用户消息回到显示范围时下方的按钮又浮现"）。所以播过就登记，之后不再播。
+    // 退页再进时整页重建，这份登记随之清空 —— 但那时 `bornFloor` 也重新记过，老行本来就不播。
+    val entrancedKeys = remember { mutableSetOf<String>() }
     // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
     // 会拿到没有宿主的实例，确认框静默不弹（2026-11-25 真机清单的根因）。自己建一个传进去。
     val confirm = remember { ConfirmController() }
@@ -667,7 +673,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         0f
                     }
                 }
-                .rubberOverscroll(overscroll),
+                // 内容不满一屏时**没有滚动距离**：往哪边拖都是越界，拉了会弹、再拉再弹
+                // （用户 2026-11-26 报的"一直尝试抬升列表、因为总长度限制又一直复位"）。
+                // 所以只在"真有得滚"的时候才让橡皮筋接管。
+                .rubberOverscroll(
+                    overscroll,
+                    scrollable = { listState.canScrollBackward || listState.canScrollForward },
+                ),
             contentPadding = PaddingValues(
                 // 页头 + 状态栏 + 首项那 16dp 都由骨架算进 padding（contentSpacing = Space.l）
                 top = padding.calculateTopPadding(),
@@ -705,12 +717,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val isLast = isLastSettled
                     val isAssistant = row.role == ChatRole.Assistant
                     // 入场：只有"上一帧还不存在的那一行"才排动画（淡入 + 轻微上浮）。
-                    // 身份在 `remember(uiKey)` 里定一次 —— 后面无论怎么重组、重建都不会重播。
-                    val entering = bornSeq(row.uiKey) > bornFloor
+                    // ⚠️ 光靠 `remember(uiKey)` 不够：LazyColumn 会把**滚出视口的行销毁**，
+                    // 滚回来时这个 remember 重新初始化；而 `entering` 是按"出厂序号 vs 进页水位"
+                    // 算的，对这一行**永远为真** —— 于是每次滚回来都从 0 重播一遍入场。
+                    // 用户 2026-11-26 报的"用户消息回到显示范围时，下方的按钮会重新浮现"就是这个
+                    //（槽位高度从 0 重新长起来，动作行跟着一起"浮现"）；退页再进就好，是因为
+                    // 那时 `bornFloor` 重新记了一遍、老行全部算"非新行"。所以播过就登记，不再重播。
+                    val entering = bornSeq(row.uiKey) > bornFloor && row.uiKey !in entrancedKeys
                     val enter = remember(row.uiKey) { Animatable(if (entering) 0f else 1f) }
                     // 发送那一拍要错开：占位行也在这一帧进列表，但**晚一点再长出来**
                     val delayAppear = entering && isInflightRow && sentNewUserRow
                     LaunchedEffect(row.uiKey) {
+                        entrancedKeys += row.uiKey
                         if (enter.value < 1f) {
                             if (delayAppear) delay(PendingAppearDelayMs)
                             enter.animateTo(1f, tween(Motion.Entry, easing = Motion.Decelerate))
