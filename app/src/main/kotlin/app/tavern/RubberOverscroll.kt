@@ -59,6 +59,15 @@ class RubberOverscrollState internal constructor() {
      */
     internal var rawLimit: Float = Float.MAX_VALUE
 
+    /**
+     * 上一次"累积开始"日志的时间（ms），只为限流。
+     *
+     * 为什么这条日志必须有：`onPostScroll` 里[非 fling]的累积**不打任何日志**，
+     * `applyRaw` 也不打 —— 只有"撞上限"和"回弹 start/结束"会记。于是"橡皮筋被喂了位移、
+     * 但没到上限也没回弹"这种情形在日志里完全看不见（2026-11-26 排查"抽搐"时就卡在这）。
+     */
+    internal var lastAccumLogAt: Long = 0L
+
 
     /**
      * 是否是 **fling** 送来的位移（而不是手指拖动）。
@@ -239,6 +248,15 @@ fun Modifier.rubberOverscroll(
                     state.flingEaten = false
                 }
                 takeOver()
+                // 从 0 开始累积 = 这一笔越界量的来源值得记一笔：手指拖的，还是程序喂的
+                //（程序喂的看同时段有没有 `tag=scroll 补偿 …`）。500ms 限流。
+                if (state.raw == 0f) {
+                    val now = System.currentTimeMillis()
+                    if (now - state.lastAccumLogAt >= 500L) {
+                        state.lastAccumLogAt = now
+                        AppLog.i("rubber", "开始累积 available=${available.y.roundToInt()}px 来源=${if (fromFling) "fling" else "拖/程序"}")
+                    }
+                }
                 val next = state.raw + available.y
                 if (abs(next) >= limit) {
                     state.applyRaw(if (next < 0f) -limit else limit)

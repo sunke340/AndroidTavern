@@ -82,6 +82,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -291,6 +292,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val roundKey = state.inflight?.roundId
     var streamHeight by remember(roundKey) { mutableIntStateOf(0) }
     val smoothHeight = remember(roundKey) { Animatable(0f) }
+    // 流式行**入场动画的进度**（0 = 还没开始长，1 = 已经长满）。见 `followBridgePx` 的第 1 条。
+    //
+    // 为什么不用"入场是否结束"的布尔：`重新生成` 那种就地改写，行是**早就组合好的**（enter 一开始
+    // 就是 1），而"发送"那种是当帧新建的（enter 从 0 长到 1）。布尔写在哪一边都会漏，所以直接
+    // 把它摊成水位：流式行每次重组把 `enter.value` 报上来，门控就看这个数。
+    // 默认 1f = "没有入场动画"（库里读出来的行、已经播完的行都算完成）。
+    var inflightEnterProgress by remember(roundKey) { mutableFloatStateOf(1f) }
+    // 流式行**报给布局**的高度（槽位高度），只给诊断日志用；和 `streamHeight`（气泡自然高度）
+    // 对照，就能看出桥接补的是不是真实发生的高度差。
+    var rowSlotHeight by remember(roundKey) { mutableIntStateOf(0) }
     // **基线没建立之前，`smoothHeight` 的 0 不是"上一个高度"，而是"还没有上一个高度"。**
     // 把 0 当基线，(首次测量 − 0) 就会被算成"这一下长高了这么多"，于是同一帧里冒出两笔假位移：
     // `graphicsLayer` 的 translationY 把整列往下推；"离开贴底"那条又会把它折成一笔真滚动
@@ -299,10 +310,22 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // `回底…round=true` 紧跟 `模式=A idx=0 off=0 气泡高=140 平滑差=140px`（140px = 占位气泡高度，
     // 基线还是 0）。下面那次 `snapTo` 只能算"事后对齐"，它要跨一次重组 + effect 派发才落地，
     // 至少一帧已经把 140px 画出去了 —— 所以这里**同步**判断，不指望 effect 的时序。
-    // 注意返回 **Float**：`translationY` 要的就是亚像素差（取整会让串流跟随一格一格跳）；
-    // 折成滚动量那边沿用原来的 `.toInt()`。
-    fun bridgePendingPx(): Float =
-        if (smoothHeight.value <= 0f) 0f else streamHeight - smoothHeight.value
+    // ── 串流跟随的**唯一判定点**（后面 B 步的落点就是这里）────────────────────
+    // 这一个函数回答"现在该把内容往下桥多少"。三个驱动源都只问它，不再各自判断：
+    //   1. **入场动画没走完**（`inflightEnterProgress < 1`）→ 0。那段时间布局是**动画**驱动的，不是文本
+    //      在长；桥接补的是"文本长高把内容顶上去"的那笔差，入场期这笔记不出来，硬补就会把
+    //      内容往下推一段、再随着动画一点点收回 —— 用户 2026-11-26 报的"不满一屏时整屏抽搐"
+    //      就出在这里（气泡底板量的是自然高度，槽位报的却是 `e × 自然高度`，两者差一个比例）。
+    //   2. **收缩窗口期**（`collapse != null`）→ 0：布局正被动画改（r2 §13.1 C3）。
+    //   3. **基线没建立**（`smoothHeight <= 0`）→ 0：0 不是"上一个高度"（v177 的教训）。
+    // 返回 Float：`translationY` 要亚像素差；折滚动量那边沿用 `.toInt()`。
+    // B 步（把跟随改成"显式驱动布局高度"）只改这里的**出口接到哪**，调用点不用动。
+    fun followBridgePx(): Float = when {
+        !state.isStreaming || state.collapse != null -> 0f
+        inflightEnterProgress < 1f -> 0f
+        smoothHeight.value <= 0f -> 0f
+        else -> streamHeight - smoothHeight.value
+    }
     LaunchedEffect(streamHeight, state.collapse) {
         // C3：收缩窗口里**不追高度**。这里把平滑高度贴着实测高度走（snap），
         // 窗口一关它就是一个干净起点 —— 下一笔增长照常由"追高度差"那条动画消化。
@@ -318,7 +341,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             smoothHeight.snapTo(target)
         } else {
-            smoothHeight.animateTo(target, tween(Motion.Base, easing = Motion.Decelerate))
+            // **弹簧，不是 tween**：token 比 180ms 密的时候，tween 每次重设目标都把速度清零，
+            // 观感是走-停-走-停（抽搐）。见 [Motion.Follow] 的注释。
+            smoothHeight.animateTo(target, Motion.Follow)
         }
     }
 
@@ -360,7 +385,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (justEnteredBottom) {
             // 回到贴底：这笔欠账在场景 C 里已经消化过（内容本来就在正确位置），
             // 直接对齐，否则会先向下沉一下再滑上来。
-            val pending = bridgePendingPx().toInt()
+            val pending = followBridgePx().toInt()
             smoothHeight.snapTo(streamHeight.toFloat())
             anchoredHeight = streamHeight
             if (pending != 0) anchorDiag.edge("回到贴底", pending, 0)
@@ -374,7 +399,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (leftBottom) {
             // 离开贴底：把当前欠账折成滚动量，画面上就不会"收一下"。
             // 折不完的部分留给 anchoredHeight 当桥接，下一笔补偿接着消化。
-            val pending = bridgePendingPx().toInt()
+            val pending = followBridgePx().toInt()
             if (pending > 0) {
                 val moved = listState.dispatchRawDelta(pending.toFloat()).roundToInt()
                 anchoredHeight = streamHeight - pending + moved
@@ -422,7 +447,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             .collect { mark ->
                 // 平滑差：从贴底切出去时"追高度"的那点欠账。它不是 0 就说明切换那一帧
                 // 内容会往上收一点点（贴底跟随的既有行为，这里先量出来，别和补偿混为一谈）。
-                val pending = bridgePendingPx().toInt()
+                val pending = followBridgePx().toInt()
                 anchorDiag.mode(mark.mode, mark.index, mark.offset, streamHeight, pending, streamProbe.topY)
             }
     }
@@ -430,6 +455,38 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 上一轮收尾把补偿总量写进日志（高度不再清零：它随 `remember(roundKey)` 换新的一套）
     LaunchedEffect(roundKey) {
         if (roundKey == null) anchorDiag.finish() else anchorDiag.reset()
+    }
+    // ── 串流帧诊断（100ms 限流，**验完就删**）────────────────────────────────
+    // 用来回答"抽搐时到底是谁在动"，八个数各管一层：
+    //   槽/自然 —— 布局报出去的高度 vs 气泡自己长到的高度（入场期两者差 `e` 那个比例）
+    //   平滑/桥 —— 绘制桥接（贴底跟随）
+    //   raw/visual —— 橡皮筋（它有**静默累积**路径，不打日志就等于看不见）
+    //   off —— 列表自己的滚动偏移
+    // 判据：入场结束后 `槽−自然 ≈ 0`；`桥` 单调收敛到 0、每帧变化 ≤ 一行高；`raw/visual` 恒 0。
+    LaunchedEffect(roundKey) {
+        if (roundKey == null) return@LaunchedEffect
+        var lastAtMs = 0L
+        snapshotFlow {
+            FrameSample(
+                slot = rowSlotHeight,
+                natural = streamHeight,
+                smooth = smoothHeight.value.roundToInt(),
+                bridge = followBridgePx().roundToInt(),
+                raw = overscroll.raw.roundToInt(),
+                visual = overscroll.visual.roundToInt(),
+                offset = listState.firstVisibleItemScrollOffset,
+                atBottom = atBottom,
+            )
+        }.collect { f ->
+            val now = System.currentTimeMillis()
+            if (now - lastAtMs < 100L) return@collect
+            lastAtMs = now
+            AppLog.i(
+                "scroll",
+                "串流帧 槽=${f.slot} 自然=${f.natural} 平滑=${f.smooth} 桥=${f.bridge} " +
+                    "raw=${f.raw} visual=${f.visual} off=${f.offset} 贴底=${f.atBottom}",
+            )
+        }
     }
     // 显示用的脚本 = 生效中的用户脚本 + 没关掉的内置规则（清包裹标签 / 动作强调）。
     // 只走显示：存档、导出、看请求、发给模型的提示词都是原文（用户 2026-11-25 定的方案）。
@@ -663,10 +720,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 所以非串流时一律写死 0（真机日志 tag=sel 里能看到这行的实时值）。
                 .graphicsLayer {
                     // C3：收缩窗口里布局正被动画改，桥接再补就是把同一个位移算两遍 —— 一律 0。
-                    translationY = if (!state.isStreaming || state.collapse != null) {
-                        0f
-                    } else if (atBottom) {
-                        bridgePendingPx()
+                    // 所有"要不要位移"的判断都收在 `followBridgePx()` 里（含入场门控与收缩窗口）。
+                    translationY = if (atBottom) {
+                        followBridgePx()
                     } else if (readingBubble) {
                         (streamHeight - anchoredHeight).toFloat().coerceAtLeast(0f)
                     } else {
@@ -734,6 +790,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             enter.animateTo(1f, tween(Motion.Entry, easing = Motion.Decelerate))
                         }
                     }
+                    // 把入场进度报给页级（`followBridgePx` 的门控用）。`enter.value` 本来就在
+                    // 上面读过了（`itemAnim` 的判断），动画期间这行每帧重组，所以这里不额外增加负担。
+                    if (isInflightRow) SideEffect { inflightEnterProgress = enter.value }
                     // 入场：**槽位高度**从 0 长到自然高度 —— 这才是"浮上来"。
                     // 只做透明度+位移是不够的：新行占的那一段高度是**立刻**加上去的，反排列表里
                     // 上面的内容会"瞬移"一下（用户 2026-11-26："气泡是淡入的，但列表长度突然增加，
@@ -844,7 +903,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                         else -> Modifier
                     }
-                    Column(modifier = itemAnim.fillMaxWidth()) {
+                    // 槽位探针必须在 itemAnim **外侧**：这样量到的是"报给父级的高度"
+                    //（入场期是 `e × 自然高度`），内侧量到的永远是自然高度。
+                    val slotProbe: Modifier = if (isInflightRow) {
+                        Modifier.onSizeChanged { rowSlotHeight = it.height }
+                    } else {
+                        Modifier
+                    }
+                    Column(modifier = slotProbe.then(itemAnim).fillMaxWidth()) {
                         MessageRow(
                             message = ChatMessage(row.role, shownContent),
                             style = state.effectiveMessageStyle,
@@ -1828,6 +1894,20 @@ private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
         }
     }
 }
+
+/**
+ * 串流帧诊断用的采样快照（见 `串流帧` 那条日志）。八个数各代表一层，谁在动一眼能看出来。
+ */
+private data class FrameSample(
+    val slot: Int,
+    val natural: Int,
+    val smooth: Int,
+    val bridge: Int,
+    val raw: Int,
+    val visual: Int,
+    val offset: Int,
+    val atBottom: Boolean,
+)
 
 /**
  * 串流气泡上沿在窗口里的 Y：只给日志用，**故意不做成 state** ——
