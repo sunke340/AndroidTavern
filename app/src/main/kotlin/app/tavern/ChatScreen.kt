@@ -709,8 +709,33 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         inflightNow?.targetDbId != null -> PendingKind.Regenerating
                         else -> PendingKind.Generating
                     }
-                    // 收缩窗口期把气泡高度夹在动画值上（`height` 是**精确**高度：内容超了就被裁）
+                    // 收缩进度：1 = 还停在"收缩前的高度"，0 = 已经收到"占位高度"。
+                    // 气泡高度、正文透明度、"动作行+版本条"那块的预占高度**全由它驱动** ——
+                    // 一个驱动源三个量一起变，开头和收尾才不会各跳一下（真机两次都是这个跳）。
                     val clamped = collapseOpen && lastBubbleHeight > 0
+                    val collapseSpan = (lastBubbleHeight - placeholderHeight).toFloat()
+                    val collapseProgress = if (!clamped || collapseSpan <= 0f) {
+                        1f
+                    } else {
+                        ((collapseHeight.value - placeholderHeight) / collapseSpan).coerceIn(0f, 1f)
+                    }
+                    // 这一行空闲时下面占多少：动作行 34dp；有版本条再加 40dp。
+                    // 预占要**从"现在的样子"过渡到"预留量"**，不能一上来就按预留量占 ——
+                    // 否则点下去的那一帧整列会往上抬 40dp（用户 2026-11-26 报的"抬高一行字"）。
+                    val settledChrome =
+                        if (state.lastSwipes.size > 1) ActionRowHeight + SwipeBarBlockHeight else ActionRowHeight
+                    val reserveChrome = ActionRowHeight + SwipeBarBlockHeight
+                    val chromeHeight = when {
+                        clamped -> settledChrome + (reserveChrome - settledChrome) * (1f - collapseProgress)
+                        // 窗口开着但还没量到起点高度（极端情况）：按预留量占着，别忽隐忽现
+                        collapseOpen -> reserveChrome
+                        isInflightRow ->
+                            if (inflightNow?.targetDbId != null) reserveChrome else ActionRowHeight
+                        else -> 0.dp
+                    }
+                    // 窗口期（收缩或涨回）都只画"预占"，不画动作行/版本条：
+                    // 涨回时如果两者同时存在，settle 那一帧会多出 34dp。
+                    val chromeHidden = isInflightRow || collapseOpen
                     val heightClamp = if (clamped) {
                         // `Text` 被高度约束后**仍会把整段字画出来**（布局高度裁了、绘制不裁），
                         // 所以这里必须自己裁绘制；而且用 `clipRect` 手裁、不用 `clipToBounds()`
@@ -753,6 +778,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             pending = pendingKind,
                             displayText = displayText,
                             fontSizeSp = state.effectiveBubbleFontSize,
+                            // 收缩/涨回时正文渐隐、渐显（跟高度同一个驱动源）
+                            contentAlpha = collapseProgress,
                             modifier = if (measureIdle) {
                                 probed.onSizeChanged { lastBubbleHeight = it.height }
                             } else {
@@ -772,21 +799,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 )
                             }
                         }
-                        // 生成中这一行：先把落库后会多出来的高度占住
+                        // 生成中/收缩期：先把落库后会多出来的高度占住
                         //（动作行 +34dp；重新生成还会多出「版本条」+40dp），
                         // 否则定稿那一帧整条列表会往上跳一截（用户 2026-11-26）。
-                        if (isInflightRow) {
-                            Spacer(
-                                Modifier.height(
-                                    ActionRowHeight + if (inflightNow?.targetDbId != null) {
-                                        SwipeBarBlockHeight
-                                    } else {
-                                        0.dp
-                                    },
-                                ),
-                            )
+                        if (chromeHidden) {
+                            Spacer(Modifier.height(chromeHeight))
                         }
-                        if (!isInflightRow && showSwipeBar) {
+                        if (!chromeHidden && showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
                             GreetingSwitchBar(
                                 current = state.lastSwipeId.coerceIn(
@@ -812,7 +831,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                         // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）；
                         // 判据用 isGreetingMessage，和"有几条开场白"无关。
-                        if (!isInflightRow && !isGreetingMessage) {
+                        if (!chromeHidden && !isGreetingMessage) {
                             MessageActionRow(
                                 isUser = !isAssistant,
                                 canRegenerate = isAssistant && isLast,
@@ -1254,10 +1273,19 @@ private fun MessageRow(
     displayText: (String) -> String = { it },
     /** 气泡正文的字号（sp）：三级继承的生效值，只有聊天页气泡用它。 */
     fontSizeSp: Float = DefaultBubbleFontSize,
+    /**
+     * 正文的不透明度（0..1）：重新生成收缩/涨回时用它把文字**渐变**掉/渐显。
+     *
+     * 只影响正文颜色，**不动底板**（底板要跟着收缩动画一起变小，才看得出"气泡在收"）。
+     * 也不用 `Modifier.alpha()`：那是 graphicsLayer，19k px 的气泡给它开本地图层就是 INV-02 的老坑。
+     */
+    contentAlpha: Float = 1f,
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, pending, displayText, fontSizeSp)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor, pending, displayText, fontSizeSp)
+        MessageStyle.Bubble ->
+            BubbleRow(message, modifier, showCursor, pending, displayText, fontSizeSp, contentAlpha)
+        MessageStyle.Card ->
+            CardRow(message, modifier, showCursor, pending, displayText, fontSizeSp, contentAlpha)
     }
 }
 
@@ -1496,6 +1524,7 @@ private fun BubbleRow(
     pending: PendingKind?,
     displayText: (String) -> String,
     fontSizeSp: Float,
+    contentAlpha: Float,
 ) {
     val palette = LocalTavernPalette.current
     val isUser = message.role == ChatRole.User
@@ -1506,9 +1535,11 @@ private fun BubbleRow(
                 .weight(0.86f)
                 .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start),
         ) {
+            val content = if (isUser) palette.onUserBubble else MaterialTheme.colorScheme.onSurface
             MessagePanel(
                 backgroundColor = if (isUser) palette.userBubble else MaterialTheme.colorScheme.surface,
-                contentColor = if (isUser) palette.onUserBubble else MaterialTheme.colorScheme.onSurface,
+                // 收缩时正文渐隐：只淡字，不淡底板（底板要跟着高度一起收）
+                contentColor = content.copy(alpha = content.alpha * contentAlpha),
                 shape = RoundedCornerShape(
                     topStart = Radius.bubble,
                     topEnd = Radius.bubble,
@@ -1547,11 +1578,13 @@ private fun CardRow(
     pending: PendingKind?,
     displayText: (String) -> String,
     fontSizeSp: Float,
+    contentAlpha: Float,
 ) {
     val palette = LocalTavernPalette.current
+    val content = MaterialTheme.colorScheme.onSurface
     MessagePanel(
         backgroundColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        contentColor = content.copy(alpha = content.alpha * contentAlpha),
         shape = RoundedCornerShape(Radius.card),
         border = BorderStroke(1.dp, palette.cardBorder),
         modifier = modifier.fillMaxWidth(),
