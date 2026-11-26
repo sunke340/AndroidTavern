@@ -425,14 +425,20 @@ t1 首 token：item(key="stream") 插入到 index 0
 
 | # | 约束 | 为什么 |
 |---|---|---|
-| C1 | `Modifier.animateContentSize(clip = true, animationSpec = tween(260, easing = Motion.Standard))` **只挂在"重新生成那一行"上，并且只在收缩阶段挂着**（`inflight.text.isEmpty() && inflight.targetDbId != null`）；正文一开始增长就**摘掉** | 常驻的话园会把串流期间每一次换行都包一层动画，与"布局自然增长 + 桥接跟随"抢同一个位移 |
+| C1 | `Modifier.animateContentSize(animationSpec = tween(260, easing = Motion.Standard))` **只挂在"重新生成那一行"上，并且只在收缩阶段挂着**；正文一开始增长就**摘掉** | 常驻的话它会把串流期间每一次换行都包一层动画，与"布局自然增长 + 桥接跟随"抢同一个位移 |
 | C2 | 收缩期间**新 token 只进 buffer，不推 UI**；收缩结束（≤260ms）后一次性推上去 | 首 token 常在 100–300ms 到达。动画被中途打断 + 摘掉 Modifier = 剩余高度一次性 snap，比硬切还难看 |
 | C3 | 收缩期间**桥接三件套全关**（`translationY` 强制 0、不 `dispatchRawDelta`、`smoothHeight` 不追） | 布局正在被动画改，桥接再补就是把同一个位移算两遍 |
-| C4 | 0 字停止 / 失败时，`collapsing` **等收尾落地才清**，让旧正文回来也走同一条动画 | 否则"缩下去"是平滑的、"涨回来"是瞬跳的，一对比更刺眼 |
+| C4 | 0 字停止 / 失败时，收缩窗口 **等收尾落地才清**，让旧正文回来也走同一条动画 | 否则"缩下去"是平滑的、"涨回来"是瞬跳的，一对比更刺眼 |
 
-`clip = true` 会生成本地裁剪层（与 INV-02 的 8k px 命中问题同类），但**它只存在 260ms**，
-且这 260ms 里那条正文已经是占位（选字/命中都不需要），收尾后 Modifier 必须真的摘掉 ——
-所以不构成 INV-02 回归。
+> **实施时修正（P3，2026-11-26）**：原文写的是 `animateContentSize(clip = true, …)`，但
+> Compose 1.7.6 里**没有 `clip` 参数**（`AnimationModifier.kt` 的实现是
+> `this.clipToBounds() then SizeAnimationModifierElement(...)`，裁剪是写死的）—— 传 `clip` 编不过。
+> 同一个源码还给出两条必须遵守的事实：① 节点**挂上来的那一帧不播动画**（`AnimData` 用当时量到的
+> 尺寸初始化），所以"挂 Modifier"与"换正文"必须**隔一帧**，否则收缩仍是硬切；
+> ② 它有 `alignment` 参数，反排列表用 `Alignment.BottomStart`（内容贴下沿收，观感才是"收回输入框"）。
+
+裁剪层（与 INV-02 的 8k px 命中问题同类）只存在 260ms，且这 260ms 里那条正文已经是占位
+（选字/命中都不需要），收尾后 Modifier 必须真的摘掉 —— 所以不构成 INV-02 回归。
 
 **代价（已接受）**：重新生成开场约 260ms 内看不到新字；模型若在 260ms 内就吐完，内容会一次性出现。
 

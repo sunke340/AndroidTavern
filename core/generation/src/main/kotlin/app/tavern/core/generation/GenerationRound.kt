@@ -37,11 +37,6 @@ public class GenerationRound(
     public val userInput: String? = null,
     /** 重新生成前的 swipe 备选（新的那条接在后面）。 */
     public val baseSwipes: List<String> = emptyList(),
-    /**
-     * **P0 专用**：重新生成开场时把原来那条从界面撤下去了，收尾不成功要放回来。
-     * P1 换成行模型后就地改写，这个字段删除。
-     */
-    public val removedContent: String? = null,
 ) {
 
     private val phase: AtomicReference<CommitPhase> = AtomicReference(CommitPhase.Open)
@@ -110,8 +105,10 @@ public class GenerationRound(
 
         return when (plan) {
             WritePlan.Nothing -> SettleEffects(
-                // 0 字停止 / 空完成：没有行要写。重新生成失败过（撤下过原行）就放回来。
-                row = row(restoreRemovedOrNone()),
+                // 0 字停止 / 空完成：没有行要写，界面也**不许**造行。
+                // 重新生成时被改写的那一行从头到尾没离开过 `rows`，清掉"生成中"它自己就回来了
+                // （P0 的 `RestoreRemoved` 是为了把"撤下去那一行"放回来，P3 就地改写后不需要）。
+                row = RowAction.None,
                 clearInflight = mine,
                 status = status(SettleStatus.Ok(okStatus)),
             )
@@ -144,9 +141,9 @@ public class GenerationRound(
                     status = status(SettleStatus.Ok(okStatus)),
                     refreshSessions = true,
                 )
-                // 保存失败：旧正文**原样**（库里那一行没动过），P0 把撤下去的那条放回界面。
+                // 保存失败：旧正文**原样**（库里那一行没动过，界面上那一行也一直没离开 `rows`）。
                 else -> SettleEffects(
-                    row = row(restoreRemovedOrNone()),
+                    row = RowAction.None,
                     clearInflight = mine,
                     status = status(SettleStatus.SaveFailed),
                 )
@@ -175,16 +172,6 @@ public class GenerationRound(
         swipes = listOf(content),
         swipeId = 0,
     )
-
-    /** P0：重新生成撤下过原行、这一轮又没写成 → 放回来。P1 起 `removedContent` 恒为 null。 */
-    private fun restoreRemovedOrNone(): RowAction {
-        val removed = removedContent ?: return RowAction.None
-        return RowAction.RestoreRemoved(
-            content = removed,
-            swipes = baseSwipes,
-            swipeId = baseSwipes.lastIndex.coerceAtLeast(0),
-        )
-    }
 }
 
 /** 提交相位。`Open → Writing → Closed`，单向、一次性。 */
@@ -254,7 +241,7 @@ public sealed interface RowAction {
         public val swipeId: Int,
     ) : RowAction
 
-    /** 就地改写原来那一行（重新生成成功）。 */
+    /** 就地改写原来那一行（重新生成成功）。行身份（`uiKey`）不变，只是正文换了。 */
     public data class Rewrite(
         public val dbId: Long,
         public val content: String,
@@ -264,13 +251,6 @@ public sealed interface RowAction {
 
     /** 移除这一轮的用户消息（生成失败且撤销成功）。 */
     public data class RemoveUserRow(public val dbId: Long) : RowAction
-
-    /** **P0 专用**：重新生成开场撤下过原行、这一轮没写成 → 放回来。P1 删除。 */
-    public data class RestoreRemoved(
-        public val content: String,
-        public val swipes: List<String>,
-        public val swipeId: Int,
-    ) : RowAction
 }
 
 /** 判定归属用的界面快照（只有这两个量参与判断）。 */

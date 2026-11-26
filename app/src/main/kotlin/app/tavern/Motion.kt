@@ -43,6 +43,15 @@ object Motion {
     const val InputExpand = 400
     const val InputCollapse = 300
 
+    /**
+     * 重新生成开场的**平滑收缩**（r2 §13.1 C1/C2）。
+     *
+     * 一个数管两件事，必须同源：`ChatScreen` 里 `animateContentSize` 的时长，
+     * 与 `ChatViewModel` 按住新 token 的窗口长度。两处对不上就会出现"动画还在走、
+     * 正文已经推上去"（收缩被打断，剩下那截高度一次性 snap）。
+     */
+    const val Collapse = 260
+
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 

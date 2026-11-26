@@ -171,7 +171,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * - **K1**：`uiKey` 在行的存活期内**永不改变**（补 `dbId`、换正文、切 swipe、定稿都不变）；
      * - **K2**：只要求在**一次 ChatScreen 组合的生命周期内**唯一 → 不持久化、不落库；
      * - **K3**：命名空间不重叠 —— `m{dbId}`（库里读出来的）/ `u{seq}`（本次发的用户消息）/
-     *   `p{seq}`（生成行）/ `r{seq}`（还原）；
+     *   `p{seq}`（这一轮新生成的行）。重新生成**不新开 key**：它复用被改写那一行的 `m{dbId}`。
      * - **K4**：组合存活期内**不得从库里重建 `rows`**（撤回改成"按 dbId 删 + 就地移除行"）；
      *   重建会让本次新建的行换 key → LazyColumn 当新条目、重播淡入；
      * - **K5**：`dbId` **不参与 key**，它只用于 DB 操作与"是否已落库"。
@@ -192,18 +192,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     data class Inflight(
         val roundId: Long,
         val sessionId: String,
-        /** 这一轮将来的行 key（`targetDbId == null` 时才有意义）。 */
+        /**
+         * 这一轮在界面上的**行身份**。
+         *
+         * 新消息：这一轮自己新建的 key（`p{seq}`）；重新生成：**被改写那一行原来的 key**
+         * （`m{dbId}`）—— 那一行从没离开 `rows`，这是一次性改写同一个条目，不是"换一条"。
+         */
         val uiKey: String,
         /** 非 null = 就地改写这一行（重新生成）。 */
         val targetDbId: Long?,
-        /** 已收到的正文（空 = 还没吐字）。 */
+        /** 已收到的正文（空 = 还没吐字）。收缩窗口里它一直是空的（见 [UiState.collapse]）。 */
         val text: String,
-        /**
-         * **P1 适配器专用**：重新生成开场从 `rows` 里撤下去的那一行（原样），收尾没成就放回来。
-         * P3 改成按 `dbId` 就地改写之后删除。
-         */
-        val removed: ChatRow? = null,
     )
+
+    /**
+     * 重新生成的**平滑收缩窗口**（r2 §13.1）。
+     *
+     * 非 null = 那一行还挂着 `animateContentSize`：这段时间新 token 只攒不推（C2）、
+     * 桥接三件套全关（C3）。为什么窗口要有自己的一份状态而不是从 `inflight` 推：
+     * 0 字停止 / 失败时 `inflight` 已经清掉了，可"旧正文涨回来"还得走完同一条动画（C4）。
+     *
+     * [roundId] 是守卫：同一行上一轮留下的定时器不许把这一轮的动画掐掉。
+     */
+    data class Collapse(val roundId: Long, val uiKey: String)
 
     data class UiState(
         val baseUrl: String = "https://api.deepseek.com/v1",
@@ -214,6 +225,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val rows: List<ChatRow> = emptyList(),
         /** 正在生成的那一轮；null = 没在生成。 */
         val inflight: Inflight? = null,
+        /** 重新生成的收缩窗口；非 null = 那一行还挂着 `animateContentSize`（见 [Collapse]）。 */
+        val collapse: Collapse? = null,
         val status: String = "",
         val cards: List<CardRef> = emptyList(),
         /** 卡列表是否读完过一次（同 [sessionsLoaded]：没读完不能显示"还没有卡"）。 */
@@ -356,15 +369,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         /** 屏幕上正在长的正文（没有生成时为空串）。 */
         val streamingText: String
             get() = inflight?.text.orEmpty()
-
-        /**
-         * 正在跑的这一轮是不是「重新生成」。
-         *
-         * 界面用它决定串流气泡要不要**预留版本条的高度**：重新生成落库后这条会带 `‹2/2›`，
-         * 不预留的话那一帧整列会往上跳（用户 2026-11-26 报的"停止/生成完毕闪一下"）。
-         */
-        val streamingRegenerate: Boolean
-            get() = inflight?.targetDbId != null
 
         /**
          * 这一轮生成的轮次号；没有在跑时为 null。
@@ -2795,36 +2799,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    /**
-     * 真正发一次请求。两条路共用：`send()`（新用户消息）与 `regenerateLast()`（不追加用户消息）。
-     *
-     * 为什么抽出来：重新生成与发送在"扫世界书 → 拼提示词 → 建请求 → 流式收尾"这一段完全一样，
-     * 唯一区别是**要不要把一条用户消息写进库**（[userText] 为 null 表示不写）。
-     * 各抄一份两百行会立刻分叉 —— 世界书、正则、思考强度改一处忘一处。
-     */
-    /**
-     * 「重新生成」的目标：换一条 **swipe 备选**，旧的那条留在列表里可以翻回去。
-     *
-     * （「继续」曾经也走这里 —— 把续写拼回同一条，照抄原版 `mes +=`。用户 2026-11-26
-     * 定成"续写放新气泡"之后，继续和普通发送走同一条路，这里只剩重新生成。）
-     */
-    private class ReplaceTarget(
-        val rowId: Long,
-        /** 已有的 swipe 备选（新的那条会接在它后面）。 */
-        val base: List<String>,
-        /** 失败时要还原到界面上那条（开始生成时把它从界面上撤下来了，key/dbId 原样带着）。 */
-        val restore: ChatRow,
-    )
-
     /** 原版"继续"在请求末尾追加的那条 system 提示（证据：fixtures/expected/P0-6-continue.json）。 */
     private val continueHint =
         ChatMessage(ChatRole.System, "[Continue your last message without repeating its original content.]")
 
+    /**
+     * 真正发一次请求。三条路共用：`send()`（新用户消息）、`continueLast()`（落新气泡）、
+     * `regenerateLast()`（**就地改写**最后一条）。
+     *
+     * 为什么抽出来：三条路在"扫世界书 → 拼提示词 → 建请求 → 流式收尾"这一段完全一样，
+     * 只有三处不同：要不要把用户消息写进库（[userText]）、要不要追加 continue 提示
+     * （[continuation]）、这一轮落**新行**还是**改写已有行**（[replace]）。
+     * 各抄一份两百行会立刻分叉 —— 世界书、正则、思考强度改一处忘一处。
+     */
     private fun beginCompletion(
-        /** 这一轮开始时的时间线（已含本轮的用户消息）。生成中的内容**不在**里面。 */
+        /** 这一轮开始时的时间线（已含本轮的用户消息；重新生成时**含**被改写那一行）。 */
         rows: List<ChatRow>,
         userText: String?,
-        replacing: ReplaceTarget? = null,
+        /**
+         * 非 null = **就地改写**这一行（重新生成）。
+         *
+         * 行留在 [rows] 里不动，`inflight.uiKey` 直接用它的 key —— 那是同一个 LazyColumn 条目：
+         * 不删不建、不重播淡入、不重排长文本。P1 的"撤下原行 + 收尾追加新行"是开场闪的根。
+         */
+        replace: ChatRow? = null,
+        /** 重新生成前的 swipe 备选（新的那条会接在后面）。 */
+        baseSwipes: List<String> = emptyList(),
         continuation: Boolean = false,
     ) {
         val snapshot = _state.value
@@ -2851,47 +2851,66 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val round = GenerationRound(
             roundId = ++roundSeq,
             sessionId = sessionId,
-            // 这一轮的行身份：占位 / 流式 / 定稿三态用同一个 key，LazyColumn 才不换条目。
-            replyUiKey = newUiKey("p"),
-            targetDbId = replacing?.rowId,
+            // 就地改写时沿用被改写那一行的 key（K1：行身份在存活期内不变）；
+            // 新消息才自己建一个（占位 / 流式 / 定稿三态共用它，LazyColumn 才不换条目）。
+            replyUiKey = replace?.uiKey ?: newUiKey("p"),
+            targetDbId = replace?.dbId,
             userInput = if (userText != null) snapshot.input else null,
-            baseSwipes = replacing?.base.orEmpty(),
-            // P1 适配器专用：重新生成开场把原来那条从界面撤下去了，收尾不成功要放回来。
-            removedContent = replacing?.restore?.content,
+            baseSwipes = baseSwipes,
         )
         currentRound = round
+        val collapsing = replace != null
 
         // 点下去**立刻**进"准备中"：分词与世界书扫描已经挪到后台（审计 P0-2），
         // 但再快也得先有反馈，否则长会话里点发送像没反应
         _state.update {
             it.copy(
                 // 继续现在也落新气泡：旧气泡留在原地，续写从下面长出来（用户 2026-11-26）。
-                // 重新生成才需要把原来那条先撤下去（它要被改写）。
+                // 重新生成**不从这里删行**（P3：就地改写，那一行一直在 rows 里）。
                 rows = rows,
                 inflight = Inflight(
                     roundId = round.roundId,
                     sessionId = sessionId,
                     uiKey = round.replyUiKey,
-                    targetDbId = replacing?.rowId,
+                    targetDbId = round.targetDbId,
                     text = "",
-                    removed = replacing?.restore,
                 ),
+                // 重新生成：这一行先平滑收缩（正文按住不放，见 [Collapse] 与 r2 §13.1）
+                collapse = if (collapsing) Collapse(round.roundId, round.replyUiKey) else null,
                 input = "",
                 status = "准备请求…",
                 requestPreview = "",
             )
         }
 
-        // 提示词只认**已提交**的正文（生成中的那一轮不在 rows 里，天然进不了历史）
-        val history: List<ChatMessage> = rows.map { ChatMessage(it.role, it.content) }
+        // 收缩窗口里到达的 token 先攒在这里（C2：模型常在 100–300ms 吐第一个字，
+        // 中途把正文推上去 = 收缩动画被打断 + Modifier 被摘 = 剩下那截高度一次性 snap，
+        // 比硬切还难看）。两个协程都在主线程，不需要加锁。
+        val buffer = StringBuilder()
+        if (collapsing) {
+            viewModelScope.launch {
+                delay(Motion.Collapse.toLong())
+                _state.update { st ->
+                    // 已经收尾了（0 字停止 / 失败）：窗口留给收尾那一支放行（C4）；
+                    // 攒下的半截就地丢掉 —— 用户眼里一直是占位，没有"新正文"要保全。
+                    val live = st.inflight ?: return@update st
+                    if (live.roundId != round.roundId) st
+                    else st.copy(collapse = null, inflight = live.copy(text = buffer.toString()))
+                }
+            }
+        }
+
+        // 提示词只认**已提交**的正文（生成中的那一轮不在 rows 里，天然进不了历史）；
+        // 重新生成要把**被改写那一行**从历史里去掉（原版语义：当作它还没生成过）。
+        val history: List<ChatMessage> = rows
+            .filterNot { replace != null && it.uiKey == replace.uiKey }
+            .map { ChatMessage(it.role, it.content) }
         // 两张 HashMap（世界书计时状态 / 全局书条目）在主线程取值，后台只读快照 ——
         // 后台扫描因此不碰任何共享可变状态
         val scanState = worldInfoStates[sessionId] ?: LorebookScanState()
         val globalEntries = HashMap(globalBookEntries)
 
         val task = viewModelScope.launch {
-            val buffer = StringBuilder()
-
             // 用户消息先落库：进程被杀也不会丢"我说了什么"。
             // 重新生成没有新用户消息（userText == null），这一段整块跳过。
             if (userText != null) {
@@ -3026,6 +3045,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     when (event) {
                         is StreamEvent.Delta -> {
                             buffer.append(event.text)
+                            // 收缩窗口里**只攒不推**（r2 §13.1 C2）：布局正被动画改，
+                            // 这时候推正文会把收缩打断。
+                            if (_state.value.collapse?.roundId == round.roundId) return@collect
                             _state.update { st ->
                                 // 收尾已经清掉了这一轮：迟到的 token **不许**把气泡又点亮
                                 if (st.activeRoundId != round.roundId) st
@@ -3124,6 +3146,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         cancelJob?.cancel()
         var refresh = false
+        var openCollapse: Collapse? = null
         try {
             withContext(NonCancellable) {
                 val body = text ?: _state.value.streamingText
@@ -3136,10 +3159,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val now = _state.value
                 val facts = UiFacts(sessionId = now.sessionId, activeRoundId = now.activeRoundId)
                 val effects = round.planEffects(facts, plan, result, status)
-                // 被撤下的那一行只认**本轮**的 inflight（旧轮收尾时新轮可能已经起来了）
-                val removedRow = now.inflight?.takeIf { it.roundId == round.roundId }?.removed
+                // 收缩窗口还开着（0 字停止 / 失败时正文是**涨回**来的）：留着它，等收尾落地
+                // 之后再关一整个动画时长 —— 让"缩下去"和"涨回来"走同一条动画（C4）。
+                openCollapse = now.collapse
+                    ?.takeIf { it.roundId == round.roundId && it.uiKey == round.replyUiKey }
                 // 一次 update 落地全部效果：不露出"行已加、生成中还没清"的中间帧
-                _state.update { applyEffects(it, effects, round.replyUiKey, removedRow, result) }
+                _state.update {
+                    applyEffects(it, effects, round.replyUiKey, (result as? WriteResult.Ok)?.dbId)
+                }
                 refresh = effects.refreshSessions
                 AppLog.i(
                     "chat",
@@ -3166,6 +3193,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 currentRound = null
                 roundJob = null
             }
+            openCollapse?.let { releaseCollapse(it) }
         }
         if (refresh) viewModelScope.launch { runCatching { refreshSessions() } }
     }
@@ -3199,47 +3227,53 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             WriteResult.Failed(error.message ?: error::class.simpleName ?: "写库异常")
         }
 
+    /**
+     * 关掉收缩窗口：`animateContentSize` 必须**真的摘下去**（r2 §13.1 C1）。
+     *
+     * 这里是"晚一个动画时长"才关（C4）：0 字停止 / 保存失败时那一行是**涨回来**的，
+     * 窗口得留到动画走完，否则"缩得平滑、涨得瞬跳"一对比更刺眼。
+     * 守卫用整个 [Collapse]：同一行上一轮留下的定时器不许关掉这一轮的窗口。
+     */
+    private fun releaseCollapse(window: Collapse) {
+        viewModelScope.launch {
+            delay(Motion.Collapse.toLong())
+            _state.update { st -> if (st.collapse == window) st.copy(collapse = null) else st }
+        }
+    }
+
     /** 把收尾效果落到 UI 状态上（一次 update）。语义见 `core/generation` 的 `RowAction`。 */
     private fun applyEffects(
         st: UiState,
         effects: SettleEffects,
         replyUiKey: String,
-        removedRow: ChatRow?,
-        result: WriteResult,
+        /** 刚落库那一行的行号：追加成功才有（就地改写用的还是原行号）。 */
+        savedDbId: Long?,
     ): UiState {
-        // 刚落库那一行的行号：只有"追加成功"这一支拿得到
-        val savedDbId = (result as? WriteResult.Ok)?.dbId
         var next = st
-        when (val row = effects.row) {
+        when (val action = effects.row) {
             RowAction.None -> Unit
 
             // 新回复定稿：**沿用这一轮的 uiKey** —— 流式那条与定稿这条是同一个 LazyColumn item
             //（不删、不建、不重播淡入、不重排长文本）。
             is RowAction.Append -> next = next.copy(
-                rows = next.rows + ChatRow(replyUiKey, ChatRole.Assistant, row.content, savedDbId),
-                lastSwipes = row.swipes,
-                lastSwipeId = row.swipeId,
+                rows = next.rows + ChatRow(replyUiKey, ChatRole.Assistant, action.content, savedDbId),
+                lastSwipes = action.swipes,
+                lastSwipeId = action.swipeId,
             )
 
-            // P1 适配器：重新生成开场仍是"撤下原行、收尾追加新行"（P3 改成按 dbId 就地改写）。
+            // 就地改写（重新生成）：**同一个 uiKey 那一行**换正文。不新增行、不换 key ——
+            // 这也是"开场闪"消失的原因：列表自始至终是同一个条目。
             is RowAction.Rewrite -> next = next.copy(
-                rows = next.rows + ChatRow(replyUiKey, ChatRole.Assistant, row.content, row.dbId),
-                lastSwipes = row.swipes,
-                lastSwipeId = row.swipeId,
-            )
-
-            // 重新生成开场撤下过、这一轮没写成 → 把**原来那一行**放回界面（key/dbId 原样，K1）
-            is RowAction.RestoreRemoved -> next = next.copy(
-                rows = next.rows + (
-                    removedRow ?: ChatRow(newUiKey("r"), ChatRole.Assistant, row.content, null)
-                    ),
-                lastSwipes = row.swipes,
-                lastSwipeId = row.swipeId,
+                rows = next.rows.map { row ->
+                    if (row.uiKey == replyUiKey) row.copy(content = action.content) else row
+                },
+                lastSwipes = action.swipes,
+                lastSwipeId = action.swipeId,
             )
 
             is RowAction.RemoveUserRow -> next = next.copy(
                 // 按 dbId 精确移除这一轮刚写的那条用户消息（不碰更早的任何一行）
-                rows = next.rows.filterNot { it.dbId == row.dbId },
+                rows = next.rows.filterNot { it.dbId == action.dbId },
             )
         }
         effects.restoreInput?.let { input -> next = next.copy(input = input) }
@@ -3273,11 +3307,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ---- 消息操作（P0-6 的一部分：重新生成 / 编辑 / 删除）---------------------
 
     /**
-     * 重新生成：把最后一条助手消息撤掉，用剩下的历史再请求一次。
+     * 重新生成：**就地改写**最后一条助手消息，用剩下的历史再请求一次。
      *
-     * 原版是"swipe 出新的一条，旧的一条存进 `swipes[]`"，我们**还没有 swipes 存储**
-     * （那要动表结构 + 夹具），所以现在这一步是"替换"：撤掉再生成。
-     * 会话内容与提示词的结果一致；差别只在于翻不回上一版。
+     * 原版是"swipe 出新的一条，旧的一条存进 `swipes[]`"。P3 起我们也是同一个位置改写
+     * （旧版本进 swipe 备选，能用 `‹N/M›` 翻回去），区别只在于：界面上**那一行从头到尾没动过**
+     * —— 不删行、不追加行、不换 key。开场那一下是 `animateContentSize` 的平滑收缩（r2 §13.1）。
      */
     fun regenerateLast() {
         val snapshot = _state.value
@@ -3302,23 +3336,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 it.isNotEmpty() && it.getOrNull(snapshot.lastSwipeId) == last.content
             } ?: listOf(last.content)
             withContext(Dispatchers.IO) { chatRepository.setSwipes(rowId, base) }
-            val trimmed = snapshot.rows.dropLast(1)
-            _state.update {
-                it.copy(
-                    rows = trimmed,
-                    status = "重新生成中…",
-                    // 这一条的版本表**先摘掉**：原条已从界面上撤下；若还留着这份备选，
-                    // 它会被"现在的最后一条"（露出来的上一条助手消息）当成自己的版本显示
-                    // —— 用户 2026-11-26 报的"切换按钮跑到上一条气泡右下角"。
-                    lastSwipes = emptyList(),
-                    lastSwipeId = 0,
-                )
-            }
-            AppLog.i("chat", "重新生成：已有 ${base.size} 条备选，生成第 ${base.size + 1} 条")
+            AppLog.i(
+                "chat",
+                "重新生成：就地改写 row=$rowId（已有 ${base.size} 条备选），收缩窗口 ${Motion.Collapse}ms",
+            )
+            // **不 trim `rows`**：那一行留在时间线里，回头收尾按原行号改写。
+            // 也不再动 `lastSwipes`（版本表）—— 那一行没离开界面，删它反而会让空白期里
+            // "上一条助手消息"顶上来显示别人的版本（v163 那一类 bug 的根源）。
             beginCompletion(
-                rows = trimmed,
+                rows = snapshot.rows,
                 userText = null,
-                replacing = ReplaceTarget(rowId, base, last),
+                replace = last,
+                baseSwipes = base,
             )
         }
     }

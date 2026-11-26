@@ -1145,3 +1145,54 @@ token 会把气泡又点亮。
 val imeInsets = WindowInsets.ime            // 取句柄不读值 → 不会每帧失效
 LaunchedEffect(sheetOpen) { if (imeInsets.getBottom(density) > 0) { … } }
 ```
+
+## `animateContentSize` 的两条硬事实（2026-11-26，v168 P3）
+
+抄 API 之前先看**本项目实际用的那版**源码（`androidx.compose.animation:animation` 1.7.6，
+`AnimationModifier.kt`），两条都踩了：
+
+1. **没有 `clip` 参数**。那条重载是 `(animationSpec, alignment, finishedListener)`，实现里
+   `this.clipToBounds() then SizeAnimationModifierElement(...)` —— 裁剪写死，传 `clip = true` 编不过。
+   （P3 的方案文档原来写着 `clip = true`，实施时按源码改了。）
+2. **节点挂上来的那一帧不播动画**：`animData == null` 时直接
+   `AnimData(Animatable(targetSize, …), targetSize)` —— 以"当时量到的尺寸"为起点。
+   所以"挂 Modifier"和"换内容"必须**隔一帧**，否则整段收缩是硬切（我们第一版就是这样，
+   在收的就是"从零开始的那一帧"）。
+
+两边一起用：
+
+```kotlin
+// 窗口先挂上（内容还是旧的）→ 过一个帧回调 → 下一帧才换正文/占位
+var shown by remember { mutableStateOf(false) }
+LaunchedEffect(collapseKey) {
+    if (collapseKey == null) { shown = false; return@LaunchedEffect }
+    withFrameNanos { }        // 这一帧让 Modifier 用旧内容量一次
+    shown = true
+}
+Modifier.animateContentSize(
+    animationSpec = if (reduceMotion) snap() else tween(Motion.Collapse, easing = Motion.Standard),
+    alignment = Alignment.BottomStart,   // 反排列表：内容贴下沿收
+)
+```
+
+`withFrameNanos` 在 `LaunchedEffect` 里是合法的（那里有 `MonotonicFrameClock`）；**在 ViewModel
+里不行**（`viewModelScope` 没有帧时钟）—— 所以"等一帧"这类事只能放在组合里，别往 VM 塞。
+`rememberReduceMotion()` 那一档要手动退成 `snap()`：Compose 的动画不认系统「移除动画」。
+
+## 重新生成"撤下行再追加"就是开场闪的根（2026-11-26，v168 P3）
+
+P0/P1 那套是：开场把原来那条从 `rows` 里 `dropLast` 掉、`inflight` 用一个**新** key，
+收尾再 `rows + ChatRow(新key)`。数据上没错（库里就地改写），但**界面上是"删条目 + 建条目"**：
+
+- LazyColumn 稳定 key 一换，就是两个不同的 item → 旧条目的绘制层被丢掉、新条目从头录；
+- 首帧还得重新排版整段长正文（几百字）→ 一帧 30–80ms 的空白；
+- 旧条目的 `animateItem` 淡出与新条目的淡入还能撞上（所以后来加了 `suppressNewestFade`
+  一类的补丁去压症状）。
+
+正解只有一条：**行不离开 `rows`，`inflight.uiKey` 直接用那一行原来的 `m{dbId}`**，
+正文在 item 里按"收缩窗口开没开"决定显示旧正文还是这一轮的流。收尾按 `uiKey` 找到那一行
+就地换正文。补丁（`justSettled` / `suppressNewestFade`）可以留着管别的，但**不要再靠它们压开场**。
+
+配套删掉的四个 P0/P1 适配器：`ReplaceTarget`、`GenerationRound.removedContent`（+`RowAction.RestoreRemoved`）、
+`Inflight.removed`、`UiState.streamingRegenerate`。0 字停止 / 保存失败现在都只是"不写行"：
+旧正文本来就在界面上，清掉"生成中"它自己就回来了。

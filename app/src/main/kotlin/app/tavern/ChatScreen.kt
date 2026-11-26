@@ -12,8 +12,10 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -102,6 +104,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
@@ -156,6 +159,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 模型输出侧的正则脚本：原版只改显示、不改存档，所以在这里做，不碰 transcript。
     val overscroll = rememberRubberOverscroll()
+    // 减动效统一入口（系统「移除动画」）：重新生成的收缩在那一档退成瞬切。
+    val reduceMotion = rememberReduceMotion()
 
     // 输入区的实测高度（像素）：列表底部让位跟着它走 —— 聚焦时输入区会向上翻倍
     var inputBarHeightPx by remember { mutableIntStateOf(0) }
@@ -276,7 +281,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val roundKey = state.inflight?.roundId
     var streamHeight by remember(roundKey) { mutableIntStateOf(0) }
     val smoothHeight = remember(roundKey) { Animatable(0f) }
-    LaunchedEffect(streamHeight) {
+    LaunchedEffect(streamHeight, state.collapse) {
+        // C3：收缩窗口里**不追高度**。这里把平滑高度贴着实测高度走（snap），
+        // 窗口一关它就是一个干净起点 —— 下一笔增长照常由"追高度差"那条动画消化。
+        if (state.collapse != null) {
+            smoothHeight.snapTo(streamHeight.toFloat())
+            return@LaunchedEffect
+        }
         val target = streamHeight.toFloat()
         // 气泡刚出现的那一次不产生位移：直接对齐（否则会从半空滑下来）
         if (smoothHeight.value == 0f) smoothHeight.snapTo(target)
@@ -307,7 +318,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // （离开贴底 → 画面向上收一下）或凭空补上（回到贴底 → 向下沉一下），实测 8–151px。
     // 所以边界上做两件事：离开贴底把欠账折成滚动量；回到贴底把平滑高度对齐。
     var wasAtBottom by remember { mutableStateOf(atBottom) }
-    LaunchedEffect(streamHeight, readingStreamBubble, state.isStreaming, atBottom) {
+    LaunchedEffect(streamHeight, readingStreamBubble, state.isStreaming, atBottom, state.collapse) {
+        // C3：收缩窗口里不补滚动、不追基线（布局正被动画改）。基线跟到当前高度，
+        // 窗口一关从这里接着算。
+        if (state.collapse != null) {
+            wasAtBottom = atBottom
+            anchoredHeight = streamHeight
+            return@LaunchedEffect
+        }
         val justEnteredBottom = !wasAtBottom && atBottom
         val leftBottom = wasAtBottom && !atBottom
         wasAtBottom = atBottom
@@ -530,15 +548,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 也不会进提示词/导出。占位/流式/定稿三态用**同一个 uiKey**，
         // 落库那一帧只是数据变化 —— 不删条目、不建条目、不重播淡入、不重排长文本。
         val inflightNow = state.inflight
+        val collapse = state.collapse
+        val collapseKey = collapse?.uiKey
+        // 收缩窗口挂上来的那一帧，正文还必须是**旧正文**：`animateContentSize` 1.7.6 在节点
+        // 刚挂上时把"当前量到的尺寸"当起点（`AnimData` 初始化成 targetSize，不播首帧动画）。
+        // 所以先过一个帧回调让 Modifier 用旧正文量一次，下一帧再换成占位，收缩才真的从旧高度开始。
+        var collapseShown by remember { mutableStateOf(false) }
+        LaunchedEffect(collapseKey) {
+            if (collapseKey == null) {
+                collapseShown = false
+                return@LaunchedEffect
+            }
+            withFrameNanos { }
+            collapseShown = true
+        }
         val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
             // 占位行与用户行在**同一次状态更新**里出现（生成行一直在这里合成，正文可能还是空）：
             // 列表只插入一次，反排列表的 atBottom 也只翻一次 —— 这是"发送时历史不闪"的前提。
-            if (inflightNow == null) state.rows
-            else state.rows + ChatViewModel.ChatRow(
-                uiKey = inflightNow.uiKey,
-                role = ChatRole.Assistant,
-                content = inflightNow.text,
-            )
+            when {
+                inflightNow == null -> state.rows
+                // 就地改写（重新生成）：`rows` 原样交出去 —— 那一行本来就是时间线里的一条。
+                // 正文由 item 里按收缩窗口决定（窗口开窗前那一帧还得是旧正文）。
+                inflightNow.targetDbId != null -> state.rows
+                else -> state.rows + ChatViewModel.ChatRow(
+                    uiKey = inflightNow.uiKey,
+                    role = ChatRole.Assistant,
+                    content = inflightNow.text,
+                )
+            }
         }
         // 选字要拿焦点才能出手柄/工具栏，而焦点系统会请求 bringIntoView ——
         // 消息节点比视口高得多时，默认算法会把列表挪一小段（用户 2026-11-25 报的"长按一下列表就跳"）。
@@ -559,7 +596,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 // 用户 2026-11-25 报的"最新气泡长按没反应、滑一下才好"就是这一类症状，
                 // 所以非串流时一律写死 0（真机日志 tag=sel 里能看到这行的实时值）。
                 .graphicsLayer {
-                    translationY = if (!state.isStreaming) {
+                    // C3：收缩窗口里布局正被动画改，桥接再补就是把同一个位移算两遍 —— 一律 0。
+                    translationY = if (!state.isStreaming || state.collapse != null) {
                         0f
                     } else if (atBottom) {
                         streamHeight - smoothHeight.value
@@ -632,18 +670,43 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
                     val showSwipeBar = !state.isStreaming && !isGreetingMessage &&
                         isLast && isAssistant && state.lastSwipes.size > 1
+                    // 这一行显示的正文：就地改写时正文来自 `inflight`，但**收缩窗口挂上来的
+                    // 第一帧仍要显示旧正文**（见 collapseShown 的注释）。
+                    val shownContent = when {
+                        !isInflightRow -> row.content
+                        collapseKey == row.uiKey && !collapseShown -> row.content
+                        else -> inflightNow?.text.orEmpty()
+                    }
                     // 还没吐字 → 占位气泡（`生成中` / `重新生成中` + 呼吸点）；
                     // 吐了字就退回正文 + 光标。两者都在**同一行、同一个 item** 里换内容。
                     val pendingKind = when {
-                        !isInflightRow || row.content.isNotEmpty() -> null
+                        !isInflightRow || shownContent.isNotEmpty() -> null
                         inflightNow?.targetDbId != null -> PendingKind.Regenerating
                         else -> PendingKind.Generating
                     }
-                    Column(modifier = itemAnim.fillMaxWidth()) {
+                    // 平滑收缩只挂在**重新生成那一行**上（r2 §13.1 C1）：正文一开始长就摘掉，
+                    // 常驻的话串流每换一次行都会被包一层动画，与"布局自然增长 + 桥接"抢位移。
+                    val collapseAnim = if (collapseKey == row.uiKey) {
+                        Modifier.animateContentSize(
+                            // 减动效：不留动画，直接换尺寸（项目规矩：统一走 rememberReduceMotion）
+                            animationSpec = if (reduceMotion) {
+                                snap()
+                            } else {
+                                tween(Motion.Collapse, easing = Motion.Standard)
+                            },
+                            // 反排列表的锚点在底部：收的时候内容贴着下沿，观感才是"收回输入框"
+                            alignment = Alignment.BottomStart,
+                        )
+                    } else {
+                        Modifier
+                    }
+                    Column(modifier = itemAnim.fillMaxWidth().then(collapseAnim)) {
                         MessageRow(
-                            message = ChatMessage(row.role, row.content),
+                            message = ChatMessage(row.role, shownContent),
                             style = state.effectiveMessageStyle,
-                            showCursor = isInflightRow && pendingKind == null,
+                            // 收缩窗口里连光标也不给：窗口开着时这一行还是**旧正文**或占位，
+                            // 光标一出现会挤动旧正文（一帧的抽动）
+                            showCursor = isInflightRow && pendingKind == null && collapseKey != row.uiKey,
                             pending = pendingKind,
                             displayText = displayText,
                             fontSizeSp = state.effectiveBubbleFontSize,
@@ -665,7 +728,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         if (isInflightRow) {
                             Spacer(
                                 Modifier.height(
-                                    ActionRowHeight + if (state.streamingRegenerate) {
+                                    ActionRowHeight + if (inflightNow?.targetDbId != null) {
                                         SwipeBarBlockHeight
                                     } else {
                                         0.dp

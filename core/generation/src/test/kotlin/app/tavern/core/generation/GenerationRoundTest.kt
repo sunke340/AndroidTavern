@@ -23,7 +23,6 @@ class GenerationRoundTest {
         userRowDbId: Long? = null,
         userInput: String? = null,
         baseSwipes: List<String> = emptyList(),
-        removedContent: String? = null,
     ) = GenerationRound(
         roundId = roundId,
         sessionId = "s1",
@@ -32,7 +31,6 @@ class GenerationRoundTest {
         userRowDbId = userRowDbId,
         userInput = userInput,
         baseSwipes = baseSwipes,
-        removedContent = removedContent,
     )
 
     private fun facts(activeRoundId: Long? = 1L, sessionId: String? = "s1") =
@@ -230,20 +228,19 @@ class GenerationRoundTest {
         assertNull(effects.restoreInput, "保存失败不该动输入框")
     }
 
-    /** T17：重新生成保存失败 → 旧正文放回界面，库里那一行没动过。 */
+    /**
+     * T17：重新生成保存失败 → **不许造行**。被改写那一行从头到尾没离开过 `rows`，
+     * 清掉"生成中"它自己就带着旧正文回来（P3 就地改写；P0 的 RestoreRemoved 已删除）。
+     */
     @Test
-    fun `T17 重新生成保存失败时旧正文回到界面`() {
-        val r = round(
-            targetDbId = 42L,
-            baseSwipes = listOf("旧正文"),
-            removedContent = "旧正文",
-        )
+    fun `T17 重新生成保存失败时不造行且旧正文不动`() {
+        val r = round(targetDbId = 42L, baseSwipes = listOf("旧正文"))
         val plan = r.planWrite("新正文", SettleReason.Completed)
         val effects = r.planEffects(facts(), plan, WriteResult.Failed("行不存在"), "完成")
-        val row = assertIs<RowAction.RestoreRemoved>(effects.row)
-        assertEquals("旧正文", row.content)
-        assertEquals(listOf("旧正文"), row.swipes)
+        assertEquals(RowAction.None, effects.row, "保存失败时界面不许动行")
         assertEquals(SettleStatus.SaveFailed, effects.status)
+        assertTrue(effects.clearInflight)
+        assertFalse(effects.refreshSessions)
     }
 
     /** T18：撤销用户消息成功 → 移除行 + 还原输入框。 */
@@ -271,18 +268,14 @@ class GenerationRoundTest {
         assertFalse(effects.refreshSessions)
     }
 
-    /** T20：重新生成 0 字停止 → 无行写入、旧正文回到界面、清生成中。 */
+    /** T20：重新生成 0 字停止 → 不写库、不造行、清生成中（旧正文本来就没离开界面）。 */
     @Test
-    fun `T20 重新生成零字停止时旧正文原样回来`() {
-        val r = round(
-            targetDbId = 42L,
-            baseSwipes = listOf("旧正文"),
-            removedContent = "旧正文",
-        )
+    fun `T20 重新生成零字停止时不写库也不造行`() {
+        val r = round(targetDbId = 42L, baseSwipes = listOf("旧正文"))
         val plan = r.planWrite("", SettleReason.Stopped)
+        assertEquals(WritePlan.Nothing, plan)
         val effects = r.planEffects(facts(), plan, WriteResult.Skipped, "已停止")
-        val row = assertIs<RowAction.RestoreRemoved>(effects.row)
-        assertEquals("旧正文", row.content)
+        assertEquals(RowAction.None, effects.row)
         assertTrue(effects.clearInflight)
         assertEquals(SettleStatus.Ok("已停止"), effects.status)
     }
