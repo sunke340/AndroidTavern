@@ -13,8 +13,9 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)；其它决策见 `docs/adr/`）。
-- **代码基线**：`2b1c101`（v165：**P0 收尾提交权**，`apk-m196`）。
-- **真机跑到**：v164；**v165 待 M23**（P0 只动收尾状态机，观感应与 v164 完全一致）。
+- **代码基线**：`806a0db`（v166：**P1 行模型**，`apk-m197`）。
+- **真机跑到**：**v166 待 M24**（P1 只动数据/身份，观感应与 v165 一致；允许的变化只有"旧 bug 被修掉"）。
+  M23（P0）已全通过；第 8/9 两条竞态件由 `:core:generation` 的 CAS 用例覆盖。
   v164 回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
   继续长消息闪**仍未解决 —— 已确认是**结构性**问题。**2026-11-26 午后已按代码逐行重审**，
   方案在 [plan-chat-list-flash.md](../plan-chat-list-flash.md)（重写版）+ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)
@@ -35,6 +36,7 @@
 | v162 | `5d8266e` | `apk-m193` | `artifacts/app-v162-5d8266e.apk` | 「继续」改为落新气泡（与原版的有意差异） |
 | v163 | `9bbf3a6` | `apk-m194` | `artifacts/app-v163-9bbf3a6.apk` | 版本条挂错气泡 + 落库淡入 |
 | v164 | `8c5c5d9` | `apk-m195` | `artifacts/app-v164-8c5c5d9.apk` | 新消息回底 + 落库高度占位 |
+| v166 | `806a0db` | `apk-m197` | `artifacts/app-v166-806a0db.apk` | **P1 行模型**：`ChatRow(uiKey,…)` + `Inflight`；渲染收敛成一个 `itemsIndexed(key=uiKey)`；删除/撤回/翻版本按 uiKey 定位、按 dbId 落库（设计 → [r2](../plan-chat-list-flash-r2.md) §10）|
 | v165 | `2b1c101` | `apk-m196` | `artifacts/app-v165-2b1c101.apk` | **P0 收尾提交权**：Stop/Finish/失败/切会话收敛成一个提交权，`NonCancellable` 只包"写库→提交界面"，四类失败分开，`replaceMessage` 单事务（设计 → [plan-p0-settle.md](../plan-p0-settle.md)）|
 
 **真机验证记录**：`docs/dev/verification/2026-11-26-M17…M22.md`（一批一个文件）。
@@ -65,7 +67,8 @@ M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批�
    `tag=chat` 的 `收尾 round=… reason=… 计划=… 结果=…`）。**这一批的验收前提是"观感零变化"**，
    真机若看到任何布局/动画变化都算回归。四条纪律：`cancel()` 只在拿到提交权之后；
    输家不改 UI；清"生成中"校验 `roundId`；写行校验 `sessionId`。
-1. **P1 行模型（下一批，决策已定）**：两个决策点都拍了（[r2](../plan-chat-list-flash-r2.md) §13）——
+1. **P1 已出包 v166，等 M24 回执**，然后进 **P2（占位行 + 回底 + 呼吸点）**：
+   两个决策点都拍了（[r2](../plan-chat-list-flash-r2.md) §13）——
    **要平滑收缩**（P3，四条硬约束见 §13.1）、**要呼吸点**（P2，组件 `TypingDots` 见 §13.2）。
    其余口径见 [plan-chat-list-flash.md](../plan-chat-list-flash.md) /
    然后按那份文档的第四~六节**一批做完**（行模型 + 占位气泡 + 重新生成就地替换 + 离散动画），
