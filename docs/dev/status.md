@@ -1,4 +1,4 @@
-# 项目状态快照（2026-11-26 14:05）
+# 项目状态快照（2026-11-26 14:35）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
@@ -11,9 +11,9 @@
 
 | | |
 |---|---|
-| 代码 | `a0a3b7a`（交接卡迁移 + 链接归一，纯文档）；功能基线 `85bccc2`（**P2 占位气泡**） |
-| 最新交付 | **九包**：`app-v159…` → `app-v166-806a0db.apk`（`apk-m197`）→ **`app-v167-85bccc2.apk`（`apk-m198`）**；BUILD_ID 与签名都已验 |
-| 真机确认到哪 | v157（M15）已确认；v158–v164 已真机跑过。v164 回执：自己发消息跟底已好；AI 气泡跟底 / 重新生成闪 / 发送时历史闪 / 继续长消息闪仍未解决 → 结构性问题，见 [plan-chat-list-flash.md](../plan-chat-list-flash.md)。**v165 M23 全通过；v166 M24 核心两条通过；v167 M25 全通过**。主线剩 P3 / P4 |
+| 代码 | `e37ded3`（**P3 就地改写 + 平滑收缩**）；前几包 `85bccc2`（P2）、`806a0db`（P1）、`2b1c101`（P0） |
+| 最新交付 | **十包**：`app-v159…` → `app-v167-85bccc2.apk`（`apk-m198`）→ **`app-v168-e37ded3.apk`（`apk-m199`）**；BUILD_ID 与签名都已验 |
+| 真机确认到哪 | v157（M15）已确认；v158–v164 已真机跑过。v164 回执：自己发消息跟底已好；AI 气泡跟底 / 重新生成闪 / 发送时历史闪 / 继续长消息闪仍未解决 → 结构性问题，见 [plan-chat-list-flash.md](../plan-chat-list-flash.md)。**v165 M23 全通过；v166 M24 核心两条通过；v167 M25 全通过；v168 待 M26**。主线剩 P3 回执 / P4 |
 | CI | 铁律（含 `check-ui-map.sh` / `check-ui-invariants.sh`）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（**10 个模块 129 条**）+ 五个 `check-*` 全过 |
 | 规模 | `app` 约 45 个 kt / 约 12k 行；`data` 22 文件 / 2.4k 行；DB v4 |
@@ -29,8 +29,8 @@
 | **P0 收尾提交权** | Stop/Finish/生成失败/切会话收敛成一个 `GenerationRound` 提交权（新纯 JVM 模块 `:core:generation`，21 条用例）；`cancel()` 只在拿到权之后；`NonCancellable` 只包「写库→提交界面」；四类失败语义分开；`replaceMessage` 单事务 | ✅ v165（`2b1c101` / `apk-m196`），**M23 全通过**（其中「快速停止」「半秒竞态」两条做不到人工测试，由 T1–T4 的并发用例覆盖） |
 | **P1 行模型** | `ChatRow(uiKey)` + `Inflight` 顶替 `transcript`/`streamingText`/`isStreaming`；渲染收敛成一个 `itemsIndexed(key=uiKey)`；删除/撤回/翻版本按 uiKey 定位、按 dbId 落库（审计 P1-5 的下标耦合解除） | ✅ v166（`806a0db` / `apk-m197`），**M24 核心两条通过** |
 | **P2 占位气泡** | 点发送/继续/重新生成**当帧**出 `生成中`/`重新生成中` + 呼吸点（`PendingLine`/`TypingDots`）；首 token 只改正文 → 顺带修掉「AI 气泡掉到输入框下面」；回底分档（贴底瞬时 / 读历史动画）；测量状态按轮分开；键盘可见性不再每帧重组 | ✅ v167（`85bccc2` / `apk-m198`），**M25 全通过** |
-| **P3 就地替换 + 平滑收缩** | 重新生成保留同一行、`inflight.targetDbId` 指过去；删掉 `ReplaceTarget`/`removedContent`/`lastSwipes` 摘放/`streamingRegenerate`；`animateContentSize` 按 r2 §13.1 四条硬约束 | ⬜ **当前这一批** |
-| **P4 动画收口** | `prevKeys` 入场规则（取代 `justSettled`/`suppressNewestFade`/`suppressItemFade` 三个补丁）、`placementSpec` 只在非串流时挂、落库前 `smoothHeight` snap、删除/撤回的位移动画 | ⬜ 排在 P3 后 |
+| **P3 就地替换 + 平滑收缩** | 重新生成**同一行改写**（`inflight.uiKey` 用 `m{dbId}`）；删掉 `ReplaceTarget`/`removedContent`/`Inflight.removed`/`RestoreRemoved`/`streamingRegenerate`；开场 `animateContentSize` 按 r2 §13.1 四条硬约束收缩 260ms | ✅ v168（`e37ded3` / `apk-m199`），**待 M26 真机** |
+| **P4 动画收口** | `prevKeys` 入场规则（取代 `justSettled`/`suppressNewestFade`/`suppressItemFade` 三个补丁）、`placementSpec` 只在非串流时挂、落库前 `smoothHeight` snap、删除/撤回的位移动画 | ⬜ **下一批**（P3 之后） |
 
 ## 最近这几轮改了什么
 
@@ -53,7 +53,7 @@
 
 ## 悬着的事
 
-1. **主线剩 P3 / P4 两批**（见上表）。P3 正在做；P4 排在它后面。设计口径以
+1. **主线剩 P3 回执 + P4**（见上表）。P3 已出包 v168，等 M26 真机回执；P4 排在它后面。设计口径以
    [r2](../plan-chat-list-flash-r2.md) 为准（第一轮 [plan-chat-list-flash.md](../plan-chat-list-flash.md) 已被它修订）。
 2. **`‹N/M›` 只能翻最后一条**：原版 `isMessageSwipeable` 只允许最后一条；
    "任意消息可翻版本"是扩展，用户 2026-11-26 说**先待定**。
