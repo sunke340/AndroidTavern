@@ -775,6 +775,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ) { uri ->
                 if (uri != null) viewModel.exportChat(uri)
             }
+            // 语音输入（P2-3 的另一半）：走系统识别器（`RecognizerIntent`），
+            // 不碰麦克风权限、也不改输入区版式 —— 从菜单进去，识别到的文字接在输入框后面。
+            val context = LocalContext.current
+            val voiceLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { result ->
+                if (result.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
+                val spoken = result.data
+                    ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+                    ?.firstOrNull()
+                    .orEmpty()
+                if (spoken.isNotBlank()) {
+                    viewModel.onInputChange(state.input + spoken)
+                    AppLog.i("chat", "语音输入 ${spoken.length} 字")
+                }
+            }
+            fun startVoiceInput() {
+                val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(
+                        android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                    )
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…")
+                val ok = runCatching { voiceLauncher.launch(intent) }.isSuccess
+                if (!ok) {
+                    android.widget.Toast.makeText(context, "这台设备没有语音识别", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
             Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
                 CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
                     capsuleMenu.show(
@@ -782,6 +810,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         items = listOf(
                             // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
                             CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() },
+                            CapsuleMenuItem("语音输入") { startVoiceInput() },
                             CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() },
                             CapsuleMenuItem("导出聊天记录") {
                                 // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
