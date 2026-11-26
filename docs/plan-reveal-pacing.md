@@ -565,7 +565,8 @@ scroll 打印帧 tick=58/s 目标速率=70cp/s 实际=69.2cp/s 显示=842cp 收�
 | 事项 | 实施 | 与本文的差异 |
 |---|---|---|
 | 游标状态 | `ChatScreen` 里的 `RevealState` + `revealKey/revealRoundId/revealShown/revealDone` | 无（都不进 `UiState`；只有"打印中那一行的 item"读 `revealShown`） |
-| 推进循环 | 一个 `LaunchedEffect(revealKey)` + `withFrameNanos` | 首帧只立 `lastTickNanos` 基准（否则看门狗会在第一帧就误报） |
+| 推进循环 | 一个 `LaunchedEffect(revealKey)` + `withFrameNanos` | 首帧只立基准（否则看门狗会在第一帧就误报） |
+| 推进数学 | `core/model/RevealPacer`（纯计算，7 条单测） | 本文只写"一个循环"；抽进 core 是为了**能测**追平不累计 / 停顿丢余量 / 单帧夹 50ms 这三条 |
 | 收尾判定 | 行在不在 + 正文与开轮基线比是否变过 | **多加一条**：`revealed == 0`（一个字都没打出来）时直接清，因为那时没有"续打"可言，留着只会闪一个空气泡 |
 | 打断 | 点气泡 / 停止 / 退页 / 切会话 / 换 swipe / 删行 / 减动效 / 切不限速 | 点气泡的点击挂在**整行 Column**上（气泡 + 动作行那块），选字手势在深层，先它拿到事件 |
 | `followBridgePx()` | `revealKey != null -> 0f` 放在最前 | 无（不限速 / 减动效档游标为 null，走的是 v180 的老路径） |
