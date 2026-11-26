@@ -184,6 +184,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
     // 长按交给文字选择（正文在外面包了 SelectionContainer）。
     val clipboard = LocalClipboardManager.current
+    // 系统 TTS 朗读（P2-3 的第一半；语音输入要麦克风权限，留给真机那一轮）
+    val tts = rememberTtsSpeaker(LocalContext.current)
     // 删除确认：记的是**行身份**（`uiKey`），不是下标 —— 下标会随增删漂
     var deletingKey by remember { mutableStateOf<String?>(null) }
 
@@ -542,6 +544,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             // 观感是走-停-走-停（抽搐）。见 [Motion.Follow] 的注释。
             smoothHeight.animateTo(target, Motion.Follow)
         }
+    }
+
+    // 打印结束（或被打断）那一刻：把模拟高度**直接对齐实测高度**。
+    // 理由：打印期 `followBridgePx()` 恒 0，`smoothHeight` 一直在后面追；游标一清，
+    // 桥接重新生效，如果它还落后一截，下一帧就会补出一笔假位移 —— 观感是"打完最后一下跳一下"。
+    // 这就是 P4 里"落库前 snap"的那一条（现在挂在"打印结束"上，比挂在落库上更准确）。
+    LaunchedEffect(revealKey) {
+        if (revealKey == null) smoothHeight.snapTo(streamHeight.toFloat())
     }
 
     // ── 阅读锚点保护（场景 C）──
@@ -1203,6 +1213,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 onRegenerate = viewModel::regenerateLast,
                                 onContinue = viewModel::continueLast,
                                 onDelete = { deletingKey = row.uiKey },
+                                onSpeak = { tts.speak(row.uiKey, displayText(row.content)) },
+                                speaking = tts.speakingKey == row.uiKey,
                                 modifier = Modifier.align(
                                     if (isAssistant) Alignment.Start else Alignment.End,
                                 ),
@@ -1688,6 +1700,9 @@ private fun MessageActionRow(
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
     onDelete: () -> Unit,
+    /** 朗读（只有助手消息有）。[speaking] = 这条正在读，图标换成"停止"样式。 */
+    onSpeak: () -> Unit,
+    speaking: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 不 fillMaxWidth：整行要按在气泡哪一侧（调用方用 Column 的 align 定位）
@@ -1703,6 +1718,9 @@ private fun MessageActionRow(
                 Icon(Icons.Filled.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
         } else {
+            MessageActionIcon(if (speaking) "停止朗读" else "朗读", onSpeak) { tint ->
+                SpeakGlyph(tint, speaking = speaking)
+            }
             MessageActionIcon("复制", onCopy) { tint -> CopyGlyph(tint) }
             if (canRegenerate) {
                 MessageActionIcon("重新生成", onRegenerate) { tint ->
@@ -1751,6 +1769,42 @@ private fun MessageActionIcon(
 
 /** 「复制」字形：两张错开的圆角纸（core 里没有 ContentCopy）。 */
 @Composable
+/** 喇叭（朗读）。`speaking` 时在右下方画一个小方块 = 停止，和系统播放器的语感一致。 */
+@Composable
+private fun SpeakGlyph(tint: Color, speaking: Boolean) {
+    Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val stroke = Stroke(width = w * 0.09f)
+        val body = Path().apply {
+            moveTo(w * 0.10f, w * 0.38f)
+            lineTo(w * 0.28f, w * 0.38f)
+            lineTo(w * 0.48f, w * 0.20f)
+            lineTo(w * 0.48f, w * 0.80f)
+            lineTo(w * 0.28f, w * 0.62f)
+            lineTo(w * 0.10f, w * 0.62f)
+            close()
+        }
+        drawPath(body, tint, style = stroke)
+        if (speaking) {
+            drawRect(
+                color = tint,
+                topLeft = Offset(w * 0.62f, w * 0.40f),
+                size = Size(w * 0.24f, w * 0.24f),
+            )
+        } else {
+            drawArc(
+                color = tint,
+                startAngle = -50f,
+                sweepAngle = 100f,
+                useCenter = false,
+                topLeft = Offset(w * 0.46f, w * 0.30f),
+                size = Size(w * 0.34f, w * 0.40f),
+                style = stroke,
+            )
+        }
+    }
+}
+
 private fun CopyGlyph(tint: Color) {
     Canvas(Modifier.size(18.dp)) {
         val w = size.width
