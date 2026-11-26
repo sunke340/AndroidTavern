@@ -4,6 +4,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      保存卡图到相册（P2-4）。API 29+ 走 MediaStore，不需要任何权限；
+      26–28 仍然要写外部存储，所以只给老系统声明，避免在新系统上白白多一个权限条目。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!--
       usesCleartextTraffic：只是为了能连局域网里的 Ollama / LM Studio（http://192.168.x.x）。
       正式版应该改成只对 debug 生效，或者干脆要求 https。
     -->

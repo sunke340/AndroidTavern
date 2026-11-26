@@ -51,6 +51,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Rect
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -106,12 +116,56 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
             val importChatLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocument(),
             ) { uri -> if (uri != null) viewModel.importChat(cardId, uri) }
+            // 保存卡图：API 29+ 走 MediaStore 不要权限；26–28 先申请写外部存储
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            fun saveCardImage() {
+                scope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        AppGraph.cards(context).load(cardId)
+                    }
+                    if (bytes == null) {
+                        Toast.makeText(context, "读不出这张卡的图", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+                    val name = state.cardName.ifBlank { "card" }
+                    val result = withContext(Dispatchers.IO) {
+                        CardImageSaver.save(context, bytes, name)
+                    }
+                    Toast.makeText(
+                        context,
+                        if (result.isSuccess) "已存进相册（$name.png）" else "保存失败：${result.exceptionOrNull()?.message}",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+            val savePermission = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                if (granted) {
+                    saveCardImage()
+                } else {
+                    Toast.makeText(context, "需要存储权限才能存进相册", Toast.LENGTH_SHORT).show()
+                }
+            }
             Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
                 CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
                     capsuleMenu.show(
                         anchor = anchor,
                         items = listOf(
                             CapsuleMenuItem("编辑卡片") { viewModel.openCardEditor() },
+                            CapsuleMenuItem("保存卡图") {
+                                val needed = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                if (needed) {
+                                    savePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                } else {
+                                    saveCardImage()
+                                }
+                            },
                             CapsuleMenuItem("导入聊天记录") {
                                 importChatLauncher.launch(
                                     arrayOf("application/jsonl", "text/plain", "application/octet-stream"),
