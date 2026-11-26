@@ -61,6 +61,7 @@
 | 设置 · 模型 | `SettingsSubPage` | 档案列表；`SettingsPage.Model` = 模型 |
 | 设置 · 采样 | `SettingsSubPage` | `SettingsPage.Sampling` = 采样 |
 | 设置 · 预设 | `SettingsSubPage` | `SettingsPage.Preset` = 预设 |
+| 设置 · 人设 | `SettingsSubPage` | `SettingsPage.Persona` = 人设（点一行 = 设为全局默认；长按 = 编辑 / 删除；右上「+」新建） |
 | 设置 · 外观 | `SettingsSubPage` | `SettingsPage.Appearance` = 外观 |
 | 设置 · 世界书 | `SettingsSubPage` | `SettingsPage.WorldBook` = 世界书 |
 | 设置 · 正则 | `SettingsSubPage` | `SettingsPage.Regex` = 正则 |
@@ -158,6 +159,7 @@
 | 开场白翻页条 | 开场白气泡下沿右侧 | `‹ N/M ›` 小箭头 | `GreetingSwitchBar` |
 | 设为默认胶囊 | 角色详情 · 开场白 tab | 26dp 细胶囊，「设为默认 / 当前默认」同尺寸 | `DefaultGreetingChip` |
 | 气泡字号 | 设置 · 外观 / 卡的配置 · 对话样式 / 会话配置 | 四档 12 / 14 / 16 / 18；三级继承 | `BubbleFontSizes` |
+| 人设 | 设置 · 人设 / 会话配置 / 卡的配置 | 名字 = `{{user}}`；描述进 `personaDescription` 那一格；三级：会话 > 卡 > 全局默认 | `Persona` |
 
 ### 列表与行系统
 
