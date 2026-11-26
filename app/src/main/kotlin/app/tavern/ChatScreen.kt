@@ -264,6 +264,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (!mine && !roundStarted && !atBottom) return@LaunchedEffect
         val near = listState.firstVisibleItemIndex <= 2 &&
             listState.firstVisibleItemScrollOffset == 0
+        // 记一笔：以后"列表滚了几次"能分清是这里滚的，还是布局/桥接自己动的
+        AppLog.i("scroll", "回底：新行/新一轮 near=$near mine=$mine round=$roundStarted")
         if (near) listState.scrollToItem(0) else listState.animateScrollToItem(0)
     }
 
@@ -698,7 +700,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val entering = prevKeys != null && row.uiKey !in prevKeys.orEmpty()
                     val enter = remember(row.uiKey) { Animatable(if (entering) 0f else 1f) }
                     LaunchedEffect(row.uiKey) {
-                        if (enter.value < 1f) enter.animateTo(1f, tween(Motion.Base, easing = Motion.Decelerate))
+                        if (enter.value < 1f) {
+                            enter.animateTo(1f, tween(Motion.Entry, easing = Motion.Decelerate))
+                        }
                     }
                     // 动画期间才挂 graphicsLayer（19k px 的气泡常年挂本地图层就是 INV-02 的老坑）
                     val itemAnim = if (enter.value < 1f) {
@@ -792,7 +796,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         row.uiKey == state.rows.lastOrNull()?.uiKey &&
                         row.role == ChatRole.Assistant
                     // 探针挂在**气泡底板**上（量的是气泡自身，不是整行 86% 的槽位），
-                    // 而且放在夹尺寸 modifier 的**内侧** —— 量到的永远是自然尺寸。
+                    // 并且必须放在夹尺寸 modifier 的**外侧**：量到的才是"屏幕上真实多高"。
+                    // 放内侧会一直报自然高度（收缩期间始终是旧高度），桥接于是在窗口关掉那一帧
+                    // 以为气泡"矮了 1330px"，把整列往上拉一下再弹回来 —— 真机上就是"列表又滚了一次"。
                     val panelProbe = when {
                         isInflightRow -> Modifier
                             .onSizeChanged { streamHeight = it.height }
@@ -816,7 +822,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             fontSizeSp = state.effectiveBubbleFontSize,
                             // 收缩/涨回时正文渐隐、渐显（跟高度同一个驱动源）
                             contentAlpha = contentAlpha,
-                            panelModifier = panelClamp.then(panelProbe),
+                            panelModifier = panelProbe.then(panelClamp),
                         )
                         // 收缩期还要知道占位气泡有多大（H_ph / W_ph）：渲染一份只量不占位的副本
                         //（那一刻气泡里显示的是旧正文，占位不能真的出现）
@@ -924,9 +930,10 @@ private val SwipeBarBlockHeight: Dp = 40.dp
 /**
  * 发送后隔多久才让"生成中"气泡浮上来（用户 2026-11-26 第 4 条）。
  *
- * 要短到不觉得"发了没反应"，又要长到用户气泡那 180ms 的入场动画走完 —— 260ms 正好。
+ * = [Motion.Entry]（用户气泡的入场动画）+ 约 100ms 的停顿：先看清自己那条浮上来，再出占位。
+ * 太短会两拍并成一拍，太长会觉得"发了没反应"。
  */
-private const val PendingAppearDelayMs = 260L
+private const val PendingAppearDelayMs = 420L
 
 /**
  * 聊天输入区：一个玻璃输入胶囊，发送钮**装在胶囊里**（用户 2026-11-25 第 5 条）。

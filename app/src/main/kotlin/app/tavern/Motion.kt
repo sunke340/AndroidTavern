@@ -55,6 +55,15 @@ object Motion {
      */
     const val Collapse = 380
 
+    /**
+     * 新消息**入场**（淡入 + 上浮 10dp）。
+     *
+     * 180 → **320**（2026-11-26 真机）：180ms 配 10dp 的上浮，用户的原话是"太快了"。
+     * 入场是"这道变化本身要看清楚"的那一类（同 [InputExpand]），可以比常规过渡长；
+     * 发送错峰的那个停顿（`PendingAppearDelayMs`）就是按它算的，改这里要一起看。
+     */
+    const val Entry = 320
+
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
