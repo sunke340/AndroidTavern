@@ -174,6 +174,12 @@ private fun labelOf(destination: Destination): String = when (destination) {
 @Composable
 fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 从别的应用「分享」进来的卡：一次性交接（见 SharedIntake）。
+    // 放在最外层：不管当前停在哪一页，分享进来都按"导入这张卡"处理，导完会自己进角色详情。
+    LaunchedEffect(Unit) {
+        SharedIntake.take()?.let { viewModel.importCard(it) }
+    }
     // 系统「移除动画」：位移类转场统一降级成淡入淡出（见 ReducedMotion.kt）
     val reduceMotion = rememberReduceMotion()
 

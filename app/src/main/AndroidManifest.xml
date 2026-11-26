@@ -33,6 +33,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+              收卡（P2-4）：从文件管理器 / 别的应用「分享」一张卡图或 .charx 进来。
+              只接这两类：image/*（PNG 卡）与 application/zip（charx 本质是 zip）。
+              文本、链接不接 —— 那会把"分享"变成一个莫名其妙的入口。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

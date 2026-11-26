@@ -1,5 +1,6 @@
 package app.tavern
 
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
@@ -17,10 +18,18 @@ class MainActivity : ComponentActivity() {
         // 表现就是点输入框时画面先抽一下再落回原位。
         enableEdgeToEdge()
         syncWindowBackground()
+        // 分享进来的卡：onCreate（冷启动）与 onNewIntent（已在运行时）两条路都要接
+        SharedIntake.fromIntent(intent)
         setContent {
             // 主题在 MainScreen 里套（要靠 UiState 的 themePreset/themeMode）
             MainScreen()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        SharedIntake.fromIntent(intent)
     }
 
     /**
