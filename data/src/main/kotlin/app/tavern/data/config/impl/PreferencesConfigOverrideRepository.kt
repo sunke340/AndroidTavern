@@ -34,6 +34,10 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         var presence: Double? = null
         var bubbleFontSize: Float? = null
         var persona: String? = null
+        var anText: String? = null
+        var anDepth: Int? = null
+        var anRole: String? = null
+        var anInterval: Int? = null
         raw.lineSequence().forEach { line ->
             val at = line.indexOf('=')
             if (at <= 0) return@forEach
@@ -47,6 +51,10 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 KEY_REGEX -> regex = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_GREETING -> greeting = value.toIntOrNull()
                 KEY_PERSONA -> persona = value.ifBlank { null }
+                KEY_AN_TEXT -> anText = value.replace("\\n", "\n").ifBlank { null }
+                KEY_AN_DEPTH -> anDepth = value.toIntOrNull()
+                KEY_AN_ROLE -> anRole = value.ifBlank { null }
+                KEY_AN_INTERVAL -> anInterval = value.toIntOrNull()
                 KEY_BUILTIN -> builtin = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_TEMPERATURE -> temperature = value.toDoubleOrNull()
                 KEY_MAX_TOKENS -> maxTokens = value.toIntOrNull()
@@ -65,6 +73,10 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             builtinDisabled = builtin,
             greetingIndex = greeting,
             personaId = persona,
+            authorNote = anText,
+            authorNoteDepth = anDepth,
+            authorNoteRole = anRole,
+            authorNoteInterval = anInterval,
             temperature = temperature,
             maxTokens = maxTokens,
             topP = topP,
@@ -92,6 +104,13 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             }
             value.greetingIndex?.let { append(KEY_GREETING).append('=').append(it).append('\n') }
             value.personaId?.let { append(KEY_PERSONA).append('=').append(it).append('\n') }
+            // 作者注的正文可能有换行：编码时换行 → \\n，读的时候换回来
+            value.authorNote?.let {
+                append(KEY_AN_TEXT).append('=').append(it.replace("\n", "\\n")).append('\n')
+            }
+            value.authorNoteDepth?.let { append(KEY_AN_DEPTH).append('=').append(it).append('\n') }
+            value.authorNoteRole?.let { append(KEY_AN_ROLE).append('=').append(it).append('\n') }
+            value.authorNoteInterval?.let { append(KEY_AN_INTERVAL).append('=').append(it).append('\n') }
             // 内置正则的开关集合：和世界书/正则一样，空集要写出来（"明确全开"≠跟随）
             value.builtinDisabled?.let {
                 append(KEY_BUILTIN).append('=').append(it.joinToString(SEP)).append('\n')
@@ -123,6 +142,10 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         const val KEY_BOOKS = "books"
         const val KEY_REGEX = "regex"
         const val KEY_PERSONA = "persona"
+        const val KEY_AN_TEXT = "an_text"
+        const val KEY_AN_DEPTH = "an_depth"
+        const val KEY_AN_ROLE = "an_role"
+        const val KEY_AN_INTERVAL = "an_interval"
         const val KEY_GREETING = "greeting"
         const val KEY_BUILTIN = "builtin_disabled"
         const val KEY_TEMPERATURE = "temperature"

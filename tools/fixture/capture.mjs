@@ -52,6 +52,9 @@ const PERSONA_POSITION = arg('persona-position', null) ? Number(arg('persona-pos
 const AN_TEXT = arg('an-text', null);
 const AN_DEPTH = arg('an-depth', null) ? Number(arg('an-depth')) : null;
 const AN_ROLE = arg('an-role', null) ? Number(arg('an-role')) : null;
+const AN_INTERVAL = arg('an-interval', null) ? Number(arg('an-interval')) : null;
+// 位置：0 = IN_PROMPT（并进系统提示）、1 = IN_CHAT（按 depth 插进聊天）、2 = BEFORE_PROMPT
+const AN_POSITION = arg('an-position', null) ? Number(arg('an-position')) : null;
 
 // --swipes N：录**消息 swipe**（P0-6）。先正常生成一条，再对最后一条助手消息 swipe N 次。
 // 为什么要这一步：原版把"被换掉的那一条"存进 `swipes[]`、并把 `swipe_id` 指向当前这条；
@@ -111,7 +114,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole, anInterval, anPosition }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -178,14 +181,20 @@ try {
         // 人设（P1-8）：描述与用户名都要在 Generate 之前设进原版的活对象里。
         // 注意 `persona_description_positions` 默认是 IN_PROMPT(0)，那条描述会作为
         // 一条 system 消息被塞进 systemPrompts —— 位置对齐只能靠这份夹具，不能猜。
+        // 作者注：**不能**直接塞 extension_prompts —— 原版每一轮由 authors-note 的
+        // setFloatingPrompt() 按 chat_metadata（interval / position / depth / role）重算，
+        // 直接赋值要么被覆盖、要么 interval 判定不通过（= 一条都不注入）。
         if (anText != null) {
-            const ep = getContext().extensionPrompts;
-            ep['2_floating_prompt'] = {
-                value: anText,
-                depth: anDepth ?? 4,
-                role: anRole ?? 0,
-                position: 1, // extension_prompt_types.IN_CHAT
-            };
+            const AN = await import('./scripts/authors-note.js');
+            const md = getContext().chatMetadata;
+            md[AN.metadata_keys.prompt] = anText;
+            md[AN.metadata_keys.interval] = anInterval ?? 1;
+            md[AN.metadata_keys.depth] = anDepth ?? 4;
+            md[AN.metadata_keys.position] = anPosition ?? 1; // IN_CHAT
+            md[AN.metadata_keys.role] = anRole ?? 0;
+            const el = document.getElementById('extension_floating_prompt');
+            if (el) el.value = anText;
+            AN.setFloatingPrompt();
         }
         if (personaDesc != null || personaName != null || personaPosition != null) {
             const pu = getContext().powerUserSettings;
@@ -271,7 +280,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE, anInterval: AN_INTERVAL, anPosition: AN_POSITION });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);

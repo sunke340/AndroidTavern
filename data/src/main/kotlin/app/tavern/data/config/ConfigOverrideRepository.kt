@@ -47,6 +47,15 @@ data class ConfigOverride(
      */
     val bubbleFontSize: Float? = null,
     /**
+     * 作者注（P1-7）：正文 / 深度 / 角色 / 间隔。四项一起看：正文为空 = 没有作者注。
+     * 原版把它按间隔插进聊天历史，不是系统提示里的固定一段。
+     */
+    val authorNote: String? = null,
+    val authorNoteDepth: Int? = null,
+    /** `System` / `User` / `Assistant`（原版 `note_role`）。 */
+    val authorNoteRole: String? = null,
+    val authorNoteInterval: Int? = null,
+    /**
      * 这一层用哪个人设（`Persona.id`）。null = 跟随上级；三级：会话 > 卡 > 全局默认。
      * 生效人设的**名字**就是 `{{user}}`，**描述**按 `prompt_order` 里的 `personaDescription` 进提示词。
      */
@@ -60,7 +69,8 @@ data class ConfigOverride(
     /** 全是"跟随"？那这条覆盖不必落盘。 */
     val isEmpty: Boolean
         get() = profileId == null && reasoningEffort == null && presetName == null &&
-            personaId == null &&
+            personaId == null && authorNote == null && authorNoteDepth == null &&
+            authorNoteRole == null && authorNoteInterval == null &&
             worldBookNames == null && regexIds == null && builtinDisabled == null &&
             bubbleFontSize == null &&
             temperature == null && maxTokens == null && topP == null &&

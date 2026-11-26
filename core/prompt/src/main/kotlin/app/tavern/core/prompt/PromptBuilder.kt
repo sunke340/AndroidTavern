@@ -47,6 +47,8 @@ public class PromptBuilder {
          * 位置由 `prompt_order` 里的 `personaDescription` 决定，不在这里写死。
          */
         personaDescription: String = "",
+        /** 作者注；null = 没设（那就不插）。插不插还要看 [AuthorNote.activeAt]。 */
+        authorNote: AuthorNote? = null,
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         val charName = character.name
@@ -107,9 +109,28 @@ public class PromptBuilder {
                 }
 
                 Id.CHAT_HISTORY -> {
+                    val blockStart = messages.size
                     messages += newChatMarker()
                     // 历史消息原版也会逐条去掉 \r（"waste of tokens"，见 openai.js），这里照做
                     messages += history.map { it.copy(content = it.content.replace("\r", "")) }
+                    // 作者注：插进**这一段历史**里（原版是往倒序的历史数组里 splice(depth)）。
+                    // 位置 = 末尾往回 [AuthorNote.depth] 条；最少落在标记之后（夹具里它从不出现在
+                    // `[Start a new Chat]` 之前）。
+                    val note = authorNote
+                    if (note != null) {
+                        val userTurns = history.count { it.role == ChatRole.User }
+                        if (note.activeAt(userTurns)) {
+                            val blockLen = messages.size - blockStart
+                            val offset = (blockLen - note.depth).coerceIn(1, blockLen)
+                            messages.add(
+                                blockStart + offset,
+                                ChatMessage(
+                                    role = note.role,
+                                    content = substitute(note.text, charName, userName),
+                                ),
+                            )
+                        }
+                    }
                 }
 
                 // 还没实现的注入点（未知 identifier）：不静默插到别处，

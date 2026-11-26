@@ -41,6 +41,7 @@ import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.preset.PresetDefaults
 import app.tavern.core.preset.PromptOrderEntry
 import app.tavern.core.preset.SamplingPreset
+import app.tavern.core.prompt.AuthorNote
 import app.tavern.core.prompt.PromptBuilder
 import app.tavern.core.regex.BuiltinRegex
 import app.tavern.core.regex.RegexEngine
@@ -403,6 +404,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         /** 生效人设；null = 一个都没选（或选的那个被删了）。 */
         val effectivePersona: Persona?
             get() = effectivePersonaId?.let { id -> personas.firstOrNull { it.id == id } }
+
+        /**
+         * 生效作者注：会话 > 卡（正文为空 = 这一层没有，继续往上找）。
+         * 原版是按"每 N 条用户消息插一次"插进聊天历史的一段话，不是系统提示里的固定一段。
+         */
+        val effectiveAuthorNote: AuthorNote?
+            get() {
+                val text = sessionOverride.authorNote ?: cardOverride.authorNote
+                if (text.isNullOrBlank()) return null
+                val depth = sessionOverride.authorNoteDepth
+                    ?: cardOverride.authorNoteDepth
+                    ?: 4
+                val roleName = sessionOverride.authorNoteRole ?: cardOverride.authorNoteRole
+                val role = when (roleName) {
+                    "User" -> ChatRole.User
+                    "Assistant" -> ChatRole.Assistant
+                    else -> ChatRole.System
+                }
+                val interval = sessionOverride.authorNoteInterval
+                    ?: cardOverride.authorNoteInterval
+                    ?: 1
+                return AuthorNote(text = text, depth = depth, role = role, interval = interval)
+            }
 
         /**
          * `{{user}}` 展开成什么。**只认生效人设的名字**；没人设时保持原来的 "User"
@@ -1729,6 +1753,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             persistSessionConfig(sessionId) { it.copy(personaId = id) }
             _state.update { it.copy(sessionOverride = it.sessionOverride.copy(personaId = id)) }
             AppLog.i("config", "会话人设=${id?.take(6) ?: "跟随"}")
+        }
+    }
+
+    /**
+     * 会话级作者注。四项一起写：正文清空 = 这一层没有作者注（回到"跟随上级"）。
+     */
+    fun setSessionAuthorNote(text: String?, depth: Int, role: String, interval: Int) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) {
+                it.copy(
+                    authorNote = text?.takeIf { t -> t.isNotBlank() },
+                    authorNoteDepth = depth,
+                    authorNoteRole = role,
+                    authorNoteInterval = interval,
+                )
+            }
+            _state.update {
+                it.copy(
+                    sessionOverride = it.sessionOverride.copy(
+                        authorNote = text?.takeIf { t -> t.isNotBlank() },
+                        authorNoteDepth = depth,
+                        authorNoteRole = role,
+                        authorNoteInterval = interval,
+                    ),
+                )
+            }
+            AppLog.i("config", "会话作者注 depth=$depth role=$role interval=$interval 正文=${text?.length ?: 0}字")
         }
     }
 
@@ -3068,6 +3120,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         // 人设描述：原版把它插进 prompt_order 的 `personaDescription` 那一格
                         // （夹具 P1-8-persona-prompt 钉住位置与形态）
                         personaDescription = snapshot.effectivePersona?.description.orEmpty(),
+                        // 作者注：按"每 N 条用户消息"插进聊天历史（夹具 P1-7-an-prompt / -depth-2）
+                        authorNote = snapshot.effectiveAuthorNote,
                     )
                     // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
                     scan to if (continuation) built + continueHint else built

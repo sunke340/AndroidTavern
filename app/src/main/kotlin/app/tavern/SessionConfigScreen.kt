@@ -6,7 +6,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -80,6 +99,13 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 samplingOverride.frequencyPenalty,
                 samplingOverride.presencePenalty,
             ).any { it != null }
+            var noteEditor by remember { mutableStateOf(false) }
+            val note = state.effectiveAuthorNote
+            val noteSrc = when {
+                state.sessionOverride.authorNote != null -> "会话"
+                state.cardOverride.authorNote != null -> "角色卡"
+                else -> "未设置"
+            }
             val personaStored = state.sessionOverride.personaId
             val personaSrc = when {
                 personaStored != null -> "本会话"
@@ -87,7 +113,7 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 else -> "跟随全局"
             }
             val personaName = state.effectivePersona?.name ?: "未设置"
-            ListGroup(count = 7) { index, _ ->
+            ListGroup(count = 8) { index, _ ->
                 when (index) {
                     0 -> SettingLinkRow("模型", "$profileName · $modelSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Model)
@@ -117,6 +143,14 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Persona)
                     }
 
+                    6 -> SettingLinkRow(
+                        "作者注",
+                        if (note == null) "未设置" else {
+                            "${note.text.length} 字 · 深度 ${note.depth} · " +
+                                "每 ${note.interval} 轮 · $noteSrc"
+                        },
+                    ) { noteEditor = true }
+
                     else -> SettingLinkRow(
                         "气泡字号",
                         "${bubbleFontSizeLabel(state.effectiveBubbleFontSize)} · $bubbleSrc",
@@ -124,6 +158,110 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.FontSize)
                     }
                 }
+            }
+
+            if (noteEditor) {
+                AuthorNoteDialog(
+                    initial = note,
+                    onSave = { text, depth, role, interval ->
+                        viewModel.setSessionAuthorNote(text, depth, role, interval)
+                        noteEditor = false
+                    },
+                    onClose = { noteEditor = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 作者注编辑层（P1-7）。
+ *
+ * 四项照原版：正文、深度（后面留几条历史）、角色、间隔（每 N 条用户消息插一次）。
+ * 原版还有"参与世界书扫描"这个开关，本项目暂未实现（口径写在 compat-matrix 的 P1-7 里）。
+ */
+@Composable
+private fun AuthorNoteDialog(
+    initial: AuthorNote?,
+    onSave: (String, Int, String, Int) -> Unit,
+    onClose: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial?.text.orEmpty()) }
+    var depth by remember { mutableStateOf((initial?.depth ?: 4).toString()) }
+    var interval by remember { mutableStateOf((initial?.interval ?: 1).toString()) }
+    var role by remember {
+        mutableStateOf(
+            when (initial?.role) {
+                app.tavern.core.model.ChatRole.User -> "User"
+                app.tavern.core.model.ChatRole.Assistant -> "Assistant"
+                else -> "System"
+            },
+        )
+    }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding()
+                    .padding(Space.l),
+                verticalArrangement = Arrangement.spacedBy(Space.m),
+            ) {
+                Text("作者注", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "每 N 条用户消息插进聊天历史一次；深度是「它后面留几条消息」。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("正文") },
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                    OutlinedTextField(
+                        value = depth,
+                        onValueChange = { depth = it.filter { c -> c.isDigit() }.take(3) },
+                        label = { Text("深度") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = interval,
+                        onValueChange = { interval = it.filter { c -> c.isDigit() }.take(3) },
+                        label = { Text("间隔") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                SegmentedRow(
+                    options = listOf("System", "User", "Assistant"),
+                    selected = role,
+                    label = { it },
+                    onSelect = { role = it },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                    Button(
+                        onClick = {
+                            onSave(
+                                text,
+                                depth.toIntOrNull()?.coerceIn(0, 100) ?: 4,
+                                role,
+                                interval.toIntOrNull()?.coerceIn(1, 100) ?: 1,
+                            )
+                        },
+                    ) { Text("保存") }
+                    OutlinedButton(onClick = onClose) { Text("取消") }
+                }
+                Spacer(Modifier.height(Space.s))
+                Text(
+                    "清空正文 = 这一层没有作者注（回到跟随上级）。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
