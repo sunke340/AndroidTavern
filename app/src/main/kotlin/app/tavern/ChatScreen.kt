@@ -206,10 +206,17 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val listState = rememberLazyListState()
 
     // 串流刚结束的那一帧：落库出来的气泡**就是**刚才那个流式气泡。它若走淡入，
-    // 观感是"先消失再淡出来"（用户 2026-11-26：点停止后列表闪一下）。这一帧不挂 animateItem。
+    // 观感是"先消失再淡出来"。而且这个抑制要**保持到下一轮流开始** ——
+    // 只压一帧的话，下一帧 itemAnim 又被装上，动画器会把同一颗气泡当成"新出现"再淡入一次
+    // （用户 2026-11-26：修过一次，停止时还在闪）。
     var sawStreaming by remember { mutableStateOf(state.isStreaming) }
+    var suppressNewestFade by remember { mutableStateOf(false) }
     val justSettled = sawStreaming && !state.isStreaming
-    SideEffect { sawStreaming = state.isStreaming }
+    SideEffect {
+        if (justSettled) suppressNewestFade = true
+        if (state.isStreaming) suppressNewestFade = false
+        sawStreaming = state.isStreaming
+    }
 
     // 撤回会把列表削短：视口可能停在中段、下面留一片空白。这里收到一次性信号就贴底。
     // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
@@ -225,6 +232,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         derivedStateOf {
             listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
         }
+    }
+
+    // 新消息进列表：列表用了稳定 key，插到头部时会**锚住原来那条** —— 新气泡于是停在视口外，
+    // 观感就是"掉到输入框下面、不会自动滚到底部"（用户 2026-11-26 报的）。
+    // 所以贴底时显式回 index 0；自己发的那条无论如何都回底（发了就该看见），
+    // 而读历史时到达的回复不动阅读位置。
+    LaunchedEffect(state.transcript.size) {
+        val mine = state.transcript.lastOrNull()?.role == ChatRole.User
+        if (atBottom || mine) listState.scrollToItem(0)
     }
 
     // 串流气泡永远显示最新文本：冻结已撤掉（用户 2026-11-24 晚：卡住的观感不是我要的）。
@@ -542,18 +558,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 已有气泡换槽位，于是整屏一起播淡入/淡出（用户 2026-11-26：发一条新消息
                     // 整个列表会突然显示一下）。串流气泡与空状态也各占一个固定 key。
                     item(key = "stream") {
-                        MessageRow(
-                            message = ChatMessage(ChatRole.Assistant, shownStream),
-                            style = state.effectiveMessageStyle,
-                            showCursor = true,
-                            displayText = displayText,
-                            fontSizeSp = state.effectiveBubbleFontSize,
-                            // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
-                            // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
-                            modifier = Modifier
-                                .onSizeChanged { streamHeight = it.height }
-                                .onGloballyPositioned { streamProbe.topY = it.positionInWindow().y.toInt() },
-                        )
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            MessageRow(
+                                message = ChatMessage(ChatRole.Assistant, shownStream),
+                                style = state.effectiveMessageStyle,
+                                showCursor = true,
+                                displayText = displayText,
+                                fontSizeSp = state.effectiveBubbleFontSize,
+                                // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
+                                // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
+                                modifier = Modifier
+                                    .onSizeChanged { streamHeight = it.height }
+                                    .onGloballyPositioned {
+                                        streamProbe.topY = it.positionInWindow().y.toInt()
+                                    },
+                            )
+                            // 落库那一帧这条会多出「动作行」（+34dp；重新生成还会多出「版本条」+40dp）。
+                            // 先把这块高度占住 —— 否则流式气泡被替换的那一帧，整条列表会往上跳一截，
+                            // 看起来就是"生成完毕/点停止时列表闪一下"（用户 2026-11-26）。
+                            Spacer(
+                                Modifier.height(
+                                    ActionRowHeight + if (state.isStreaming && state.streamingRegenerate) {
+                                        SwipeBarBlockHeight
+                                    } else {
+                                        0.dp
+                                    },
+                                ),
+                            )
+                        }
                     }
                 }
                 if (state.transcript.isEmpty() && state.streamingText.isEmpty()) {
@@ -583,7 +615,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val realIndex = state.transcript.lastIndex - index
                     val isLast = realIndex == state.transcript.lastIndex
                     val isAssistant = message.role == ChatRole.Assistant
-                    val itemAnim = if (suppressItemFade || (justSettled && index == 0)) {
+                    val itemAnim = if (suppressItemFade ||
+                        (index == 0 && (justSettled || suppressNewestFade))
+                    ) {
                         // 离场重建（销毁 SelectionContainer）这一趟不要淡入：否则整屏闪一下；
                         // 串流落库那一帧同理（那颗气泡刚从流式状态换过来）
                         Modifier
@@ -684,6 +718,12 @@ private val ChatInputAreaHeight: Dp = 80.dp
 
 /** 输入区里圆钮的直径：发送与模型两个钮同尺寸、同材质，才是"对称"。 */
 private val ChatBarButtonSize: Dp = 40.dp
+
+/** 气泡底下动作行的高度（32dp 图标 + 顶部 2dp）。串流气泡要预留它，落库那一帧高度才不变。 */
+private val ActionRowHeight: Dp = 34.dp
+
+/** 版本条整块高度（上方 4dp 间距 + 条本身 36dp）。重新生成的串流气泡要连它一起预留。 */
+private val SwipeBarBlockHeight: Dp = 40.dp
 
 /**
  * 聊天输入区：一个玻璃输入胶囊，发送钮**装在胶囊里**（用户 2026-11-25 第 5 条）。

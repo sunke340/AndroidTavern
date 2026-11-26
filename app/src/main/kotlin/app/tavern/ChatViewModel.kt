@@ -292,6 +292,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          * 视图层收到新信号就 `scrollToItem(0)`（反排列表的 0 就是最底部）。
          */
         val scrollToBottomSignal: Long = 0,
+        /**
+         * 正在跑的这一轮是不是「重新生成」（只在 `isStreaming` 为真时有意义）。
+         *
+         * 界面用它决定串流气泡要不要**预留版本条的高度**：重新生成落库后这条会带 `‹2/2›`，
+         * 不预留的话那一帧整列会往上跳（用户 2026-11-26 报的"停止/生成完毕闪一下"）。
+         */
+        val streamingRegenerate: Boolean = false,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -2835,6 +2842,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 transcript = history,
                 streamingText = "",
                 isStreaming = true,
+                // 重新生成落库后会带版本条：让串流气泡预留那块高度（见 UiState.streamingRegenerate）
+                streamingRegenerate = replacing != null,
                 input = "",
                 status = "准备请求…",
                 requestPreview = "",
