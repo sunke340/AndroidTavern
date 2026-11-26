@@ -113,6 +113,13 @@ jailbreak 在默认预设里是空串，于是整条消息消失）；源码 `op
 
 证据：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`。
 
+**继续**：`char_name` = 被续写那条的说话人，末尾多一条
+`[Continue your last message without repeating its original content.]`（夹具 `P2-1-group-continue`）。
+
+**Swipe**：两份夹具（`-swipe` / `-manual-swipe`）里被替换的都是 SysPrompt 那条，
+但 `char_name` 与 nudge 都指向 **Synthetic**（下一个该说话的人）—— 语义可疑，
+实现前先分清是「原版怪处」还是「录制时序问题」，别照抄（见 plan-group-chat §6.2）。
+
 ---
 
 ## 角色卡文件
