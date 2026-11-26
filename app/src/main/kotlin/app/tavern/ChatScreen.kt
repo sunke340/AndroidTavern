@@ -12,10 +12,8 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -104,17 +102,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import app.tavern.core.regex.RegexEngine
 import app.tavern.core.regex.RegexPlacement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -125,7 +124,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -550,17 +551,30 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         val inflightNow = state.inflight
         val collapse = state.collapse
         val collapseKey = collapse?.uiKey
-        // 收缩窗口挂上来的那一帧，正文还必须是**旧正文**：`animateContentSize` 1.7.6 在节点
-        // 刚挂上时把"当前量到的尺寸"当起点（`AnimData` 初始化成 targetSize，不播首帧动画）。
-        // 所以先过一个帧回调让 Modifier 用旧正文量一次，下一帧再换成占位，收缩才真的从旧高度开始。
-        var collapseShown by remember { mutableStateOf(false) }
-        LaunchedEffect(collapseKey) {
-            if (collapseKey == null) {
-                collapseShown = false
-                return@LaunchedEffect
-            }
-            withFrameNanos { }
-            collapseShown = true
+        // ── 重新生成的平滑收缩（r2 §13.1）────────────────────────────────────
+        //
+        // 为什么**不用** `Modifier.animateContentSize`（v168 第一版就是它，真机不合格）：
+        // 它只把"动画中的尺寸"报给**父级**，子内容仍按自己的自然尺寸画。占位气泡只有 140px，
+        // 于是观感是"气泡瞬间变成小气泡、只有历史在滑"，等于没动画。
+        //
+        // 现在显式驱动高度：气泡套 `Modifier.height(h)`，h 从"收缩前那一帧量到的高度"（H_old）
+        // 收到"占位气泡的高度"（H_ph）。旧正文留在气泡里被这个高度裁掉 —— 看到的就是
+        // 气泡一点点收下去、文字被吃掉，而不是一帧变小。
+        /** 收缩前这一行有多高（最后一条助手消息在**空闲时**量到的）。 */
+        var lastBubbleHeight by remember { mutableIntStateOf(0) }
+        /** 占位气泡的自然高度：窗口期用一个"只量不占位"的副本量出来。 */
+        var placeholderHeight by remember(collapseKey) { mutableIntStateOf(0) }
+        // 起点就是"收缩前的高度"：**建的时候**就带上，别从 0 开始 ——
+        // 否则窗口打开的第一帧会被夹成 0 高，看上去是"先闪没、再弹回来"。
+        val collapseHeight = remember(collapseKey) { Animatable(lastBubbleHeight.toFloat()) }
+        // 收尾了（0 字停止 / 失败）→ 目标换成"涨回原高度"，让旧正文回来也走同一条动画（C4）
+        val collapseGrowBack = collapseKey != null && !state.isStreaming
+        LaunchedEffect(collapseKey, collapseGrowBack, placeholderHeight) {
+            if (collapseKey == null) return@LaunchedEffect
+            val target = (if (collapseGrowBack) lastBubbleHeight else placeholderHeight).toFloat()
+            if (target <= 0f) return@LaunchedEffect
+            if (reduceMotion) collapseHeight.snapTo(target)
+            else collapseHeight.animateTo(target, tween(Motion.Collapse, easing = Motion.Standard))
         }
         val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
             // 占位行与用户行在**同一次状态更新**里出现（生成行一直在这里合成，正文可能还是空）：
@@ -670,11 +684,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
                     val showSwipeBar = !state.isStreaming && !isGreetingMessage &&
                         isLast && isAssistant && state.lastSwipes.size > 1
-                    // 这一行显示的正文：就地改写时正文来自 `inflight`，但**收缩窗口挂上来的
-                    // 第一帧仍要显示旧正文**（见 collapseShown 的注释）。
+                    // 这一行显示的正文。收缩窗口里**显示旧正文**（它会被高度裁掉，观感才是"收下去"）；
+                    // 就地改写时正文来自 `inflight`；其余行照旧。
+                    val collapseOpen = collapseKey == row.uiKey
                     val shownContent = when {
+                        collapseOpen -> row.content
                         !isInflightRow -> row.content
-                        collapseKey == row.uiKey && !collapseShown -> row.content
                         else -> inflightNow?.text.orEmpty()
                     }
                     // 还没吐字 → 占位气泡（`生成中` / `重新生成中` + 呼吸点）；
@@ -684,44 +699,69 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         inflightNow?.targetDbId != null -> PendingKind.Regenerating
                         else -> PendingKind.Generating
                     }
-                    // 平滑收缩只挂在**重新生成那一行**上（r2 §13.1 C1）：正文一开始长就摘掉，
-                    // 常驻的话串流每换一次行都会被包一层动画，与"布局自然增长 + 桥接"抢位移。
-                    val collapseAnim = if (collapseKey == row.uiKey) {
-                        Modifier.animateContentSize(
-                            // 减动效：不留动画，直接换尺寸（项目规矩：统一走 rememberReduceMotion）
-                            animationSpec = if (reduceMotion) {
-                                snap()
-                            } else {
-                                tween(Motion.Collapse, easing = Motion.Standard)
-                            },
-                            // 反排列表的锚点在底部：收的时候内容贴着下沿，观感才是"收回输入框"
-                            alignment = Alignment.BottomStart,
-                        )
+                    // 收缩窗口期把气泡高度夹在动画值上（`height` 是**精确**高度：内容超了就被裁）
+                    val clamped = collapseOpen && lastBubbleHeight > 0
+                    val heightClamp = if (clamped) {
+                        // `Text` 被高度约束后**仍会把整段字画出来**（布局高度裁了、绘制不裁），
+                        // 所以这里必须自己裁绘制；而且用 `clipRect` 手裁、不用 `clipToBounds()`
+                        // —— 后者是 graphicsLayer，19k px 高的气泡会给它开一张巨大的本地图层
+                        //（INV-02 的教训），手裁只影响绘制、不建层。
+                        Modifier
+                            .height(with(density) { collapseHeight.value.toDp() })
+                            .drawWithContent {
+                                clipRect(right = size.width, bottom = size.height) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
                     } else {
                         Modifier
                     }
-                    Column(modifier = itemAnim.fillMaxWidth().then(collapseAnim)) {
+                    // 空闲时量"最后一条助手消息"的高度 = 下一次收缩的起点 H_old。
+                    // **收缩窗口期必须排除**：那会儿高度是被夹住的（140px 起），
+                    // 量进去就把起点写坏了 —— 涨回来会停在 140，下一次收缩也从小数开始。
+                    val measureIdle = !isInflightRow && !collapseOpen &&
+                        row.uiKey == state.rows.lastOrNull()?.uiKey &&
+                        row.role == ChatRole.Assistant
+                    // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
+                    // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
+                    // 两条测量互斥（inflight 行 / 空闲的最后一条），所以叠在一起写。
+                    val probed = if (isInflightRow) {
+                        heightClamp
+                            .onSizeChanged { streamHeight = it.height }
+                            .onGloballyPositioned {
+                                streamProbe.topY = it.positionInWindow().y.toInt()
+                            }
+                    } else {
+                        heightClamp
+                    }
+                    Column(modifier = itemAnim.fillMaxWidth()) {
                         MessageRow(
                             message = ChatMessage(row.role, shownContent),
                             style = state.effectiveMessageStyle,
-                            // 收缩窗口里连光标也不给：窗口开着时这一行还是**旧正文**或占位，
-                            // 光标一出现会挤动旧正文（一帧的抽动）
-                            showCursor = isInflightRow && pendingKind == null && collapseKey != row.uiKey,
+                            // 收缩窗口里连光标也不给：那一帧显示的是旧正文，光标一出现会挤动它
+                            showCursor = isInflightRow && pendingKind == null && !collapseOpen,
                             pending = pendingKind,
                             displayText = displayText,
                             fontSizeSp = state.effectiveBubbleFontSize,
-                            // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
-                            // 日志里的"顶Y"就是它，用来验证读到的那一段有没有被顶走。
-                            modifier = if (isInflightRow) {
-                                Modifier
-                                    .onSizeChanged { streamHeight = it.height }
-                                    .onGloballyPositioned {
-                                        streamProbe.topY = it.positionInWindow().y.toInt()
-                                    }
+                            modifier = if (measureIdle) {
+                                probed.onSizeChanged { lastBubbleHeight = it.height }
                             } else {
-                                Modifier
+                                probed
                             },
                         )
+                        // 收缩期还要知道"占位气泡有多高"（H_ph）：渲染一份只量不占位的副本
+                        //（那一刻气泡里显示的是旧正文，占位不能真的出现）
+                        if (collapseOpen && !collapseGrowBack && placeholderHeight == 0) {
+                            MeasureOnlyHeight({ placeholderHeight = it }) {
+                                MessageRow(
+                                    message = ChatMessage(ChatRole.Assistant, ""),
+                                    style = state.effectiveMessageStyle,
+                                    pending = PendingKind.Regenerating,
+                                    displayText = displayText,
+                                    fontSizeSp = state.effectiveBubbleFontSize,
+                                )
+                            }
+                        }
                         // 生成中这一行：先把落库后会多出来的高度占住
                         //（动作行 +34dp；重新生成还会多出「版本条」+40dp），
                         // 否则定稿那一帧整条列表会往上跳一截（用户 2026-11-26）。
@@ -1400,6 +1440,24 @@ private val NoFocusScrollSpec = object : BringIntoViewSpec {
  * 以后要加投影/抬升，别退回 `Surface` —— 用 `Modifier.drawWithContent` 或给外层加，
  * 任何会生成本地渲染层的 modifier 都要先想一遍"这条消息可能有多高"。
  */
+/**
+ * 只量、不占位：把 [content] 按**父级宽度、不限高**量一次，把高度报回去，自己占 0×0。
+ *
+ * 用途：重新生成收缩要知道"占位气泡有多高"（H_ph），但那一刻气泡里显示的是旧正文 ——
+ * 占位不能真的出现、也不能占走高度。`Modifier.size(0.dp)` 套上去会把子内容量成 0，
+ * 所以要自定义 measure：宽用父级给的（换行位置才对），高放开，报 0×0。
+ */
+@Composable
+private fun MeasureOnlyHeight(onHeight: (Int) -> Unit, content: @Composable () -> Unit) {
+    Layout(content = content) { measurables, constraints ->
+        val placeable = measurables.firstOrNull()?.measure(
+            constraints.copy(minWidth = 0, minHeight = 0, maxHeight = Constraints.Infinity),
+        )
+        if (placeable != null && placeable.height > 0) onHeight(placeable.height)
+        layout(0, 0) {}
+    }
+}
+
 @Composable
 private fun MessagePanel(
     backgroundColor: Color,

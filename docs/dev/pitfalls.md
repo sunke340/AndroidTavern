@@ -1146,38 +1146,38 @@ val imeInsets = WindowInsets.ime            // 取句柄不读值 → 不会每�
 LaunchedEffect(sheetOpen) { if (imeInsets.getBottom(density) > 0) { … } }
 ```
 
-## `animateContentSize` 的两条硬事实（2026-11-26，v168 P3）
+## `animateContentSize` 只动画"报给父级的尺寸"，气泡自己不会变小（2026-11-26，v168→v169 修）
 
-抄 API 之前先看**本项目实际用的那版**源码（`androidx.compose.animation:animation` 1.7.6，
-`AnimationModifier.kt`），两条都踩了：
+v168 第一版用 `Modifier.animateContentSize` 做"重新生成开场收缩"，真机**不合格**：
+气泡瞬间变成小气泡，只有历史消息在滑。原因不是没挂上、也不是时长/曲线，而是它的语义：
 
-1. **没有 `clip` 参数**。那条重载是 `(animationSpec, alignment, finishedListener)`，实现里
-   `this.clipToBounds() then SizeAnimationModifierElement(...)` —— 裁剪写死，传 `clip = true` 编不过。
-   （P3 的方案文档原来写着 `clip = true`，实施时按源码改了。）
-2. **节点挂上来的那一帧不播动画**：`animData == null` 时直接
-   `AnimData(Animatable(targetSize, …), targetSize)` —— 以"当时量到的尺寸"为起点。
-   所以"挂 Modifier"和"换内容"必须**隔一帧**，否则整段收缩是硬切（我们第一版就是这样，
-   在收的就是"从零开始的那一帧"）。
+- 它把**动画中的尺寸报给父级**（`layout(width, height)` 用动画值），于是 LazyColumn 里
+  上面的条目确实平滑让位；
+- 但**子内容仍按自己的自然尺寸画**（`placeable.place(alignment.align(measuredSize, space))`）。
+  占位气泡自然只有 140px，所以气泡一帧就变成 140px 的小胶囊，剩下 260ms 只是在收那片**空白**。
+  眼睛看到的是"气泡瞬间变小" —— 等于没动画。
 
-两边一起用：
+要"气泡本身看起来在收"，只有一条路：**显式给高度**（`Modifier.height(h)`，h 由 `Animatable`
+驱动），让面板和正文都被这个高度裁住。h 的起点/终点都得自己知道：
 
-```kotlin
-// 窗口先挂上（内容还是旧的）→ 过一个帧回调 → 下一帧才换正文/占位
-var shown by remember { mutableStateOf(false) }
-LaunchedEffect(collapseKey) {
-    if (collapseKey == null) { shown = false; return@LaunchedEffect }
-    withFrameNanos { }        // 这一帧让 Modifier 用旧内容量一次
-    shown = true
-}
-Modifier.animateContentSize(
-    animationSpec = if (reduceMotion) snap() else tween(Motion.Collapse, easing = Motion.Standard),
-    alignment = Alignment.BottomStart,   // 反排列表：内容贴下沿收
-)
-```
+| 量 | 怎么来 |
+|---|---|
+| H_old（收缩前多高） | 空闲时给"最后一条助手消息"挂 `onSizeChanged` 存下来。**收缩窗口期必须跳过它**，否则会把 140px 写进起点，涨回来停在中途 |
+| H_ph（占位气泡多高） | 窗口期渲染一份"只量不占位"的副本：自定义 `Layout` 用**父级宽度、不限高**量一次、报 0×0。套 `Modifier.size(0.dp)` 会把它量成 0，没用 |
 
-`withFrameNanos` 在 `LaunchedEffect` 里是合法的（那里有 `MonotonicFrameClock`）；**在 ViewModel
-里不行**（`viewModelScope` 没有帧时钟）—— 所以"等一帧"这类事只能放在组合里，别往 VM 塞。
-`rememberReduceMotion()` 那一档要手动退成 `snap()`：Compose 的动画不认系统「移除动画」。
+两个额外的坑：
+
+1. **`Text` 被高度约束后布局高度裁了、绘制不裁**：多出来的行照样画出去（画到邻居身上）。
+   必须自己裁绘制；用 `drawWithContent { clipRect(bottom = size.height) { … } }`，
+   **不要**用 `clipToBounds()` —— 那是 graphicsLayer，19k px 高的气泡会给它开一张巨大的
+   本地图层（INV-02 的教训）。
+2. 起点要**在 `remember` 建 Animatable 的时候就带上**（`Animatable(H_old)`），不能建成 0 再
+   `snapTo`：那样窗口打开的第一帧会被夹成 0 高，观感是"先闪没、再弹回来"。
+
+顺带记两条 1.7.6 的源码事实（还在别处用得上）：`animateContentSize` **没有 `clip` 参数**
+（裁剪写死在 `clipToBounds()` 里，传 `clip = true` 编不过）；节点**挂上那一帧不播动画**
+（`AnimData` 以当时量到的尺寸初始化），所以"挂 Modifier"和"换内容"必须隔一帧 ——
+这条也说明"靠帧序去凑动画"很脆，能用显式高度就别靠它。
 
 ## 重新生成"撤下行再追加"就是开场闪的根（2026-11-26，v168 P3）
 
