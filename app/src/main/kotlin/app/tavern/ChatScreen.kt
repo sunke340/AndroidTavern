@@ -706,14 +706,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                             enter.animateTo(1f, tween(Motion.Entry, easing = Motion.Decelerate))
                         }
                     }
-                    // 动画期间才挂 graphicsLayer（19k px 的气泡常年挂本地图层就是 INV-02 的老坑）
+                    // 入场：**槽位高度**从 0 长到自然高度 —— 这才是"浮上来"。
+                    // 只做透明度+位移是不够的：新行占的那一段高度是**立刻**加上去的，反排列表里
+                    // 上面的内容会"瞬移"一下（用户 2026-11-26："气泡是淡入的，但列表长度突然增加，
+                    // 整体往上瞬移两下"）。高度跟着一起长，上面那些行就是滑上去的。
+                    // 动画期间才挂 graphicsLayer（19k px 的气泡常年挂本地图层就是 INV-02 的老坑）。
                     val itemAnim = if (enter.value < 1f) {
-                        // 上浮距离要**看得见**：10dp 在 320ms 里几乎读不出来，观感就是"直接出现"。
-                        // 28dp 才看得出是"从下面浮上来"。
-                        Modifier.graphicsLayer {
-                            alpha = enter.value
-                            translationY = (1f - enter.value) * 28.dp.toPx()
-                        }
+                        Modifier
+                            .graphicsLayer { alpha = enter.value }
+                            .revealFromBottom(enter.value)
                     } else {
                         Modifier
                     }
@@ -1574,6 +1575,19 @@ private fun Modifier.clampReportedSize(width: Int, height: Int): Modifier = layo
  */
 private fun bornSeq(uiKey: String): Long =
     if (uiKey.startsWith("u") || uiKey.startsWith("p")) uiKey.drop(1).toLongOrNull() ?: -1L else -1L
+
+/**
+ * 入场用：把**报给父级的高度**按 [progress] 缩掉（0 = 完全没占高度，1 = 自然高度），
+ * 子内容照常排版、从槽位上沿往下画。反排列表里槽位贴着底部，所以观感就是
+ * "气泡从输入框后面升上来"，同时上面那些行是**滑**上去的而不是瞬移。
+ *
+ * 宽度照报自然值；不裁剪 —— 多出来的部分落在槽位下方，被视口和输入区盖住。
+ */
+private fun Modifier.revealFromBottom(progress: Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val h = (placeable.height * progress.coerceIn(0f, 1f)).roundToInt()
+    layout(placeable.width, h) { placeable.place(0, 0) }
+}
 
 /** 把绘制裁到自己的尺寸（`size` = 上面 clamp 报出去的那个）。手裁，不起本地图层。 */
 private fun Modifier.clipToOwnSize(): Modifier = drawWithContent {
