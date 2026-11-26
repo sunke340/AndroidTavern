@@ -267,6 +267,10 @@
   （`isGreetingMessage` = 会话第一条 + 还没人说过话 + 内容对得上；翻页条另用 `canSwitchGreeting`）。
 - **发送 / 重新生成 / 继续共用 `beginCompletion(history, userText, replacing, continuation)`**：
   `userText = null` 表示不追加用户消息。别复制一份发送逻辑（世界书、正则、思考强度会分叉）。
+- **「继续」落一条新消息，不拼回上一条**（用户 2026-11-26 定）：原版是 `mes +=`，我们改成
+  与普通发送同路 —— 旧气泡全程不动，续写作为新助手消息出现。请求侧仍按原版在末尾追加
+  `[Continue your last message ...]`（夹具 `P0-6-continue` 只卡请求）。只有**重新生成**
+  改写同一行并追加 swipe 备选；它的半截内容（停止时）也作为一条新 swipe 写回同一行。
 - 橡皮筋 `Modifier.rubberOverscroll(...)` **每个可滚动面都要挂**（会话/角色卡/聊天/世界书/设置一二级/
   预设编辑…）—— 新加一个可滚动页面时最容易漏的就是这条；顺序必须在 `verticalScroll`/`LazyColumn` **之前**。四条硬约束
   （细节见 pitfalls「键盘与橡皮筋」）：`raw` 有上限；fling 撞上限后记 `flingEaten` 只吃不累积；
