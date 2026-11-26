@@ -353,11 +353,12 @@ t1 首 token：item(key="stream") 插入到 index 0
 |---|---|---|---|
 | **P0 数据一致性** | 提交权仲裁（`AtomicReference<CommitPhase>`，取代 `written`）+ 四类失败语义 + `replaceMessage` 单事务。**定稿设计见 [plan-p0-settle.md](plan-p0-settle.md)**（含 21 条纯 JVM 用例） | 无 | — |
 | **P1 行模型地基** | `ChatRow(uiKey, role, content, dbId)` + `Inflight(roundId, sessionId, uiKey, targetDbId, text)`；`rows`/`transcript` getter；`displayRows`；单一 `RowItem` 渲染入口；删除/撤回/翻版本改按 `dbId`；K1–K5 注释 + `newUiKey()` | **零回归**（口径见下） | P0 |
-| **P2 占位行 + 回底** | 用户行与占位行同一帧；`scrollToItem`/`animateScrollToItem` 分档；`imeVisibleNow` 挪位；`ui-map.md` 词条 | 发送/继续立刻出气泡并回底 | P1 |
-| **P3 重新生成就地替换 + 高度守恒** | 删 `ReplaceTarget`/`restore`/`lastSwipes` 摘放/`streamingRegenerate`；行内动作行与版本条常驻占位；光标改固定尺寸 `Box` | 同一个气泡缩回再长出来 | P1 |
+| **P2 占位行 + 回底** | 用户行与占位行同一帧；`scrollToItem`/`animateScrollToItem` 分档；`imeVisibleNow` 挪位；`ui-map.md` 词条 | 发送/继续立刻出气泡并回底；占位气泡带**呼吸点**（§13.2） | P1 |
+| **P3 重新生成就地替换 + 高度守恒** | 删 `ReplaceTarget`/`restore`/`lastSwipes` 摘放/`streamingRegenerate`；行内动作行与版本条常驻占位；光标改固定尺寸 `Box` | 同一个气泡**平滑收缩**（`animateContentSize`，§13.1）再长出来 | P1 |
 | **P4 动画收口** | `prevKeys` 入场规则（取代 3 个抑制补丁）；`placementSpec` 门控；落库前 `smoothHeight` snap；删除/撤回位移动画；`key(selectionEpoch)` 与身份键的兼容 | 删/撤回滑动归位 | P1–P3 |
 
-实验项（不进批次）：**E1** 开场收缩动画、**E2** `swipe` 切换的 `animateContentSize`、**E3** 占位呼吸点、**E4** 超长气泡的 `atBottom` 真机打点。
+实验项（不进批次）：**E2** `swipe` 切换的 `animateContentSize`、**E4** 超长气泡的 `atBottom` 真机打点。
+（原 E1 开场收缩、E3 呼吸点**已拍板进批次**：E1 → P3 §13.1，E3 → P2 §13.2。）
 
 **P1「零回归」的口径（2026-11-26 定）**：正常**布局、尺寸、条目顺序、滚动位置、既有功能**无回归。
 **不要求**保留旧版本里本来就不正确的行为 —— 落库帧的重播淡入、离场重建的整屏淡入、
@@ -408,3 +409,37 @@ t1 首 token：item(key="stream") 插入到 index 0
 | 暂时禁用 `animateContentSize` 吗 | **是**（串流与开场都不用）；`swipe` 切换留作 E2 |
 | 暂时不做呼吸动画吗 | **是**（静态 `生成中…` / `重新生成中…`） |
 | P1 可以开始实施吗 | **P1 本身可以，但先出 P0**；P1 开工前先落 K1–K5 注释 + `newUiKey()`，且 P1 的验收标准是"**观感零变化**" |
+
+---
+
+## 13. 两个决策点已拍板（2026-11-26 12:2x）
+
+用户的选择与我的推荐相反，按用户的来：
+
+1. **重新生成开场要平滑收缩**（不做硬切）→ 进 **P3**，设计见 §13.1。
+2. **占位气泡要呼吸点**（不是静态文案）→ 进 **P2**，设计见 §13.2。
+
+### 13.1 平滑收缩（P3）
+
+四条硬约束，缺一条就会退化成"更难看"：
+
+| # | 约束 | 为什么 |
+|---|---|---|
+| C1 | `Modifier.animateContentSize(clip = true, animationSpec = tween(260, easing = Motion.Standard))` **只挂在"重新生成那一行"上，并且只在收缩阶段挂着**（`inflight.text.isEmpty() && inflight.targetDbId != null`）；正文一开始增长就**摘掉** | 常驻的话园会把串流期间每一次换行都包一层动画，与"布局自然增长 + 桥接跟随"抢同一个位移 |
+| C2 | 收缩期间**新 token 只进 buffer，不推 UI**；收缩结束（≤260ms）后一次性推上去 | 首 token 常在 100–300ms 到达。动画被中途打断 + 摘掉 Modifier = 剩余高度一次性 snap，比硬切还难看 |
+| C3 | 收缩期间**桥接三件套全关**（`translationY` 强制 0、不 `dispatchRawDelta`、`smoothHeight` 不追） | 布局正在被动画改，桥接再补就是把同一个位移算两遍 |
+| C4 | 0 字停止 / 失败时，`collapsing` **等收尾落地才清**，让旧正文回来也走同一条动画 | 否则"缩下去"是平滑的、"涨回来"是瞬跳的，一对比更刺眼 |
+
+`clip = true` 会生成本地裁剪层（与 INV-02 的 8k px 命中问题同类），但**它只存在 260ms**，
+且这 260ms 里那条正文已经是占位（选字/命中都不需要），收尾后 Modifier 必须真的摘掉 ——
+所以不构成 INV-02 回归。
+
+**代价（已接受）**：重新生成开场约 260ms 内看不到新字；模型若在 260ms 内就吐完，内容会一次性出现。
+
+### 13.2 呼吸点（P2）
+
+- 新组件 `TypingDots`：三个 6dp 圆点、间距 4dp，透明度 0.25 → 1 交错呼吸（周期 900ms，
+  `Motion.Standard`），与占位文案**同一行**：`生成中` + 三点 / `重新生成中` + 三点。
+- **减动效时不动**：`rememberReduceMotion()` 读一次，静态三点（项目规矩：减动效统一走它）。
+- 这是**状态指示**不是装饰（Motion 三条规矩里属于"帮助理解状态变化"），组件注释里写明。
+- 同步 `docs/ui-map.md`：核心组件表 + 词表加"占位气泡 / 呼吸点"，并跑 `tools/check-ui-map.sh`。
