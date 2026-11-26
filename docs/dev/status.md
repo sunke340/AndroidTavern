@@ -3,7 +3,7 @@
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
 > [app/AGENTS.md](../../app/AGENTS.md)，进度看 [compat-matrix.md](../compat-matrix.md)，
-> 接手先看 [handoff.md](handoff.md)，界面叫什么看 [ui-map.md](../ui-map.md)，
+> 接手先看 [../handoff/2026-11-26-chat-list-refactor.md](../handoff/2026-11-26-chat-list-refactor.md)，界面叫什么看 [ui-map.md](../ui-map.md)，
 > 必须成立什么看 [ui-invariants.md](../ui-invariants.md)。
 > 与 AGENTS.md 冲突时**以 AGENTS.md 为准**；这里不是规范，别当硬性要求引用。
 

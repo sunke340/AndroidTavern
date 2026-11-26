@@ -13,7 +13,7 @@
 > 证据级别贯穿全页：**【证】**= 代码/日志直接可读；**【推】**= 由代码推出、未真机量测；**【验】**= 需真机实验。
 > 本机编不了 `:app`（OOM），所以涉及 Compose 内部行为的断言一律标【验】，不冒充结论。
 >
-> 相关：接手 → [dev/handoff.md](dev/handoff.md)；必须成立什么 → [ui-invariants.md](ui-invariants.md)；
+> 相关：接手 → [handoff/2026-11-26-chat-list-refactor.md](handoff/2026-11-26-chat-list-refactor.md)；必须成立什么 → [ui-invariants.md](ui-invariants.md)；
 > 词表 → [ui-map.md](ui-map.md)；踩坑 → [dev/pitfalls.md](dev/pitfalls.md)。
 
 ## 与上午版的三处更正

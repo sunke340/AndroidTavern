@@ -1,7 +1,7 @@
 # 接手卡 · 2026-11-26 · 聊天列表重构（P0–P2 完成、P3 前交接）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**，设计细节全在链接里。
-> 命名：`docs/handoff/YYYY-MM-DD-<主题>.md`，**一次交接一份**；入口仍是 [dev/handoff.md](../dev/handoff.md)。
+> 命名：`docs/handoff/YYYY-MM-DD-<主题>.md`，**一次交接一份**；本页就是最新那份。
 > 现状 → [status.md](../dev/status.md)｜规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)
 > ｜主线方案 → [plan-chat-list-flash.md](../plan-chat-list-flash.md) + **第二轮审查（5 处修订，以它为准）**
 > [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)｜P0 设计与实施记录 → [plan-p0-settle.md](../plan-p0-settle.md)
