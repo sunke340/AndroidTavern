@@ -42,15 +42,16 @@
 | **语音输入**（P2-3 另一半） | ✅ 从聊天页 ⋮ 进，走系统识别器（不要麦克风权限、不动输入区版式） |
 | 揭示节奏的推进数学 | ✅ 抽成 `core/model/RevealPacer` + 7 条单测（追平不累计 / 停顿丢余量 / 单帧夹 50ms） |
 | 结构检查 | ✅ INV-11 胶囊菜单只能由骨架画、INV-12 揭示节奏两条结构约束（都自测会红） |
-| **群聊夹具**（P2-1 的地基） | ✅ 六份：四种激活策略 + 继续 + swipe；录制方法进 [fixtures.md §4.6](fixtures.md)，形状进 [original-behavior.md](original-behavior.md)「群聊」 |
+| **群聊夹具 + 提示词组装**（P2-1 的地基） | ✅ 夹具六份（四种策略 + 继续 + swipe，录制方法进 [fixtures.md §4.6](fixtures.md)，形状进 [original-behavior.md](original-behavior.md)「群聊」）；✅ `GroupContext` 组装（natural/list 两份逐条相等 + 单聊回归） |
 | 文档面 | ✅ README 中英双语 + 5 张截图、第三方声明收紧、矩阵更新、M29 验证清单、方案 §E 实施记录 |
 
 ## 还没做（按下一轮的优先级）
 
-1. **群聊**（P2-1）：**夹具已经录完**（`P2-1-group-natural/-list/-manual/-pooled/-continue/-swipe`，
-   六份），请求形状、四种激活策略、继续 都查实了；`swipe` 的 `char_name` 还有一个疑点。
-   方案（数据模型 / 组装 / 界面 / 验收 / 开放问题）在 [plan-group-chat.md](../plan-group-chat.md)。
-   **代码仍未动** —— 下一步按那份方案开工。
+1. **群聊**（P2-1）：**夹具六份**（`natural/-list/-manual/-pooled/-continue/-swipe`）+
+   **提示词组装已完成**（`PromptBuilder.build(group = GroupContext(...))`，两份夹具逐条断言；
+   单聊回归也在测）。**剩下的是数据模型（`ChatSession.groupMembers` / 消息 `speaker` / DB v5）、
+   应用层接线与界面** —— 这三块要动你的数据库，没有真机与回滚路径之前不动，
+   计划在 [plan-group-chat.md](../plan-group-chat.md)。`swipe` 的 `char_name` 还有一个疑点。
 2. **后台生成 + 通知**（P2-2）：要前台服务 + `POST_NOTIFICATIONS` 运行时权限 + Android 14 的
    `foregroundServiceType`。**没有真机时不要盲上** —— 权限/类型配错就是启动即崩，
    而这一轮没人能验。

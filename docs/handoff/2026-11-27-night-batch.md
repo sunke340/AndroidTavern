@@ -24,8 +24,11 @@
 1. **先要真机回执**（照 [M29 验证清单](../dev/verification/2026-11-27-M29.md) 走，24 条，
    风险和判据都写好了）。最需要眼睛的四件：慢档（15cp/s）的逐字观感、『打印帧』日志里的实际吞吐、
    胶囊菜单的落点与磨砂、TTS 朗读。回执不符预期就按 [plan-reveal-pacing.md](../plan-reveal-pacing.md) §6 的 19 条逐项对。
-2. **群聊（P2-1）**：夹具先行。先用 `tools/fixture/capture.mjs` 在 ST 里建群、录四种激活策略的
-   请求体，再动代码。`capture.mjs` 现在支持 `--persona-*` / `--an-*`，群聊还得再加参数。
+2. **群聊（P2-1）**：**夹具和提示词组装都完成了**（六份夹具 + `GroupContext`，见
+   [plan-group-chat.md](../plan-group-chat.md)）。下一步是数据模型（`ChatSession.groupMembers`、
+   消息 `speaker`、DB v5）、应用层接线、界面 —— **这三块要动用户的数据库，没有真机与回滚路径
+   之前不要动**（这条是 2026-11-27 05:xx 定的）。录制群聊夹具的方法见 [fixtures.md §4.6](../dev/fixtures.md)
+   （`getCharacters()` 才会装 groups、群行在右侧抽屉里、Welcome 弹窗要 close 掉）。
 3. **后台生成+通知（P2-2）**：等有真机再动。前台服务 + `POST_NOTIFICATIONS` 运行时权限 +
    `foregroundServiceType`，配错就是启动即崩，盲上是拿用户的手机做实验。
 4. 其余按 [status.md](../dev/status.md) 的清单；`forbid_overrides` 与 outlet 都要**新夹具**
