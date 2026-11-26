@@ -68,16 +68,19 @@ android {
 // 为什么用生成目录、不往源码树里复制：许可文本的**唯一真相**是仓库根的 `LICENSE` /
 // `THIRD_PARTY_NOTICES.md` / `licenses/`。往 `app/src/main/assets/notices/` 再放一份，
 // 迟早出现"改了 LICENSE、APK 里还是旧的那份"。这里在构建时同步，随包永远是最新的。
-// 判据（出包后可直接验）：`unzip -l app-debug.apk | grep assets/notices/` 应有这几份文本。
-val noticesDir = layout.buildDirectory.dir("generated/notices")
+//
+// ⚠️ `assets.srcDir(dir)` 把 **dir 的内容**当成 assets 根，所以文本要先放进 `dir/notices/`，
+// 才能在 APK 里落到 `assets/notices/`（第一版漏了这层，文件跑到 `assets/LICENSE.txt` 去了）。
+// 判据（出包后可直接验）：`unzip -l app-debug.apk | grep assets/notices/` 应有 5 份文本。
+val noticesRoot = layout.buildDirectory.dir("generated/notices")
 val syncNotices = tasks.register<Sync>("syncNotices") {
     from(rootProject.file("LICENSE")) { rename { "LICENSE.txt" } }
     from(rootProject.file("THIRD_PARTY_NOTICES.md"))
     from(rootProject.file("licenses")) { into("licenses") }
-    into(noticesDir)
+    into(noticesRoot.map { it.dir("notices") })
 }
 
-android.sourceSets.getByName("main").assets.srcDir(noticesDir)
+android.sourceSets.getByName("main").assets.srcDir(noticesRoot)
 
 tasks.named("preBuild") { dependsOn(syncNotices) }
 
