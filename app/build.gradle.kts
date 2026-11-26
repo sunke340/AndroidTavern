@@ -59,10 +59,27 @@ android {
         }
     }
 
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
+    // 原来这里有一行模板遗留的 `resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"`：
+    // 它把依赖自带的许可文件从 APK 里剔掉，等于**静默吞声明**（AGPL/Apache 都要求随包给文本）。
+    // 已删。我们自己的许可文本另走 `syncNotices`（见文件末尾），不依赖任何库刚好带了 LICENSE。
 }
+
+// ── 许可文本进 APK（assets/notices/）──────────────────────────────────────
+// 为什么用生成目录、不往源码树里复制：许可文本的**唯一真相**是仓库根的 `LICENSE` /
+// `THIRD_PARTY_NOTICES.md` / `licenses/`。往 `app/src/main/assets/notices/` 再放一份，
+// 迟早出现"改了 LICENSE、APK 里还是旧的那份"。这里在构建时同步，随包永远是最新的。
+// 判据（出包后可直接验）：`unzip -l app-debug.apk | grep assets/notices/` 应有这几份文本。
+val noticesDir = layout.buildDirectory.dir("generated/notices")
+val syncNotices = tasks.register<Sync>("syncNotices") {
+    from(rootProject.file("LICENSE")) { rename { "LICENSE.txt" } }
+    from(rootProject.file("THIRD_PARTY_NOTICES.md"))
+    from(rootProject.file("licenses")) { into("licenses") }
+    into(noticesDir)
+}
+
+android.sourceSets.getByName("main").assets.srcDir(noticesDir)
+
+tasks.named("preBuild") { dependsOn(syncNotices) }
 
 dependencies {
     implementation(project(":core:model"))

@@ -12,6 +12,24 @@
 
 ---
 
+## 落地状态（2026-11-26 更新）
+
+用户在 2026-11-26 拍板后已经落地（决策与理由见 [ADR 0009](../adr/0009-agpl-license.md)）：
+
+| 项 | 状态 |
+|---|---|
+| 项目许可 | ✅ 根目录 `LICENSE`（AGPL-3.0 全文）+ README 声明：**接受 AGPL**，承认是 ST 的衍生作品 |
+| 第三方声明 | ✅ `THIRD_PARTY_NOTICES.md` + `licenses/`（Apache-2.0、两份 MIT） |
+| APK 内的许可文本 | ✅ 构建期 `syncNotices` 把上面几份同步进 `assets/notices/`（**唯一真相在仓库根**，不在 `assets/` 里手抄一份） |
+| `packaging` 剔许可文件那行 | ✅ 已删（§6.3） |
+| 内置 Seraphina 卡 | ✅ 已删除；改成自制演示卡 `assets/cards/qinghe.png`（`tools/cards/make-demo-card.py` 生成） |
+| APK 里设「开源许可」页 | ⬜ 未做（下一批：设置 → 关于） |
+| `core/` 注释措辞 | ⬜ 未做（下一批：改成"移植自 …（AGPL-3.0）+ 夹具编号"的署名式表述） |
+
+下面第 0～10 节保留**决策前**的分析原貌（除本节与标注处外未改动），作为判断依据留档。
+
+---
+
 ## 0. 结论摘要
 
 1. **确实用了第三方库，但全是 Apache-2.0，没有 GPL/AGPL 运行时依赖**：核心只有 5 个非 Google 的
@@ -20,8 +38,8 @@
 2. **液态玻璃与动画曲线没有引库**：是"照数学/照表重写"。玻璃参考 shuding/liquid-glass（MIT）的
    位移场、参数命名照 skydoves/Cloudy（Apache-2.0）；动效表照 emilkowalski/skills（MIT），
    弹簧数值抄 androidx 的 M3 Expressive tokens。
-3. **仓库里没有任何 `LICENSE` / `NOTICE` / 第三方声明文件**（`git ls-files` 一个都没有），
-   APK 里也没有——`packaging` 还把依赖自带的许可文件剔掉了（第 6.3 节）。
+3. ~~**仓库里没有任何 `LICENSE` / `NOTICE` / 第三方声明文件**~~（决策前的事实，2026-11-26 已补齐，
+   见上面的"落地状态"；`packaging` 那行也已删，第 6.3 节）。
 4. **内置了一张来自 SillyTavern 默认内容的角色卡**（`seraphina.png`，md5 与 ST 仓库里的一致），
    内容仓库的条款与代码许可不是一回事（第 5 节）。
 5. **最大的许可风险不是库，是 `core/` 里自述"逐字照抄原版"的那几处 ST 逻辑**——
@@ -37,7 +55,7 @@
 |---|---|---|
 | 自研代码 | `app/ data/ core/` 全部 Kotlin（约 2.2 万行） | 由本项目自己的许可决定（目前**无许可声明**） |
 | 第三方字节码 | 11 个库（第 2 节） | 各自许可证（全 Apache-2.0） |
-| 资产 | `app/src/main/assets/cards/` 两张卡（`.png`） | 见第 5 节 |
+| 资产 | `app/src/main/assets/cards/` **一张自制演示卡**（`.png`） | 见第 5 节 |
 
 **不进包**的：`vendor/SillyTavern`（只读参考、`.gitignore` 里）、`tools/`（Node 脚本）、
 构建期插件（AGP 8.7.3 / Kotlin 2.1.20 / Gradle 8.11.1）、测试依赖（JUnit 5 / kotlin-test /
@@ -123,8 +141,9 @@ mockwebserver，只在 `:core:*` 的 `test` classpath）。
 
 | 文件 | 来源 | 状态 |
 |---|---|---|
-| `assets/cards/synthetic.png` | 自制 | ✅ 无问题 |
-| `assets/cards/seraphina.png` | **SillyTavern 默认内容**（md5 `7a5ba85094b59d25be26d12146b7bdb5`，与 `vendor/SillyTavern/default/content/default_Seraphina.png` 完全一致） | ⚠️ 再分发许可待确认 |
+| `assets/cards/qinghe.png` | **本项目自制**：卡面由 `tools/cards/make-demo-card.py` 生成，正文自己写，同时带 `chara`(V2) 与 `ccv3`(V3) | ✅ 无问题（`BundledCardTest` 守解析） |
+| ~~`assets/cards/synthetic.png`~~ | 自制，但内容是夹具占位（`DESC-ALPHA`/`FIRST-OMEGA`） | 已从 assets 删除（`fixtures/cards/P0-5-synthetic.png` 仍留给测试） |
+| ~~`assets/cards/seraphina.png`~~ | **SillyTavern 默认内容**（md5 `7a5ba85094b59d25be26d12146b7bdb5`，与 `vendor/SillyTavern/default/content/default_Seraphina.png` 完全一致） | ✅ 2026-11-26 已删除，不再随包分发 |
 
 为什么不跟代码许可走：
 
@@ -234,14 +253,14 @@ LICENSE，结果是**当前 APK 里一份许可文本都没有**。补齐只能�
 
 ## 8. 行动清单（按优先级）
 
-- [ ] **P0 · 决定 AGPL 走向**（接受 / 重写 / 要许可）——这决定第 7 节之外所有事的前提。
-- [ ] **P0 · 处理内置 Seraphina 卡**：换成自制卡，或取得作者许可并写明出处。
-- [ ] **P1 · 建 `THIRD_PARTY_NOTICES.md`**（骨架见附录 A），`licenses/` 放 Apache-2.0、两份 MIT 全文。
-- [ ] **P1 · 项目根加 `LICENSE`**（若走 AGPL），README 加一段许可说明。
+- [x] **P0 · 决定 AGPL 走向** → **接受 AGPL-3.0**（2026-11-26，[ADR 0009](../adr/0009-agpl-license.md)）。
+- [x] **P0 · 处理内置 Seraphina 卡** → 删除，改自制演示卡（`qinghe.png`）。
+- [x] **P1 · 建 `THIRD_PARTY_NOTICES.md`** + `licenses/`（Apache-2.0、两份 MIT 全文，均取自上游）。
+- [x] **P1 · 项目根加 `LICENSE`**（AGPL-3.0 全文）+ README 许可说明。
 - [ ] **P2 · APK 内"开源许可"页**：设置 → 关于，读 `assets/notices/` 文本；或退一步把 notices 挂 Release 附件。
 - [ ] **P2 · 清掉 `packaging` 里剔 `META-INF` 许可文件的那行**（或明确保留，别再让它静默吞声明）。
-- [ ] **P3 · 把 `core/` 里"逐字照抄"的注释改成中性表述**（"行为与原版一致，见 fixture P?-?"），
-      不论最后走哪条路，这句话都不该留在源码里。
+- [ ] **P3 · `core/` 注释改成**署名式**表述**（"移植自 SillyTavern 1.19.1（AGPL-3.0）的 X，
+      行为由 fixture P?-? 锁定"）。⚠️ 走 AGPL 之后**不是删掉出处，而是写清出处**（ADR 0009 第 2 条）。
 - [ ] **P3 · `docs/design/motion.md` 与 `Motion.kt` 的漂移**：文档写橡皮筋 `spring(1.0, 700)`，
       代码是 `380`（[Motion.kt:107](../../app/src/main/kotlin/app/tavern/Motion.kt#L107)）。顺手对齐。
 
@@ -249,10 +268,10 @@ LICENSE，结果是**当前 APK 里一份许可文本都没有**。补齐只能�
 
 ## 9. 待确认 / 待补证据
 
-1. `core/` 那几处到底是"翻译"还是"行为复刻"——只有作者知道；这是第 7 节的唯一开关。
+1. ~~`core/` 那几处到底是"翻译"还是"行为复刻"~~ → 已按"翻译"处理（接受 AGPL，见 ADR 0009）。
 2. `jtokkit` 仓库 LICENSE 的版权行（GitHub raw 取不到，可能要读源码头或 README）。
 3. 内置 Seraphina 卡的上游许可：ST 主仓 AGPL 是否覆盖 `default/content/`，还是内容仓库的保留条款优先。
-4. `assets/cards/synthetic.png` 是否真为自制（当前按自制处理）。
+4. ~~`assets/cards/synthetic.png` 是否真为自制~~ → 已随包删除；现在的演示卡由脚本生成，可复现。
 5. 若将来加 Room / Coil / WorkManager（[docs/plan.md](../plan.md) 技术栈里列了），本文件的清单要同步增补。
 
 ---
@@ -286,8 +305,8 @@ LICENSE，结果是**当前 APK 里一份许可文本都没有**。补齐只能�
 
 ## 内置资产
 
-- assets/cards/synthetic.png：本项目自制。
-- assets/cards/seraphina.png：来自 SillyTavern 默认内容（待确认许可 / 或不随包分发）。
+- assets/cards/qinghe.png：本项目自制（`tools/cards/make-demo-card.py` 生成，可重跑）。
+- 原先随包的 seraphina.png（SillyTavern 默认内容）已于 2026-11-26 删除。
 ```
 
 ---
