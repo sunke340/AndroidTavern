@@ -49,6 +49,11 @@ public class PromptBuilder {
         personaDescription: String = "",
         /** 作者注；null = 没设（那就不插）。插不插还要看 [AuthorNote.activeAt]。 */
         authorNote: AuthorNote? = null,
+        /**
+         * 这些 identifier 的正文**不许**被卡里的 `system_prompt` / `post_history_instructions` 顶掉。
+         * 来自预设里每条提示词的 `forbid_overrides`（夹具 `P0-5-forbid-overrides`）。
+         */
+        forbidOverrideIds: Set<String> = emptySet(),
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         val charName = character.name
@@ -60,9 +65,12 @@ public class PromptBuilder {
                     // 卡里的 system_prompt / post_history_instructions 会**顶替**预设里
                     // 对应那一段的正文（原版 openai.js:1498 与 :1507，两处都先看
                     // forbid_overrides 与"该提示词是否被禁用"；我们这两条默认都不成立）。
-                    val override = when (entry.identifier) {
-                        Id.MAIN -> character.systemPrompt
-                        Id.JAILBREAK -> character.postHistoryInstructions
+                    // `forbid_overrides` 的段：卡里的覆盖值直接不用（正文回落到预设模板）
+                    val forbidden = entry.identifier in forbidOverrideIds
+                    val override = when {
+                        forbidden -> ""
+                        entry.identifier == Id.MAIN -> character.systemPrompt
+                        entry.identifier == Id.JAILBREAK -> character.postHistoryInstructions
                         else -> ""
                     }
                     val content = override.ifBlank { prompts[entry.identifier].orEmpty() }

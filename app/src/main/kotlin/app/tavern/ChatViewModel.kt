@@ -293,6 +293,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val promptOrder: List<PromptOrderEntry> = emptyList(),
         /** 选中的预设里那些"纯文本提示词"，拼提示词时按 identifier 取。 */
         val presetPrompts: Map<String, String> = PresetDefaults.PROMPTS,
+        /**
+         * 预设里打了 `forbid_overrides` 的提示词：这些段的正文不许被角色卡顶掉
+         * （夹具 `P0-5-forbid-overrides`）。空集 = 都可以被顶掉（原版默认）。
+         */
+        val presetForbidOverrides: Set<String> = emptySet(),
         /** 选中的预设带来的 top_p / 两个 penalty（温度与 max_tokens 仍走采样页那两个输入框）。 */
         val presetSampling: SamplingPreset? = null,
         /** 非 null 时打开"编辑预设"二级页（顺序开关与拖动都在那一页里）。 */
@@ -2632,6 +2637,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     activePreset = activeName,
                     promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
                     presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
+                    presetForbidOverrides = loaded?.forbidOverrideIds ?: emptySet(),
                     presetSampling = loaded?.sampling,
                 )
             }
@@ -2654,6 +2660,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
                 presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
+                presetForbidOverrides = loaded?.forbidOverrideIds ?: emptySet(),
                 presetSampling = loaded?.sampling,
             )
         }
@@ -3122,6 +3129,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         personaDescription = snapshot.effectivePersona?.description.orEmpty(),
                         // 作者注：按"每 N 条用户消息"插进聊天历史（夹具 P1-7-an-prompt / -depth-2）
                         authorNote = snapshot.effectiveAuthorNote,
+                        // 预设里打了 forbid_overrides 的段：卡里的 system_prompt 顶不掉它
+                        forbidOverrideIds = snapshot.presetForbidOverrides,
                     )
                     // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
                     scan to if (continuation) built + continueHint else built

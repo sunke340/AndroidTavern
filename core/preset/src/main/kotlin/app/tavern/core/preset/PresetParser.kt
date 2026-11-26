@@ -49,6 +49,7 @@ public object PresetParser {
             ),
             order = parseOrder(root["prompt_order"]),
             prompts = parsePrompts(root["prompts"]),
+            forbidOverrideIds = parseForbidOverrides(root["prompts"]),
         )
     }
 
@@ -81,6 +82,18 @@ public object PresetParser {
             result[identifier] = content
         }
         return result
+    }
+
+    /**
+     * 哪些提示词**禁止被角色卡顶掉**（原版每条 `Prompt` 上的 `forbid_overrides`）。
+     *
+     * 只有 `true` 才算；没写 / `false` 都是"可以被顶掉"，与原版的 `!== true` 判定一致。
+     */
+    private fun parseForbidOverrides(element: JsonElement?): Set<String> {
+        val list = (element as? JsonArray)?.mapNotNull { it as? JsonObject } ?: return emptySet()
+        return list.filter { it.primitive("forbid_overrides") == "true" }
+            .mapNotNull { it.primitive("identifier") }
+            .toSet()
     }
 
     /** 取出标量的原始文本：数字与字符串都按文本比（`character_id` 两种写法都见过）。 */

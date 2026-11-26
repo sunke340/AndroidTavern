@@ -44,6 +44,12 @@ public data class Preset(
      */
     public val order: List<PromptOrderEntry>,
     /**
+     * 带 `forbid_overrides: true` 的提示词 identifier：这些段的正文**不许**被角色卡里的
+     * `system_prompt` / `post_history_instructions` 顶掉（原版 `openai.js:1498/1508`）。
+     * 空集 = 都可以被顶掉（原版默认）。
+     */
+    public val forbidOverrideIds: Set<String> = emptySet(),
+    /**
      * 预设里**自带内容**的提示词，identifier → content。
      *
      * 只有 `main` / `nsfw` / `jailbreak` / `enhanceDefinitions` 这类"纯文本提示词"有内容；

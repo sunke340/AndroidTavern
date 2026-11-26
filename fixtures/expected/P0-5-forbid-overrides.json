@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-26T19:23:30.098Z",
+    "endpoint": "/api/backends/chat-completions/generate",
+    "how": "playwright + window.fetch 拦截，调用原版 Generate(\"normal\")",
+    "swipes": 0,
+    "continued": false,
+    "character": "SysPrompt",
+    "world": null,
+    "wiSettings": null,
+    "maxPromptTokens": 3795,
+    "promptOrder": null,
+    "context": {
+      "name1": "User",
+      "name2": "SysPrompt",
+      "characterId": "8",
+      "chatId": "SysPrompt - 2026-11-27@03h23m28s805ms",
+      "chatLength": 2
+    },
+    "generateError": null
+  },
+  "request": {
+    "type": "normal",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Write SysPrompt's next reply in a fictional chat between SysPrompt and User."
+      },
+      {
+        "role": "system",
+        "content": "DESC-SYS"
+      },
+      {
+        "role": "system",
+        "content": "PERS-SYS"
+      },
+      {
+        "role": "system",
+        "content": "SCEN-SYS"
+      },
+      {
+        "role": "system",
+        "content": "[Start a new Chat]"
+      },
+      {
+        "role": "assistant",
+        "content": "FIRST-SYS"
+      }
+    ],
+    "model": "gpt-4-turbo",
+    "temperature": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "top_p": 1,
+    "max_tokens": 300,
+    "stream": true,
+    "chat_completion_source": "openai",
+    "user_name": "User",
+    "char_name": "SysPrompt",
+    "group_names": [],
+    "include_reasoning": true,
+    "enable_web_search": false,
+    "request_images": false,
+    "request_image_resolution": "",
+    "request_image_aspect_ratio": "",
+    "custom_prompt_post_processing": ""
+  }
+}
