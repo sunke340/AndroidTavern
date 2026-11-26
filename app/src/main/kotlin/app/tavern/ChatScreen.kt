@@ -98,6 +98,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
@@ -203,6 +204,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 
     // 列表状态提到这里：串流时要判断"是不是贴在底部"（只在底部才跟着抬画面）
     val listState = rememberLazyListState()
+
+    // 串流刚结束的那一帧：落库出来的气泡**就是**刚才那个流式气泡。它若走淡入，
+    // 观感是"先消失再淡出来"（用户 2026-11-26：点停止后列表闪一下）。这一帧不挂 animateItem。
+    var sawStreaming by remember { mutableStateOf(state.isStreaming) }
+    val justSettled = sawStreaming && !state.isStreaming
+    SideEffect { sawStreaming = state.isStreaming }
 
     // 撤回会把列表削短：视口可能停在中段、下面留一片空白。这里收到一次性信号就贴底。
     // 反排列表的 index 0 就是"最新一条"（视觉最底部），所以 scrollToItem(0) 即可。
@@ -576,8 +583,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val realIndex = state.transcript.lastIndex - index
                     val isLast = realIndex == state.transcript.lastIndex
                     val isAssistant = message.role == ChatRole.Assistant
-                    val itemAnim = if (suppressItemFade) {
-                        // 离场重建（销毁 SelectionContainer）这一趟不要淡入：否则整屏闪一下
+                    val itemAnim = if (suppressItemFade || (justSettled && index == 0)) {
+                        // 离场重建（销毁 SelectionContainer）这一趟不要淡入：否则整屏闪一下；
+                        // 串流落库那一帧同理（那颗气泡刚从流式状态换过来）
                         Modifier
                     } else {
                         Modifier.animateItem(
@@ -594,8 +602,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         shownGreeting >= 0 &&
                         state.transcript.none { it.role == ChatRole.User }
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
-                    val showSwipeBar = !isGreetingMessage && isLast && isAssistant &&
-                        state.lastSwipes.size > 1
+                    val showSwipeBar = !state.isStreaming && !isGreetingMessage &&
+                        isLast && isAssistant && state.lastSwipes.size > 1
                     Column(modifier = itemAnim.fillMaxWidth()) {
                         MessageRow(
                             message = message,

@@ -2127,6 +2127,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             it.transcript
                         },
+                        // 原条回来了，版本表跟着回来
+                        lastSwipes = target.base,
+                        lastSwipeId = target.base.lastIndex,
                         streamingText = "",
                         isStreaming = false,
                         status = status,
@@ -2938,6 +2941,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             current.copy(
                                 transcript = current.transcript + replacing.restore,
+                                // 原条回来了，它的版本表也一起回来（否则这颗气泡翻不了版本）
+                                lastSwipes = replacing.base,
+                                lastSwipeId = replacing.base.lastIndex,
                                 streamingText = "",
                                 isStreaming = false,
                                 status = message,
@@ -3179,8 +3185,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     transcript = trimmed,
                     streamingText = "",
                     status = "重新生成中…",
-                    lastSwipes = base,
-                    lastSwipeId = base.lastIndex,
+                    // 这一条的版本表**先摘掉**：原条已从界面上撤下；若还留着这份备选，
+                    // 它会被"现在的最后一条"（露出来的上一条助手消息）当成自己的版本显示
+                    // —— 用户 2026-11-26 报的"切换按钮跑到上一条气泡右下角"。
+                    lastSwipes = emptyList(),
+                    lastSwipeId = 0,
                 )
             }
             AppLog.i("chat", "重新生成：已有 ${base.size} 条备选，生成第 ${base.size + 1} 条")
