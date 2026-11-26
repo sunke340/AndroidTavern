@@ -5,7 +5,7 @@
 # 而本机编不了 :app、也没有模拟器 —— 只能靠**结构级/文本级**的检查兜底。
 # 判据不成立的条目**不许**写进表里（见 docs/ui-invariants.md 的验收规则）。
 #
-# 已完成：INV-01 / INV-02 / INV-03 / INV-04 / INV-05 / INV-06 / INV-07 / INV-08
+# 已完成：INV-01 … INV-08 + INV-11（菜单宿主）
 # 待做：无（INV-09 / INV-10 分别由 tools/test-core.sh 与 tools/check-ui-map.sh 管）
 #
 # 本机可跑：bash tools/check-ui-invariants.sh
@@ -155,6 +155,18 @@ for p in APP.glob('*.kt'):
     if 'GlassSheetScaffold(' in p.read_text(encoding='utf-8') and p.name not in allowed:
         problems.append(f'INV-05: {p.name} 直接画了 GlassSheetScaffold（页面只该 sheet.show(...)）')
 
+# ---- INV-11：胶囊菜单只能由骨架画，页面不许再回 DropdownMenu ----
+# 为什么：DropdownMenu 是独立窗口，采不到页面内容层 —— 一回去就是纯色板，玻璃白做。
+allowed_menu = {'CapsuleMenu.kt', 'MainScreen.kt', 'DetailPage.kt'}
+for p in APP.glob('*.kt'):
+    text = blank_comments(p.read_text(encoding='utf-8'))
+    if 'GlassCapsuleMenuHost(' in text and p.name not in allowed_menu:
+        problems.append(f'INV-11: {p.name} 自己画了 GlassCapsuleMenuHost（只有骨架能画）')
+    # 页头胶囊的菜单一律走 CapsuleMenuController；DropdownMenu 只留给"列表页右上导入"这类
+    # 非玻璃场景（世界书/正则/预设），聊天页与卡详情不许再出现。
+    if p.name in {'ChatScreen.kt', 'CharacterDetailScreen.kt'} and 'DropdownMenu(' in text:
+        problems.append(f'INV-11: {p.name} 又用了 DropdownMenu（应改走胶囊菜单）')
+
 # ---- INV-06：每个可滚动面都要挂橡皮筋 ----
 # 顺序（rubberOverscroll 要排在 verticalScroll/LazyColumn 之前）没法可靠地用文本判，这里只判"有没有"。
 SCROLL_WHITELIST = {
@@ -204,5 +216,6 @@ if problems:
     sys.exit(1)
 
 print('OK: 已实现的不变量都成立（INV-01 页头入口 / INV-02 消息底板 / INV-03 选字不拖列表 / '
-      'INV-04 玻璃三铁律 / INV-05 弹层 / INV-06 橡皮筋 / INV-07 让位并集 / INV-08 颜色来源）')
+      'INV-04 玻璃三铁律 / INV-05 弹层 / INV-06 橡皮筋 / INV-07 让位并集 / INV-08 颜色来源 / '
+      'INV-11 菜单宿主）')
 PY

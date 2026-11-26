@@ -47,6 +47,7 @@
 | INV-07 | 内容底部让位取**并集** `max(导航栏, 键盘)`，不许相加 | `GlassDetailScaffold` 的 `maxOf(navBottom, imeBottom)` | 脚本：不得出现 `navBottom + imeBottom` / `imeBottom + navBottom` | ✅ | 键盘弹出时多抬一个导航栏高度 |
 | INV-08 | 颜色只从 `Theme.kt` / `Style.kt` 取，页面里不许出现字面色值 | `TavernTheme` / `LocalTavernPalette` | 脚本：除白名单外不得出现 `Color(0x` / `0xFF…`；白名单 = `Theme.kt`（调色板本身）、`GalleryScreen.kt`（组件预览的色带底图，是演示内容） | ✅ | 深色模式下发灰（写死白踩过） |
 | INV-09 | 显示格式**只影响显示**；内置正则每条规则都有单测 | `core/regex/BuiltinRegex`、`InlineMarkup` | 已有：`tools/test-core.sh`（19 条）+ fixture `P1-12-inline-markup` | ✅ | 清标签规则漏了 `</>`（2026-11-25，已补单测） |
+| INV-11 | 层级浮层（胶囊菜单）只能由骨架画，页面不许再回 `DropdownMenu` | `GlassCapsuleMenuHost` / `CapsuleMenuController` | 脚本：`GlassCapsuleMenuHost(` 只许出现在 `CapsuleMenu.kt` / `MainScreen.kt` / `DetailPage.kt`；`ChatScreen.kt` 与 `CharacterDetailScreen.kt` 不许出现 `DropdownMenu(` | ✅ | `DropdownMenu` 是独立窗口，采不到内容层 → 玻璃退化成纯色板（2026-11-27 需求批 E 的由来） |
 | INV-10 | 词表（`docs/ui-map.md`）与枚举、代码名字一致 | `docs/ui-map.md` | 已有：`tools/check-ui-map.sh`（枚举页面都在、名字都能 grep 到） | ✅ | 页头规则写进 AGENTS 而代码没对应入口 → 文档反过来误导改动 |
 
 **为什么 INV-01 是 A 型（而不是又加一条 grep）**：页头坏过两轮，两次都不是"有人新写了一个
