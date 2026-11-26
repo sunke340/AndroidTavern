@@ -246,22 +246,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // false，而这两个数在"插入前"与"插入后"两种时序下结论一致（插入在最前面的只有 1–2 行）。
     // ── 错峰入场（用户 2026-11-26 第 4 条）─────────────────────────────────────
     // 发送时**用户气泡先浮上来，停一小会儿，占位气泡再浮上来**。
-    // 以前两者在同一次 update 里出现（为了只插入一次、atBottom 只翻一次），现在分两拍：
-    // 先把用户行插进去并回底，占位行等 [PendingAppearDelayMs] 再插。占位行插入时列表同样会被
-    // 稳定 key 锚住旧条目，所以下面这个回底 effect 的 key 里带着 `pendingShown`，它一翻就再对齐。
-    val pendingRoundId = state.inflight?.roundId
+    // 关键：两行**都在发送那一帧就进列表**，占位行只是把入场动画延后 [PendingAppearDelayMs]
+    // （槽位高度是 0 = 看不见）。不要"晚一点再把占位行插进去" —— 插入会让稳定 key 重新锚定，
+    // 那一刻整列会跳一下（用户 2026-11-26："占位出现前整个列表会往下缩一下"）。
     val sentNewUserRow = state.inflight != null && state.rows.lastOrNull()?.role == ChatRole.User
-    var pendingShown by remember(pendingRoundId) {
-        mutableStateOf(pendingRoundId == null || !sentNewUserRow)
-    }
-    LaunchedEffect(pendingRoundId) {
-        if (pendingRoundId != null && sentNewUserRow) {
-            delay(PendingAppearDelayMs)
-            pendingShown = true
-        }
-    }
 
-    LaunchedEffect(state.rows.size, state.inflight?.roundId, pendingShown) {
+    LaunchedEffect(state.rows.size, state.inflight?.roundId) {
         val mine = state.rows.lastOrNull()?.role == ChatRole.User
         val roundStarted = state.inflight != null
         if (!mine && !roundStarted && !atBottom) return@LaunchedEffect
@@ -614,14 +604,13 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             wasCollapsing.value = collapseKey != null
         }
-        val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow, pendingShown) {
+        val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
             // 生成行一直在这里合成，正文可能还是空 —— 占位/流式/定稿三态是同一个 uiKey。
             when {
                 inflightNow == null -> state.rows
                 // 就地改写（重新生成）：`rows` 原样交出去 —— 那一行本来就是时间线里的一条。
                 // 正文由 item 里按收缩窗口决定（窗口开窗前那一帧还得是旧正文）。
                 inflightNow.targetDbId != null -> state.rows
-                !pendingShown -> state.rows
                 else -> state.rows + ChatViewModel.ChatRow(
                     uiKey = inflightNow.uiKey,
                     role = ChatRole.Assistant,
@@ -701,8 +690,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 身份在 `remember(uiKey)` 里定一次 —— 后面无论怎么重组、重建都不会重播。
                     val entering = bornSeq(row.uiKey) > bornFloor
                     val enter = remember(row.uiKey) { Animatable(if (entering) 0f else 1f) }
+                    // 发送那一拍要错开：占位行也在这一帧进列表，但**晚一点再长出来**
+                    val delayAppear = entering && isInflightRow && sentNewUserRow
                     LaunchedEffect(row.uiKey) {
                         if (enter.value < 1f) {
+                            if (delayAppear) delay(PendingAppearDelayMs)
                             enter.animateTo(1f, tween(Motion.Entry, easing = Motion.Decelerate))
                         }
                     }
