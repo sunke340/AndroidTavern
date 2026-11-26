@@ -5,7 +5,7 @@
 # 而本机编不了 :app、也没有模拟器 —— 只能靠**结构级/文本级**的检查兜底。
 # 判据不成立的条目**不许**写进表里（见 docs/ui-invariants.md 的验收规则）。
 #
-# 已完成：INV-01 … INV-08 + INV-11（菜单宿主）
+# 已完成：INV-01 … INV-08 + INV-11（菜单宿主）+ INV-12（揭示节奏结构）
 # 待做：无（INV-09 / INV-10 分别由 tools/test-core.sh 与 tools/check-ui-map.sh 管）
 #
 # 本机可跑：bash tools/check-ui-invariants.sh
@@ -167,6 +167,25 @@ for p in APP.glob('*.kt'):
     if p.name in {'ChatScreen.kt', 'CharacterDetailScreen.kt'} and 'DropdownMenu(' in text:
         problems.append(f'INV-11: {p.name} 又用了 DropdownMenu（应改走胶囊菜单）')
 
+# ---- INV-12：揭示节奏的两个结构性约束（改回去就等于把"抽搐"放回来）----
+chat = (APP / 'ChatScreen.kt')
+if chat.exists():
+    text = blank_comments(chat.read_text(encoding='utf-8'))
+    # 1) 打印期不许桥接：`followBridgePx()` 里必须有 `revealKey != null -> 0f` 这一支
+    if 'fun followBridgePx(): Float = when {' in text:
+        head = text.split('fun followBridgePx(): Float = when {', 1)[1][:600]
+        if 'revealKey != null -> 0f' not in head:
+            problems.append(
+                'INV-12: followBridgePx() 少了"打印期恒 0"那一支 —— 打印中的气泡不许桥接（见 plan-reveal-pacing §3.12）',
+            )
+    else:
+        problems.append('INV-12: ChatScreen 里找不到 followBridgePx()（跟随的唯一判定点）')
+    # 2) 推进数学只许来自 core 的 RevealPacer，不许在页面里再手写一份
+    if 'reveal.pacer.step(' not in text:
+        problems.append('INV-12: 推进没用 core/model 的 RevealPacer.step()（那段数学有单测，别在页面里重写）')
+    if 'reveal.pending' in text or 'reveal.lastTickNanos' in text:
+        problems.append('INV-12: 页面里又出现了 pending / lastTickNanos —— 那属于 RevealPacer')
+
 # ---- INV-06：每个可滚动面都要挂橡皮筋 ----
 # 顺序（rubberOverscroll 要排在 verticalScroll/LazyColumn 之前）没法可靠地用文本判，这里只判"有没有"。
 SCROLL_WHITELIST = {
@@ -217,5 +236,5 @@ if problems:
 
 print('OK: 已实现的不变量都成立（INV-01 页头入口 / INV-02 消息底板 / INV-03 选字不拖列表 / '
       'INV-04 玻璃三铁律 / INV-05 弹层 / INV-06 橡皮筋 / INV-07 让位并集 / INV-08 颜色来源 / '
-      'INV-11 菜单宿主）')
+      'INV-11 菜单宿主 / INV-12 揭示节奏结构）')
 PY
