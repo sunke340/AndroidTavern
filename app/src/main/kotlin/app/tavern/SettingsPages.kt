@@ -18,6 +18,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.content.Context
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -588,6 +604,20 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         ) { Text("清空") }
     }
 
+    // 开源许可（审计 P2）：把构建期同步进 `assets/notices/` 的文本**读出来**。
+    // 按实际存在的文件列，不硬编码清单 —— 以后加一份许可不用改代码。
+    // 声明不能只躺在 APK 里：用户要能在设置里看到它。
+    val notices = remember { noticeFiles(context) }
+    var reading by remember { mutableStateOf<NoticeFile?>(null) }
+    if (notices.isNotEmpty()) {
+        SectionLabel("开源许可")
+        ListGroup(count = notices.size) { index, _ ->
+            val file = notices[index]
+            SettingLinkRow(file.title, file.sizeLabel) { reading = file }
+        }
+    }
+    reading?.let { file -> NoticeDialog(file = file, onClose = { reading = null }) }
+
     // 只有 debug 包里有这一块：材质样张 + 参数滑杆。发布包里连入口都不存在。
     if (BuildConfig.DEBUG) {
         SectionLabel("开发")
@@ -683,4 +713,120 @@ private fun PresetRow(
         onClick = onClick,
         onLongClick = onLongClick,
     )
+}
+
+
+// ---- 开源许可 -------------------------------------------------------------
+
+/** `assets/notices/` 里的一份文本：标题给人看，[assetPath] 是资产路径。 */
+private data class NoticeFile(val title: String, val assetPath: String, val sizeLabel: String)
+
+/**
+ * 构建期 `syncNotices` 会把根目录的 `LICENSE` / `THIRD_PARTY_NOTICES.md` / `licenses/`
+ * 拷进 `assets/notices/`（映射的是**目录内容**，所以路径要多一层）。这里按实际存在的文件列，
+ * 不硬编码清单；读不出来的（目录名之类）自动跳过。
+ */
+private fun noticeFiles(context: Context): List<NoticeFile> {
+    val assets = context.assets
+    fun sizeLabel(path: String): String {
+        val bytes = runCatching { assets.open(path).use { it.available() } }.getOrDefault(0)
+        return if (bytes >= 1024) "${bytes / 1024} KB" else "$bytes B"
+    }
+    fun titleOf(name: String): String = when {
+        name == "THIRD_PARTY_NOTICES.md" -> "第三方声明"
+        name == "LICENSE.txt" -> "GNU AGPL-3.0（本项目）"
+        name == "Apache-2.0.txt" -> "Apache License 2.0"
+        name.startsWith("MIT-shuding") -> "MIT · shuding/liquid-glass"
+        name.startsWith("MIT-emilkowalski") -> "MIT · emilkowalski/skills"
+        else -> name
+    }
+
+    val out = mutableListOf<NoticeFile>()
+    val top = runCatching { assets.list("notices")?.toList().orEmpty() }.getOrDefault(emptyList())
+    // 先声明、再本项目协议，最后才是别的
+    val ordered = listOf("THIRD_PARTY_NOTICES.md", "LICENSE.txt") +
+        top.filter { it != "THIRD_PARTY_NOTICES.md" && it != "LICENSE.txt" }.sorted()
+    ordered.forEach { name ->
+        val path = "notices/$name"
+        val readable = runCatching { assets.open(path).use { it.available() } }.isSuccess
+        if (readable) out += NoticeFile(titleOf(name), path, sizeLabel(path))
+    }
+    val sub = runCatching { assets.list("notices/licenses")?.toList().orEmpty() }
+        .getOrDefault(emptyList())
+        .sorted()
+    sub.forEach { name ->
+        val path = "notices/licenses/$name"
+        val readable = runCatching { assets.open(path).use { it.available() } }.isSuccess
+        if (readable) out += NoticeFile(titleOf(name), path, sizeLabel(path))
+    }
+    return out
+}
+
+/**
+ * 许可全文的阅读层：整屏 + 可滚 + 可选字 + 复制（和「查看请求」同一套做法）。
+ *
+ * 文本在 IO 线程读：AGPL 全文 34KB，不能在组合里同步读。
+ */
+@Composable
+private fun NoticeDialog(file: NoticeFile, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var body by remember(file.assetPath) { mutableStateOf<String?>(null) }
+    LaunchedEffect(file.assetPath) {
+        body = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open(file.assetPath).bufferedReader().use { it.readText() }
+            }.getOrElse { "（读不出来：${it.message}）" }
+        }
+    }
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(start = Space.s)) {
+                        Text(file.title, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "随应用分发 · ${file.sizeLabel}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(body.orEmpty())) }) {
+                        Text("复制")
+                    }
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.Close, contentDescription = "关闭")
+                    }
+                }
+                HorizontalDivider(color = LocalTavernPalette.current.divider)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .rubberOverscroll(rememberRubberOverscroll())
+                        .verticalScroll(rememberScrollState())
+                        .padding(Space.l),
+                ) {
+                    val text = body
+                    if (text == null) {
+                        Text("读取中…", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        SelectionContainer {
+                            Text(
+                                text = text,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
