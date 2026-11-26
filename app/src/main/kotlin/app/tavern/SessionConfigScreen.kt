@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.tavern.core.prompt.AuthorNote
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
