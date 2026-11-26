@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-26T20:29:10.467Z",
+    "endpoint": "/api/backends/chat-completions/generate",
+    "how": "playwright + window.fetch 拦截，调用原版 Generate(\"normal\")",
+    "swipes": 0,
+    "continued": false,
+    "character": "Synthetic",
+    "world": "P1-3-example-world",
+    "wiSettings": null,
+    "maxPromptTokens": 3795,
+    "promptOrder": null,
+    "context": {
+      "name1": "User",
+      "name2": "Synthetic",
+      "characterId": "7",
+      "chatId": "Synthetic - 2026-11-27@04h29m09s120ms",
+      "chatLength": 2
+    },
+    "generateError": null
+  },
+  "request": {
+    "type": "normal",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Write Synthetic's next reply in a fictional chat between Synthetic and User."
+      },
+      {
+        "role": "system",
+        "content": "DESC-ALPHA first line\nDESC-ALPHA second line mentions User and Synthetic"
+      },
+      {
+        "role": "system",
+        "content": "PERS-BETA"
+      },
+      {
+        "role": "system",
+        "content": "SCEN-GAMMA"
+      },
+      {
+        "role": "system",
+        "content": "[Example Chat]"
+      },
+      {
+        "role": "system",
+        "content": "EXTOP-ALPHA 示例开头",
+        "name": "example_user"
+      },
+      {
+        "role": "system",
+        "content": "[Example Chat]"
+      },
+      {
+        "role": "system",
+        "content": "EXAMPLE-DELTA-user line",
+        "name": "example_user"
+      },
+      {
+        "role": "system",
+        "content": "EXAMPLE-DELTA-char line",
+        "name": "example_assistant"
+      },
+      {
+        "role": "system",
+        "content": "[Example Chat]"
+      },
+      {
+        "role": "system",
+        "content": "EXBOT-BETA 示例结尾",
+        "name": "example_assistant"
+      },
+      {
+        "role": "system",
+        "content": "[Start a new Chat]"
+      },
+      {
+        "role": "assistant",
+        "content": "FIRST-OMEGA"
+      }
+    ],
+    "model": "gpt-4-turbo",
+    "temperature": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "top_p": 1,
+    "max_tokens": 300,
+    "stream": true,
+    "chat_completion_source": "openai",
+    "user_name": "User",
+    "char_name": "Synthetic",
+    "group_names": [],
+    "include_reasoning": true,
+    "enable_web_search": false,
+    "request_images": false,
+    "request_image_resolution": "",
+    "request_image_aspect_ratio": "",
+    "custom_prompt_post_processing": ""
+  }
+}

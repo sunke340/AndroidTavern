@@ -114,11 +114,17 @@ public class PromptBuilder {
                     if (worldInfo.afterChar.isNotBlank()) messages += system(worldInfo.afterChar)
 
                 Id.DIALOGUE_EXAMPLES -> {
-                    val examples = ExampleDialogue.parse(character.messageExample, charName, userName)
-                    if (examples.isNotEmpty()) {
+                    // 每一"块"示例都自带一个 `[Example Chat]` 标记：世界书里 position=EMTop/EMBottom
+                    // 的条目各算一块，卡里的 mes_example 算一块（夹具 P1-3-example-injection）。
+                    fun block(raw: String) {
+                        val parsed = ExampleDialogue.parse(raw, charName, userName)
+                        if (parsed.isEmpty()) return
                         messages += system(SillyTavernDefaults.EXAMPLE_CHAT)
-                        examples.forEach { messages += system(it) }
+                        parsed.forEach { messages += system(it) }
                     }
+                    worldInfo.exampleTop.forEach { block(it) }
+                    block(character.messageExample)
+                    worldInfo.exampleBottom.forEach { block(it) }
                 }
 
                 Id.CHAT_HISTORY -> {
