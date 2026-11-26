@@ -1,150 +1,147 @@
-# 接手卡（2026-11-26 10:35）
+# 接手卡（2026-11-26 14:00）
 
-> 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
-> 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
-> **聊天列表闪烁的诊断与改造方案（当前主线）→ [plan-chat-list-flash.md](../plan-chat-list-flash.md)
-> + 第二轮技术审查（**5 处修订、以它为准**）→ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)**；
-> 需求批口径 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md) / [plan-req-2026-11-26.md](../plan-req-2026-11-26.md)；
-> 词表 → [ui-map.md](../ui-map.md)；必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
-> 真机验证 → [verification/](verification/)（**一批一个文件**，索引在 README）；
-> M0–M16 归档在 [device-verification.md](device-verification.md)（已冻结）；历史细节 → [pitfalls.md](pitfalls.md)。
+> 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**，设计细节全在链接里。
+> 现状 → [status.md](status.md)｜规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)
+> ｜主线方案 → [plan-chat-list-flash.md](../plan-chat-list-flash.md) + **第二轮审查（5 处修订，以它为准）**
+> [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)｜P0 设计与实施记录 → [plan-p0-settle.md](../plan-p0-settle.md)
+> ｜真机验证 → [verification/](verification/)（**一批一个文件**，索引在 README）｜词表 → [ui-map.md](../ui-map.md)
+> ｜必须成立什么 → [ui-invariants.md](../ui-invariants.md)｜历史细节 → [pitfalls.md](pitfalls.md)
+> ｜需求批口径 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md) / [plan-req-2026-11-26.md](../plan-req-2026-11-26.md)
 
 ## 30 秒
 
-- **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
+- **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)；其它决策见 `docs/adr/`）。
-- **代码基线**：`85bccc2`（v167：**P2 占位气泡 + 回底**，`apk-m198`）。
-- **真机跑到**：**v167 待 M25**（P2：占位气泡 + 回底分档）。M23（P0）、M24（P1 核心两条）已通过；
-  P0 的第 8/9 两条竞态件由 `:core:generation` 的 CAS 用例覆盖。
-  v164 回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
-  继续长消息闪**仍未解决 —— 已确认是**结构性**问题。**2026-11-26 午后已按代码逐行重审**，
-  方案在 [plan-chat-list-flash.md](../plan-chat-list-flash.md)（重写版）+ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)
-  （**二轮审查：`uiKey` 不变量 / `roundId` / 先出 P0 数据一致性 / 回底分档**）。
-  **P0 是数据 bug（会丢回复、会删用户的提问），可以不等拍板先修；P1 起仍要拍板。**
-- **在做的活**：2026-11-25 的 16 条需求（A/B/C 确认、D 待验、**E/F 未开工**）+
-  2026-11-26 的七条（已出 v160）+ 聊天列表结构性改造（等拍板）。
+- **代码基线**：`85bccc2`（v167）。
+- **主线状态**：聊天列表重构的四批里 **P0 / P1 / P2 已交付且真机全通过**（M23 / M24 / M25）。
+  **下一步 P3**（重新生成就地替换 + 平滑收缩），然后 P4（动画收口）。
+- **用户的节奏**：一次一批 → 一个 APK → 真机回执 → 下一批。**不要跨批混改**，也不要在回执前叠补丁。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；能复用先复用；
-  **说界面上的东西用 `docs/ui-map.md` 的名字，对不上就先问、不许猜**。
+  界面上东西一律用 `docs/ui-map.md` 的名字，对不上先问。
 
-## 一、当前基线（2026-11-26 一天出了六个包）
+## 一、主线做完了什么（都给过真机回执）
 
-| 版本 | 提交 | tag | 交付物 | 内容 |
-|---|---|---|---|---|
-| v159 | `c984f71` | `apk-m190` | `artifacts/app-v159-c984f71.apk` | 止血重构：发送路径后台化 / 流式任务所有权 / 双写窗口 |
-| v160 | `dcb0742` | `apk-m191` | `artifacts/app-v160-dcb0742.apk` | 2026-11-26 七条需求 + M16 修复 |
-| v161 | `410a713` | `apk-m192` | `artifacts/app-v161-410a713.apk` | 停止/swipe 底本/列表整屏闪 |
-| v162 | `5d8266e` | `apk-m193` | `artifacts/app-v162-5d8266e.apk` | 「继续」改为落新气泡（与原版的有意差异） |
-| v163 | `9bbf3a6` | `apk-m194` | `artifacts/app-v163-9bbf3a6.apk` | 版本条挂错气泡 + 落库淡入 |
-| v164 | `8c5c5d9` | `apk-m195` | `artifacts/app-v164-8c5c5d9.apk` | 新消息回底 + 落库高度占位 |
-| v167 | `85bccc2` | `apk-m198` | `artifacts/app-v167-85bccc2.apk` | **P2 占位气泡**：点发送/继续/重新生成当帧出 `生成中`/`重新生成中` + 呼吸点（`PendingLine` / `TypingDots`）；回底分档（贴底瞬时 / 读历史动画）；修掉「AI 气泡掉到输入框下面」 |
-| v166 | `806a0db` | `apk-m197` | `artifacts/app-v166-806a0db.apk` | **P1 行模型**：`ChatRow(uiKey,…)` + `Inflight`；渲染收敛成一个 `itemsIndexed(key=uiKey)`；删除/撤回/翻版本按 uiKey 定位、按 dbId 落库（设计 → [r2](../plan-chat-list-flash-r2.md) §10）|
-| v165 | `2b1c101` | `apk-m196` | `artifacts/app-v165-2b1c101.apk` | **P0 收尾提交权**：Stop/Finish/失败/切会话收敛成一个提交权，`NonCancellable` 只包"写库→提交界面"，四类失败分开，`replaceMessage` 单事务（设计 → [plan-p0-settle.md](../plan-p0-settle.md)）|
+| 批 | 包 | 一句话 | 详细 |
+|---|---|---|---|
+| **P0 收尾提交权** | v165 `2b1c101` | Stop/Finish/失败/切会话收敛成 `GenerationRound` 的一个 `AtomicReference<CommitPhase>`；`cancel()` 只在拿到权之后；`NonCancellable` 只包"写库→提交界面"；四类失败语义分开；`replaceMessage` 单事务 | [plan-p0-settle.md](../plan-p0-settle.md) + [M23](verification/2026-11-26-M23.md) |
+| **P1 行模型** | v166 `806a0db` | `ChatRow(uiKey, role, content, dbId)` + `Inflight` 顶替 `transcript`/`streamingText`/`isStreaming`；渲染收敛成**一个** `itemsIndexed(key = uiKey)`；删除/撤回/翻版本按 `uiKey` 定位、按 `dbId` 落库（审计 P1-5 的下标耦合解除） | [r2](../plan-chat-list-flash-r2.md) §10 + [M24](verification/2026-11-26-M24.md) |
+| **P2 占位气泡** | v167 `85bccc2` | 点发送/继续/重新生成**当帧**出 `生成中`/`重新生成中` + 呼吸点（`PendingLine`/`TypingDots`）；首 token 只改正文 → 顺带修掉「AI 气泡掉到输入框下面」；回底分档（贴底瞬时 / 读历史动画）；测量状态按轮分开；键盘可见性不再每帧重组 | [r2](../plan-chat-list-flash-r2.md) §13.2 + [M25](verification/2026-11-26-M25.md) |
 
-**真机验证记录**：`docs/dev/verification/2026-11-26-M17…M22.md`（一批一个文件）。
-M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批项用户口头确认正常。
+**已被否决的方案**（别再提一遍）：
 
-## 二、现在悬着的（按重要性）
+- ❌ **预分配 DB 主键**：手工指定 id 会破坏 `messages()` 的 `ORDER BY id ASC`（= 时间线）和会话预览的 `MAX(id)`。
+- ❌ **生成前插一条临时 DB 行**：每个 token 一次写盘；崩了留半截幽灵行；`messageCount`/预览/`send_date` 全被污染。
+- ❌ **用 `Mutex` 做提交权**：它是 suspend-only，而且语义是"第二个排队等待"，这里第二个必须**立刻失败退出**。
+- ❌ **每行挂 `MessageStatus`**：会允许"两行同时 streaming""streaming 的不是最后一行"这类非法态；单例 `inflight` 让它们表达不出来。
+- ❌ **把占位行写进 `rows` / `transcript` / DB**：行身份与"是否已落库"必须分开（`dbId == null` 是类型事实）。
+- ❌ **`animateContentSize` 常驻**：会包住串流每一次换行，与"布局自然增长 + `translationY` 桥接"抢同一位移。
+- ⚠️ 我原建议"重新生成开场硬切""占位用静态文案"，**被用户否决**：要做平滑收缩（P3）、要做呼吸点（P2 已完成）。
 
-1. **聊天列表闪烁（主线，等拍板）**：审查、根因分级、目标模型、四批拆分、验证清单全在
-   [plan-chat-list-flash.md](../plan-chat-list-flash.md)（**2026-11-26 午后重写版**，上午版的两条结论
-   已被推翻：`animateContentSize` 不是第一批该用的东西；位置键"够用"是错的）。
-   **拍板前不要改聊天列表渲染**。待拍板只剩两点：
-   ①重新生成开场接受"硬切"（推荐）还是必须"平滑收缩"（首 token 最多晚 250ms）；
-   ②占位文案静态"生成中…/重新生成中…"（推荐）还是带呼吸点。
-2. **`‹N/M›` 只能翻最后一条**：原版 `isMessageSwipeable` 就只允许最后一条（v165 之前的既定行为）。
-   用户要的"任意消息都能翻版本"是**扩展**，2026-11-26 说**先待定**。
-3. **E 批**：聊天页 ⋮ 与卡详情 ⋮ 两处的"胶囊变形成液态玻璃菜单"原型（口径见 plan-req-2026-11-25）。
-   新组件要同步 `ui-map.md` + INV-05 白名单。
-4. **F 批**：用户人设（多人设 + 三级 + `{{user}}`）。**夹具先行**：`capture.mjs` 要能设人设，
-   没有 fixture 不许开工（AGENTS 铁律 #2/#4）。
-5. **审计 P0-3**：`data` 层 JVM 测试（三级配置编解码 / `.meta` 容错 / DB 迁移 / JSONL 往返）。
-6. 老账：世界书 outlet（缺夹具）→ 卡库分组 → `forbid_overrides` → 角色详情页页头。
-   **明确不做**：MVU / 酒馆助手的 HTML 状态栏（无 WebView，ADR 0002）。
+## 二、下一步（按顺序，别跳）
 
-## 三、下一步优先级
+1. **P3 重新生成就地替换 + 平滑收缩**（唯一还没做的"看得见"的一批）。两件事：
+   - **就地替换**：不再"开场 trim 掉原行、收尾 append 新行"，而是保留同一行、用 `inflight.targetDbId` 指向它；
+     删掉 `ReplaceTarget` / `removedContent` / `lastSwipes` 的摘放 / `streamingRegenerate` 这些 P0/P1 的适配器残留。
+   - **平滑收缩**：严格按 [r2 §13.1](../plan-chat-list-flash-r2.md) 的**四条硬约束**（只挂在收缩阶段 /
+     token 攒到收缩完再推 / 桥接三件套全关 / 0 字停止等收尾落地才清 flag）。代价已接受：开场约 260ms 看不到新字。
+2. **P4 动画收口**：`prevKeys` 入场规则（取代 `justSettled`/`suppressNewestFade`/`suppressItemFade` 三个补丁）、
+   `placementSpec` 只在非串流时挂、落库前 `smoothHeight` snap、删除/撤回的位移动画。
+3. 实验项（不进批次）：**E2** `swipe` 切换的 `animateContentSize`、**E4** 超长气泡的 `atBottom` 真机打点。
+4. 之后回到需求批：**E 批**（胶囊→液态玻璃菜单）→ **F 批**（用户人设，**夹具先行**）。
+5. 技术债：审计 P0-3（`data` 层 JVM 测试）；`swipe_id` 不落库、重载靠 `indexOf(content)` 恢复；
+   `‹N/M›` 只能翻最后一条（"任意消息可翻版本"用户说**先待定**）；老账（世界书 outlet / 卡库分组 / `forbid_overrides`）。
 
-0. **P0 已出包，等 M23 回执**：[plan-p0-settle.md](../plan-p0-settle.md) 是设计与实施记录；
-   清单在 [verification/2026-11-26-M23.md](verification/2026-11-26-M23.md)（12 条，判据全在
-   `tag=chat` 的 `收尾 round=… reason=… 计划=… 结果=…`）。**这一批的验收前提是"观感零变化"**，
-   真机若看到任何布局/动画变化都算回归。四条纪律：`cancel()` 只在拿到提交权之后；
-   输家不改 UI；清"生成中"校验 `roundId`；写行校验 `sessionId`。
-1. **P2 已出包 v167，等 M25 回执**，然后进 **P3（重新生成就地替换 + 平滑收缩）**：
-   两个决策点都拍了（[r2](../plan-chat-list-flash-r2.md) §13）——
-   **要平滑收缩**（P3，四条硬约束见 §13.1）、**要呼吸点**（P2，组件 `TypingDots` 见 §13.2）。
-   其余口径见 [plan-chat-list-flash.md](../plan-chat-list-flash.md) /
-   然后按那份文档的第四~六节**一批做完**（行模型 + 占位气泡 + 重新生成就地替换 + 离散动画），
-   配一条专门验证清单（发送 / 首 token / 停止 / 继续 / 重新生成 / 撤回 / 切会话）。
-2. 收 v164 之后那一批的真机回执；三包（v162/v163/v164）都还有没复验的条目。
-3. E 批 → F 批（F 先补夹具）。
-4. 技术债：data 测试（P0-3）→ 重组成本 P1-3（等真机清单清空再做）。
+## 三、当前包（最近的三个）
+
+| 版本 | 提交 | tag | 交付物 |
+|---|---|---|---|
+| v165 | `2b1c101` | `apk-m196` | `artifacts/app-v165-2b1c101.apk` |
+| v166 | `806a0db` | `apk-m197` | `artifacts/app-v166-806a0db.apk` |
+| v167 | `85bccc2` | `apk-m198` | `artifacts/app-v167-85bccc2.apk` |
+
+更早的 v159–v164 在同目录；历史记录 M0–M16 归档在 [device-verification.md](device-verification.md)（冻结）。
 
 ## 四、这台机器与出包（每次都要看）
 
-- **本机编不了 `:app` / `:data`**，只能跑 `tools/test-core.sh` 与 `tools/check-*.sh`。
-  提交前至少跑：`check-core-purity` / `check-kotlin-comments` / `check-kotlin-imports` /
-  `check-ui-map` / `check-ui-invariants` + `test-core.sh`。
-- **出包循环**：
-  1. `git commit`（消息里有引号/反引号就写文件 + `-F`）→ `git push`；
-  2. 等 CI：**优先用 release 页面判断**（`releases/tag/apk-latest` 里 grep 提交 sha），
-     API 只在额度内用；
-  3. 下载 `releases/download/apk-latest/app-debug.apk`（**加 `?cb=时间戳` 免缓存**）；
-  4. **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`，python `zipfile`）——**唯一判据**；
-  5. `tools/verify-apk.sh <apk> 55:E0:C6:E2:…:0B:E7`（完整指纹见 runbook / CI 日志）；
-  6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk`，打 tag `apk-mN`，`git push origin <tag>`。
-- ⚠️ `apk-latest` 的发布步骤可能因"同名资产覆盖"失败 → 给同一 commit 打 `apk-mN` tag 走 tag release。
-- ⚠️ CI 失败日志在 `ci-log-android` / `ci-log-jvm` 两个 release，命名 `build-<sha7>.log`。
-- ⚠️ `poll-ci.sh` 会假 READY（只看 release body）；限制流时改用"release 页面 grep sha + 验 BUILD_ID"。
+- **本机编不了 `:app` / `:data`**（2 核 / 1.7 GiB，`assembleDebug` 必挂 swap）。提交前至少跑：
+  `bash tools/check-core-purity.sh`、`check-kotlin-comments.sh`、`check-kotlin-imports.sh`、
+  `check-ui-map.sh`、`check-ui-invariants.sh`、`bash tools/test-core.sh`（十个 core 模块 129 条）。
+- **语法自查回路（2026-11-26 新发现，值得用）**：本机有 Gradle 缓存里的 Kotlin 编译器，
+  可以对单个 `:app` 文件做**解析级**检查（找不到 android/androidx 的符号是正常的，只看
+  `expecting / unexpected / syntax / @Composable invocations` 这几类错误）：
+
+  ```bash
+  JDK=$(ls -d .toolchain/jdk-17* | head -1)
+  CJ=$(find .toolchain/gradle-home -name 'kotlin-compiler-embeddable-2.1.20.jar' | head -1)
+  SL=$(find .toolchain/gradle-home -name 'kotlin-stdlib-2.1.20.jar' | head -1)
+  CO=$(find .toolchain/gradle-home -name 'kotlinx-coroutines-core-jvm-1.9.0.jar' | head -1)
+  TR=$(find .toolchain/gradle-home -name 'trove4j-1.0.20200330.jar' -not -path '*transforms*' | head -1)
+  AN=$(find .toolchain/gradle-home -name 'annotations-13.0.jar' | head -1)
+  $JDK/bin/java -cp "$CJ:$SL:$CO:$TR:$AN" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
+      -no-stdlib -cp "$SL:$CO" -d /tmp/kchk app/src/main/kotlin/app/tavern/ChatScreen.kt 2>&1 \
+      | grep -E 'expecting|unexpected|syntax|Composable invocations'
+  ```
+
+  它抓不到类型错误（`unresolved` 里混着正常的 android 缺失），**但能抓错位括号、`@Composable`
+  位置错、when 少分支** —— P2 那次 `WindowInsets.ime` 就是靠它之外的 CI 抓到的。
+- **出包循环**：`git commit`（消息里有引号/反引号就写文件 + `-F`）→ `git push` → 等 CI（约 5–8 分钟）
+  → 下载 `releases/download/apk-latest/app-debug.apk?cb=<时间戳>`（**很慢，10–20 分钟，放后台 job**）
+  → **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`，python `zipfile`；**唯一判据**）
+  → `bash tools/verify-apk.sh <apk> 55:E0:C6:E2:19:20:61:92:51:12:04:E8:F8:AC:80:C6:19:44:91:54:26:5B:50:FA:D3:3A:B4:72:8B:96:0B:E7`
+  → `cp` 成 `artifacts/app-vNNN-<sha7>.apk` → `git tag apk-mN <sha>` → `git push origin apk-mN`。
+- ⚠️ 失败日志在 `ci-log-jvm` / `ci-log-android` 两个 release，命名 `build-<sha7>.log`（下载也慢）。
+- ⚠️ 文档提交也会触发 CI，`apk-latest` 会被后来的提交覆盖 —— 交付以 `artifacts/` + tag 为准。
 - **真机日志**：设置 → 关于 → 导出日志（SAF）。AppLog 只写应用内，journald 里没有。
 
 ## 五、日志 tag 速查
 
 | tag | 看什么 |
 |---|---|
+| `chat` | 发送 / 完成 / 失败 / 停止 / 继续 / 重新生成 / swipe / 撤回；**P0 起每轮收尾固定一行** `收尾 round=… reason=… 计划=… 结果=… 正文=N字` |
+| `scroll` | 串流跟随模式 A/B/C（A=贴底 idx0/off0、B=读历史、C=读气泡自身）、补偿、`边界 回到贴底`、`串流结束` |
 | `nav` | 转场预热首帧、转场帧数/最长帧、页面移除间隔 |
-| `scroll` | **串流跟随模式 A/B/C**（A=贴底 idx0/off0、B=读历史、C=读气泡自身）、补偿、`回到贴底`、`串流结束` |
-| `chat` | 发送 / 完成 / 失败 / 重新生成 / 继续 / 停止 / swipe / 撤回（**排查闪烁先看这些时间点**） |
-| `config` | 三级配置写入（模型/思考强度/预设/采样五项/内置正则/气泡字号） |
-| `ui` | 输入区展开与高度、离场收焦点、抽屉冻结让位、确认框 |
-| `wi` | 世界书：开书耗时、条目数、全文 |
-| `rubber` / `glass` | 橡皮筋回弹；玻璃档参数与逐像素校验 |
+| `ui` | 输入区展开与高度、离场收焦点、抽屉冻结让位 |
+| `config` / `wi` / `rubber` / `glass` | 三级配置写入 / 世界书 / 橡皮筋 / 玻璃参数 |
 
-> 排查"闪"的固定套路：在 `chat` 的一次状态变更前后各看一行 `scroll` 的模式与 `气泡高/顶Y`；
-> 顶 Y 是负的等价于"这条气泡比屏幕还高"，这种条目任何增删都是整屏级位移。
+> 排查"闪"的固定套路：一次状态变更前后各看一行 `scroll` 的 `模式` 与 `气泡高/顶Y`；
+> `顶Y` 是负的等价于"这条气泡比屏幕还高"，这种条目任何增删都是整屏级位移。
+> 看"有没有重复落库"就看 `收尾 … 结果=成功` 出现了几次。
 
 ## 六、文件地图（想改什么去哪）
 
 | 想改什么 | 去哪 |
 |---|---|
-| **聊天列表渲染 / 闪烁 / 跟随** | `ChatScreen.kt`（`itemsIndexed` 的 key、`itemAnim`、`justSettled`/`suppressNewestFade`、`topOfStream`、`translationY` 补偿）+ `ChatViewModel` 的 `beginCompletion`/`finish`/`stop` |
-| 流式任务所有权 | `ChatViewModel.StreamingTask` / `stop()` / `openSessionInternal()` 的取消逻辑 |
-| 继续 / 重新生成 / swipe | `continueLast` / `regenerateLast` / `selectSwipe`（`ReplaceTarget` 只服务重新生成） |
-| 提交与气泡样式 | `DisplayText.kt`（`markupText` / `displayPlain`）、`core/regex/BuiltinRegex.kt` |
-| 三级配置生效值 | `UiState.effective*`（采样五项、`builtinDisabled`、`bubbleFontSize` …） |
-| 气泡字号三级 | `Screen.kt`（`BubbleFontSizes` / `ConfigKind.FontSize`）+ 三处入口 |
-| 点触反馈 | `Style.kt` 的 `rememberPressTint` |
-| 回到底部钮 | `ChatScreen.kt` 的 `JumpToBottomButton`（不参与输入区测量） |
-| 开场白「设为默认」 | `CharacterDetailScreen.kt` 的 `DefaultGreetingChip` |
-| 预设「提示词全文」 | `PresetPromptScreen` + `Destination.PresetPrompt` |
-| 选择页（模型/采样/世界书/正则/预设/字号） | `ConfigPickerScreen.kt` |
+| **聊天列表渲染 / 跟随 / 闪烁** | `ChatScreen.kt`：`displayRows` 合成、`itemsIndexed(key = uiKey)`、`itemAnim`、`translationY` 桥接、`dispatchRawDelta` 锚点补偿 |
+| **消息身份 / 生成轮** | `ChatViewModel` 的 `ChatRow` / `Inflight` / `newUiKey()`（K1–K5 注释在 `ChatRow` 上）+ `core/generation/GenerationRound.kt` |
+| 收尾（停止/完成/失败） | `ChatViewModel.settleClaimed` / `claimFor` / `executeWrite` / `applyEffects` |
+| 占位气泡 / 呼吸点 | `PendingLine.kt`（`PendingKind` / `PendingLine` / `TypingDots`） |
+| 继续 / 重新生成 / swipe | `continueLast` / `regenerateLast` / `selectSwipe`（`ReplaceTarget` 仍是 P1 的适配器，P3 删） |
+| 气泡样式与显示正则 | `DisplayText.kt`、`core/regex/BuiltinRegex.kt` |
+| 三级配置生效值 | `UiState.effective*`（采样五项、`builtinDisabled`、`bubbleFontSize`…） |
+| 点触反馈 / 回到底部钮 | `Style.kt` 的 `rememberPressTint` / `ChatScreen.kt` 的 `JumpToBottomButton` |
 | 词表 / 不变量 | `docs/ui-map.md`、`docs/ui-invariants.md`、两个 `check-ui-*.sh` |
 
-## 七、这轮踩的坑（一句话一条，细节在 pitfalls.md）
+## 七、坑（一句话一条，细节在 pitfalls.md）
 
-1. **动画只对"离散事件"有效**：串流时列表每帧长高，开 `placementSpec` 会每帧重放 → 抖动。
-2. **稳定 key 会改变"跟底"语义**：插到头部时列表锚住旧条目，新气泡落在视口外；要显式回 index 0。
-3. **`translationY` 余量在 `isStreaming=false` 当帧归零**：这是"停止/写完闪一下"的一小笔来源。
-4. **流式条目与落库条目是两个 key**：落库一帧"删+加"，高度差要预留，否则整列跳。
-5. **文本一换高度就突变**：2520px 的气泡换成 80px 的"生成中"，同款整屏位移。
-   ⚠️ **这条是结构性的（反排列表底部锚定 + 最后一条缩水 Δ = 历史下移 Δ），不要指望"加个高度动画"解决**：
-   2500px 在 250ms 内走完 = 10 屏/秒，且 `animateContentSize` 会包住串流每一次换行、与既有的
-   `translationY` 追高桥接抢同一位移。详见 plan-chat-list-flash.md §4.2–4.3。
-6. **占位气泡不能进 `transcript`**：transcript 下标 ↔ DB 行号强耦合（审计 P1-5）。
-7. **`collectIsPressedAsState()` 会吞掉同帧按下+抬起**：要吃 `interactions` 流 + 最短可视 90ms。
-8. **键盘收起不能等 `imeVisible == false`**：盯 `snapshotFlow { ime.getBottom(density) }` 的"开始下降"。
-9. **底部浮动控件不许进被测量的那一层**（列表让位读输入区实测高度）。
-10. **`cancel()` 只能在拿到提交权之后**：先 cancel 再抢权，会让"已经写完库、还没提交界面"的
-    收尾在 `withContext` 返回时抛 `CancellationException` → 回复在库里、界面没有（v164 及之前的老 bug）。
-11. **纯 JVM 新模块要在三处登记**：`settings.gradle.kts` + `tools/test-core.sh` + **`app/build.gradle.kts`
-    的 project 依赖**（漏了第三处，CI 报 107 处 Unresolved reference，本机 `:core` 跑得再绿也发现不了）。
-12. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；本机编不了 → 缺 import 只能 CI 抓；
-    `if (常量) A else B` 会静默杀死一支。
+1. **`cancel()` 只能在拿到提交权之后**：先 cancel 再抢权，会让已写完库、还没提交界面的收尾被
+   `CancellationException` 打断 → 回复在库里、界面没有（P0 修的就是这个）。
+2. **纯 JVM 新模块要在三处登记**：`settings.gradle.kts` + `tools/test-core.sh` + **`app/build.gradle.kts`
+   的 project 依赖**（漏第三处，CI 报一堆 Unresolved reference，本机 `:core` 再绿也看不见）。
+3. **`WindowInsets.ime` 是 `@Composable` 属性**，不能在 `LaunchedEffect` 里读；要组合期取句柄、值用时再量。
+4. **插入本身会把 `atBottom` 翻成 false**（稳定 key 锚住旧条目）。所以回底判据用
+   "第一可见项 ≤ 2 且 `offset == 0`"，**不要**用"插入前 atBottom"。
+5. **测量状态要按轮分开**（`remember(roundId)`）：占位气泡与 `isStreaming` 同帧出现，
+   "进流清零"会和同帧的首次测量打架（清成 0 → 整轮不跟底）。
+6. **`animateContentSize` 只能挂在"非串流"的离散替换上**，且与桥接互斥（见 r2 §4.3/§13.1）。
+7. **稳定 key 会改变"跟底"语义**：插到头部时列表锚住旧条目，新气泡落在视口外 —— 必须显式回 index 0。
+8. **占位行不能进 `rows`/`transcript`/DB**：行身份与"是否已落库"必须分开（`dbId == null` 是类型事实）。
+9. **`collectIsPressedAsState()` 会吞掉同帧按下+抬起**：要吃 `interactions` 流 + 最短可视 90ms。
+10. **提交消息里有引号/反引号就写文件 + `git commit -F`**；本机编不了 → 缺 import 只能 CI 抓。
+
+## 八、建议加载的 skills
+
+| skill | 为什么 |
+|---|---|
+| `verification-before-completion` | 这个项目的"完成"必须带本轮新鲜证据（`test-core.sh` 的输出、CI 绿、`BUILD_ID` 校验）。说"好了"之前先跑它。 |
+| `diagnosing-bugs` | 真机问题全靠日志：它那套"先造红/绿反馈环再进假设"正好对得上 `tag=chat`/`tag=scroll` 的排障方式。 |
+| `handoff` | 下次交接再写一页（这一页就是按它写的）。 |
