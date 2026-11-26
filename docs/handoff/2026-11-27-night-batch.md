@@ -34,6 +34,25 @@
 4. 其余按 [status.md](../dev/status.md) 的清单；`forbid_overrides` 与 outlet 都要**新夹具**
    （不能改现有 P0-5 那张卡，否则整套断言要重录）。
 
+## 一·五、今晚交付速览（回退点 → 干了什么）
+
+| tag | 提交 | 内容 |
+|---|---|---|
+| `apk-m212` | `ee8d406` | **揭示节奏**（收到/显示拆开、零追高零桥接、四档、打断口、打印帧日志） |
+| `apk-m213` | `9b3d3a8` | **人设**（多人设 + 三级 + `{{user}}` + personaDescription），夹具 `P1-8-persona-prompt` |
+| `apk-m214` | `87569d0` | **作者注**（深度/角色/间隔、插进聊天历史），夹具 `P1-7-an-prompt` / `-depth-2` |
+| `apk-m215` | `7635a6e` | **胶囊 → 液态玻璃菜单**（需求批 E 两处原型）+ INV-11 |
+| `apk-m216` | `fc66f4f` | **卡详情 ⋮ 保存卡图**（MediaStore） |
+| `apk-m217` | `bfaf5b1` | **推进数学抽进 core**（`RevealPacer` + 7 条单测）+ INV-12 |
+| `apk-m218` | `dc03c30` | 「进页不重打」修正（按 roundId 比，不用布尔） |
+| `apk-m219` | `64c2c3e` | **示例对话顶部/底部注入**（EMTop/EMBottom）、`forbid_overrides`、outlet 宏 |
+| `apk-m220` | `9acbc4c` | **作者注位置三档**（IN_PROMPT / IN_CHAT / BEFORE_PROMPT） |
+
+之后还有（只在 main 上，没打 tag）：**群聊 7 份夹具** + **群聊提示词组装**（`GroupContext`）、
+TTS 朗读、语音输入、分享收卡、开源许可页、INV-11/12、`core` 署名式注释、README/声明重写、
+原版行为笔记 6 条。全部**没有真机回执**，验证清单在
+[M29](../dev/verification/2026-11-27-M29.md)（24 条）。
+
 ## 二、这一轮新立/新确认的口径（别再重新讨论）
 
 - **揭示节奏**：见方案文档。摘要：游标 + 布局即真相、零追高零桥接；档位 15/35/70/不限速（默认 35）；
