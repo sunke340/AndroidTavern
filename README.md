@@ -38,10 +38,15 @@ PC 版酒馆跑在浏览器里，身前挂着一个 Node 服务。这个项目�
 
 ## 不做什么
 
-不在范围内（口径见 [docs/plan.md](docs/plan.md)）：浏览器扩展、STscript 全量、主题 CSS、
+不在范围内（口径见 [docs/plan.md](docs/plan.md)）：浏览器扩展体系、STscript 全量、主题 CSS、
 多用户、Horde、图片生成、本地 HTTP 服务、WebView。
 
-还没做：世界书 outlet、卡库分组、`forbid_overrides`、任意消息翻版本（原版也只允许翻最后一条）。
+原版有、本项目还没做：群聊、作者注、用户人设、记忆与摘要、TTS 与语音输入、翻译、快捷回复、
+世界书 outlet、卡库分组、`forbid_overrides`。
+
+- 人设已排进需求批 F（多人设 + 三级覆盖，夹具先行）。
+- 群聊 / 作者注 / TTS 在[兼容矩阵](docs/compat-matrix.md)里分别是 P2-1 / P1-7 / P2-3。
+- 翻译与快捷回复在原版是两个内置扩展；本项目要做，得先给它们立条目。
 
 ## 安装
 

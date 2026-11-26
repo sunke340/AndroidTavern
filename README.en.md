@@ -44,11 +44,18 @@ from PC can be picked up on the phone.
 
 ## What it does not do
 
-Out of scope (see [docs/plan.md](docs/plan.md)): browser extensions, full STscript, theme CSS,
-multi-user, Horde, image generation, local HTTP server, WebView.
+Out of scope (see [docs/plan.md](docs/plan.md)): the browser extension system, full STscript,
+theme CSS, multi-user, Horde, image generation, local HTTP server, WebView.
 
-Not implemented yet: world book outlets, card library grouping, `forbid_overrides`, switching
-between arbitrary message variants (upstream only allows the last one).
+Available upstream but not here yet: group chats, author's note, user personas, memory and
+summarization, TTS and speech input, translation, quick replies, world book outlets, card library
+grouping, `forbid_overrides`.
+
+- Personas are already scheduled (multi-persona with three-level override, fixtures first).
+- Group chats / author's note / TTS are tracked as P2-1 / P1-7 / P2-3 in the
+  [compatibility matrix](docs/compat-matrix.md).
+- Translation and quick replies ship as built-in extensions upstream; here they would need their
+  own entries first.
 
 ## Install
 
