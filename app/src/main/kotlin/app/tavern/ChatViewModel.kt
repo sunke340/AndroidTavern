@@ -3129,6 +3129,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         personaDescription = snapshot.effectivePersona?.description.orEmpty(),
                         // 作者注：按"每 N 条用户消息"插进聊天历史（夹具 P1-7-an-prompt / -depth-2）
                         authorNote = snapshot.effectiveAuthorNote,
+                        // 世界书里 ANTop / ANBottom 的条目会拼进作者注那一条（原版 ANWithWI）
+                        authorNoteTop = scan.authorNoteTop,
+                        authorNoteBottom = scan.authorNoteBottom,
                         // 预设里打了 forbid_overrides 的段：卡里的 system_prompt 顶不掉它
                         forbidOverrideIds = snapshot.presetForbidOverrides,
                         // 世界书 outlet：`{{outlet::名字}}` 的取值表

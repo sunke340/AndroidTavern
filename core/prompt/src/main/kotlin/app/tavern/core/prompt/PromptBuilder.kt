@@ -49,6 +49,10 @@ public class PromptBuilder {
         personaDescription: String = "",
         /** 作者注；null = 没设（那就不插）。插不插还要看 [AuthorNote.activeAt]。 */
         authorNote: AuthorNote? = null,
+        /** 世界书里 `position = ANTop`（2）的条目：拼在作者注**前面**（`\n` 分隔）。 */
+        authorNoteTop: List<String> = emptyList(),
+        /** 世界书里 `position = ANBottom`（3）的条目：拼在作者注**后面**。 */
+        authorNoteBottom: List<String> = emptyList(),
         /**
          * 这些 identifier 的正文**不许**被卡里的 `system_prompt` / `post_history_instructions` 顶掉。
          * 来自预设里每条提示词的 `forbid_overrides`（夹具 `P0-5-forbid-overrides`）。
@@ -138,14 +142,18 @@ public class PromptBuilder {
                     val note = authorNote
                     if (note != null) {
                         val userTurns = history.count { it.role == ChatRole.User }
-                        if (note.activeAt(userTurns)) {
+                        // 原版把 ANTop / 作者注 / ANBottom 直接拼成 **一条** 注入文本
+                        // （`world-info.js` 的 `ANWithWI`，只削掉首尾各一个换行），
+                        // 再按 interval 决定插不插。夹具 P1-7-an-with-wi。
+                        val merged = mergeAuthorNote(authorNoteTop, note.text, authorNoteBottom)
+                        if (note.copy(text = merged).activeAt(userTurns)) {
                             val blockLen = messages.size - blockStart
                             val offset = (blockLen - note.depth).coerceIn(1, blockLen)
                             messages.add(
                                 blockStart + offset,
                                 ChatMessage(
                                     role = note.role,
-                                    content = substitute(note.text, charName, userName, outlets),
+                                    content = substitute(merged, charName, userName, outlets),
                                 ),
                             )
                         }
@@ -197,6 +205,18 @@ public class PromptBuilder {
             }
         }
         return out
+    }
+
+    /**
+     * 拼作者注注入文本：`top… \n 正文 \n bottom…`，只削掉**首尾各一个**换行
+     * （原版 `replace(/(^\n)|(\n$)/g, '')` 的语义 —— 不是 `trim()`，正文为空时中间的
+     * 空行会留下，这一点在夹具里能看出来）。
+     */
+    private fun mergeAuthorNote(top: List<String>, text: String, bottom: List<String>): String {
+        var merged = top.joinToString("\n") + "\n" + text + "\n" + bottom.joinToString("\n")
+        if (merged.startsWith("\n")) merged = merged.substring(1)
+        if (merged.endsWith("\n")) merged = merged.dropLast(1)
+        return merged
     }
 
     /** `prompt_order` 里用到的 identifier。出处见原版 `PromptManager.js` 的默认提示词表。 */
