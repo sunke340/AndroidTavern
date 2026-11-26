@@ -1132,3 +1132,16 @@ IME 的退场有 200~300ms 动画，`imeVisible` 在动画**跑完**才变假 �
 
 配套一条：**迟到的 token 与"已发 N 条"状态都要校验 `activeRoundId`**，否则停止后还在路上的
 token 会把气泡又点亮。
+
+## `WindowInsets.ime` 是 @Composable 属性（2026-11-26，v167 之前）
+
+想把"键盘可见性"从 content lambda 里挪走（它每帧重组整个内容层）时踩到：
+`WindowInsets.ime` 的 getter 标了 `@Composable @ReadOnlyComposable`，**不能在 `LaunchedEffect` 里读**
+（编译期报 "Composable invocations can only happen from the context of a @Composable function"）。
+
+正确写法：组合期只取**句柄**，值等真要判断时再量 ——
+
+```kotlin
+val imeInsets = WindowInsets.ime            // 取句柄不读值 → 不会每帧失效
+LaunchedEffect(sheetOpen) { if (imeInsets.getBottom(density) > 0) { … } }
+```

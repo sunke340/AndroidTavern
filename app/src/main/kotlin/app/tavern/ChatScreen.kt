@@ -497,11 +497,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 只在"打开时键盘还在"才冻：那种情况下收键盘会让让位整块消失。
         // 键盘本来就没开（输入区是一行）时，打开抽屉什么都没变 —— 冻住反而会把"收起后键盘回来"
         // 那一段变成延迟的硬跳，不如让它跟着键盘自然长。
-        // 键盘可见性**不要**在这里读成 composition 依赖：那样整个 content lambda 会在
-        // 键盘动画期间每帧重组（连带重建 LazyColumn 的 DSL）。只在真要判断时读一次。
+        // 键盘可见性**不要**读成 composition 依赖：那样整个 content lambda 会在键盘动画期间
+        // 每帧重组（连带重建 LazyColumn 的 DSL）。这里组合期只取一次 `WindowInsets` 句柄
+        //（取句柄不读值，不会每帧失效），值等到真要判断时再量。
+        // 注意 `WindowInsets.ime` 本身是 @Composable 属性，不能在 LaunchedEffect 里读。
+        val imeInsets = WindowInsets.ime
         LaunchedEffect(sheetOpen) {
             if (sheetOpen) {
-                if (WindowInsets.ime.getBottom(density) > 0) {
+                if (imeInsets.getBottom(density) > 0) {
                     frozenListBottom = liveListBottom
                     AppLog.i("ui", "抽屉打开：冻结列表底部让位 ${liveListBottom.value.toInt()}dp")
                 }
