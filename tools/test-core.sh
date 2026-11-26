@@ -16,6 +16,7 @@ tools/gradle-local.sh \
     :core:prompt:test \
     :core:ai:test \
     :core:chat-format:test \
+    :core:generation:test \
     "$@"
 
 bash tools/check-tests-ran.sh

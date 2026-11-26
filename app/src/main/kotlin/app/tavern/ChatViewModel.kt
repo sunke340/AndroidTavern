@@ -12,6 +12,14 @@ import app.tavern.core.ai.StreamEvent
 import app.tavern.core.card.CardBookEntry
 import app.tavern.core.card.CharacterCard
 import app.tavern.core.chat.ChatFile
+import app.tavern.core.generation.GenerationRound
+import app.tavern.core.generation.RowAction
+import app.tavern.core.generation.SettleEffects
+import app.tavern.core.generation.SettleReason
+import app.tavern.core.generation.SettleStatus
+import app.tavern.core.generation.UiFacts
+import app.tavern.core.generation.WritePlan
+import app.tavern.core.generation.WriteResult
 import app.tavern.core.chat.ChatMessage as ChatFileMessage
 import app.tavern.core.card.PngCard
 import app.tavern.core.card.WorldBookFile
@@ -56,6 +64,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,7 +78,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** 世界书条目页右上角菜单的三个批量动作（全局书与卡内嵌书共用）。 */
 enum class BookBulkMode(
@@ -299,6 +307,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          * 不预留的话那一帧整列会往上跳（用户 2026-11-26 报的"停止/生成完毕闪一下"）。
          */
         val streamingRegenerate: Boolean = false,
+        /**
+         * 这一轮生成的轮次号（`GenerationRound.roundId`）；没有在跑时为 null。
+         *
+         * 收尾时"这条消息/这个状态栏还归不归我"全看它：写完库到提交界面之间，用户可能已经
+         * 切了会话或开了新一轮，**旧轮不许碰新轮的界面**（见 `core/generation` 的纪律 3）。
+         */
+        val activeRoundId: Long? = null,
         val notice: Notice? = null,
     ) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
@@ -428,30 +443,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var detailRawId: String? = null
 
     /**
-     * 当前这一轮流式任务**归谁**（审计 P1-1）。
+     * 当前这一轮生成**归谁**（审计 P1-1；P0 换成 `core/generation` 的提交权）。
      *
-     * 以前只有一个 `job: Job?`：谁都可以覆盖它，旧流就成了"停不掉的孤儿"——
-     * 离开聊天页后它继续跑、继续往库里写，而新会话又能再起一轮，两路并发。
-     * 现在带 `sessionId` 与"这一轮是否已经落过盘"的原子标记：
-     * - 起新流前先取消上一轮（一个会话只能有一路）；
-     * - 切会话时取消上一轮，返回同一会话时**保留**生成中的状态；
-     * - [stop] 与 `finish` 用同一个 [AtomicBoolean] 抢"谁写库"，只有一方能写。
+     * 以前只有一个 `job: Job?` + 一个 `AtomicBoolean written`：
+     * - `written` 同时干三件事（互斥 / 幂等 / "已落库"标记），而且 `stop()` 只能在 CAS **之前**
+     *   `cancel()` 才能立刻停流 —— 取消会让已经写完库的收尾协程在 `withContext` 返回时抛
+     *   `CancellationException`，界面更新被跳过（"回复在库里、界面没有，重进会话又出现"）。
+     * 现在提交权是 `GenerationRound` 里的一个 `AtomicReference<CommitPhase>`：
+     * **抢到权的那一方才可以 cancel，也只有它可以写库、可以收界面。**
      */
-    private class StreamingTask(
-        val sessionId: String,
-        val job: Job,
-        /** true = 这一轮的回复已经落库（finish 或 stop 先到先得）。 */
-        val written: AtomicBoolean = AtomicBoolean(false),
-        /**
-         * 这一轮是**重新生成**时带上目标（普通发送 / 继续都是 null）。
-         * `stop()` 必须知道它：重新生成会把原来那条先撤下去，停止时半截内容应当成为
-         * **一条新的 swipe 备选**并写回同一行，而不是当成一条新消息追在界面后面。
-         * 这一条以前只存在于 `finish()` 的闭包里，`stop()` 看不到（M17 的根因之一）。
-         */
-        val replacing: ReplaceTarget? = null,
-    )
+    private var currentRound: GenerationRound? = null
 
-    private var streaming: StreamingTask? = null
+    /** 这一轮的 job（和 [currentRound] 分开：核心模块不认识协程类型）。 */
+    private var roundJob: Job? = null
+
+    /** 轮次号：只增不减，用来判断"我还是不是当前那一轮"。 */
+    private var roundSeq: Long = 0L
     private var keySaveJob: Job? = null
 
     init {
@@ -965,6 +972,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         transcript = emptyList(),
                         streamingText = "",
                         isStreaming = false,
+                        streamingRegenerate = false,
+                        activeRoundId = null,
                         chatOpen = false,
                     )
                 }
@@ -995,11 +1004,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun openSessionInternal(id: String, navigate: Boolean = true) {
         // 切到另一条会话时把上一轮的流停掉：否则它会继续往**旧会话**落库，而这边又能再发一条，
         // 两路并发（审计 P1-1）。切回**同一条**会话则保留生成态（下面 isStreaming 会按归属算）。
-        streaming?.let { active ->
+        currentRound?.let { active ->
+            // 切到**别的**会话：放弃这一轮（半截丢弃，与"停止"不同 —— 这是既有语义）。
+            // 纪律 1：只有抢到提交权才取消；抢不到说明收尾那边正在写库，让它写完。
             if (active.sessionId != id) {
-                active.job.cancel()
-                AppLog.i("chat", "切会话：取消上一轮流 ${active.sessionId.take(8)} → ${id.take(8)}")
-                streaming = null
+                if (active.claimCommitRight()) {
+                    roundJob?.cancel()
+                    roundJob = null
+                    currentRound = null
+                    AppLog.i("chat", "切会话：放弃上一轮 round=${active.roundId} ${active.sessionId.take(8)} → ${id.take(8)}")
+                } else {
+                    AppLog.i("chat", "切会话：上一轮已在收尾，不取消 round=${active.roundId}")
+                }
             }
         }
         val session = withContext(Dispatchers.IO) {
@@ -1063,8 +1079,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 // 生成中状态按**归属**算：切回还在跑的那条会话时别把"生成中"清成 false
                 // （以前一律 false → 用户能再发一条，`job` 被覆盖，旧流永远停不掉）
-                streamingText = if (streaming?.sessionId == id) it.streamingText else "",
-                isStreaming = streaming?.sessionId == id,
+                streamingText = if (currentRound?.sessionId == id) it.streamingText else "",
+                isStreaming = currentRound?.sessionId == id,
+                activeRoundId = if (currentRound?.sessionId == id) currentRound?.roundId else null,
                 chatOpen = navigate,
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
@@ -1927,7 +1944,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // 离开聊天页时流**照常跑完**（用户可能只是回去看一眼列表），但它归 [streaming] 管：
         // 回到同一会话能看到"生成中"，切到别的会话会被取消（审计 P1-1）。
         _state.update { it.copy(chatOpen = false, sessionConfigOpen = false, configPicker = null) }
-        streaming?.let { AppLog.i("chat", "离开聊天页：流仍在跑 session=${it.sessionId.take(8)}") }
+        currentRound?.let { AppLog.i("chat", "离开聊天页：流仍在跑 round=${it.roundId} session=${it.sessionId.take(8)}") }
     }
 
     /** 打开会话配置（三级继承最内层的那一页）。 */
@@ -2066,112 +2083,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 停止生成。已收到的半截内容**保留**并落库——原版就是这样，
-     * 用户按停止往往是因为"已经够用了，别再烧 token"。
+     * 停止生成。已收到的半截内容**保留**并落库 —— 原版就是这样
+     * （用户按停止往往是"已经够用了，别再烧 token"）。
      *
-     * 与收尾的 `finish()` 抢同一个 [StreamingTask.written]：谁先抢到谁写库，
-     * 另一方只把界面收干净。以前两边各写一次，停止晚于 Completed 一点点就会
-     * 同一条回复落两行（审计 P1-2）。
+     * 与流式收尾共用提交权：谁先 [GenerationRound.claimCommitRight] 成功，谁写库、谁收界面；
+     * **输家什么都不做**（连"已停止"都不写 —— 那会把刚起跑的新一轮按回去）。
+     * 注意顺序：**先抢权、再取消**。反过来的话，取消会让已经写完库的收尾在 `withContext`
+     * 返回时抛 `CancellationException`，界面更新被跳过（回复在库里、界面没有）。
      */
     fun stop() {
-        val active = streaming ?: return
-        streaming = null
-        active.job.cancel()
-        val partial = _state.value.streamingText
-
-        if (!active.written.compareAndSet(false, true)) {
-            // 收尾那一侧已经在写 / 已经写完：界面收干净，绝不再落一条
-            _state.update {
-                it.copy(
-                    streamingText = "",
-                    isStreaming = false,
-                    status = "已停止",
-                )
-            }
-            AppLog.i("chat", "停止：本轮已由收尾落库，只收界面")
-            return
+        val round = currentRound ?: return
+        if (!claimFor(round, SettleReason.Stopped)) return
+        val job = roundJob
+        viewModelScope.launch {
+            settleClaimed(
+                round = round,
+                reason = SettleReason.Stopped,
+                text = null,
+                okStatus = "",
+                cancelJob = job,
+            )
         }
-
-        // 半截内容只能进**它自己那条会话**：切换会话时流已被取消，这里再兜一层
-        val sameSession = _state.value.sessionId == active.sessionId
-        val target = active.replacing
-        val status = if (partial.isBlank()) "已停止" else "已停止（保留了 ${partial.length} 字）"
-
-        if (target == null) {
-            // 普通发送（含「继续」）：半截内容单独存成一条新消息
-            _state.update {
-                it.copy(
-                    transcript = if (partial.isBlank() || !sameSession) {
-                        it.transcript
-                    } else {
-                        it.transcript + ChatMessage(ChatRole.Assistant, partial)
-                    },
-                    // 这条新回复尚无其它版本；上一轮的 swipe 备选不能留着 ——
-                    // 留着的话，下一次「重新生成」会把上一条消息的底本写到这条上。
-                    // 一个字都没收到时最后一条没变（继续时是上一条回复），保留它自己的备选。
-                    lastSwipes = if (partial.isBlank()) it.lastSwipes else listOf(partial),
-                    lastSwipeId = if (partial.isBlank()) it.lastSwipeId else 0,
-                    streamingText = "",
-                    isStreaming = false,
-                    status = status,
-                )
-            }
-            if (partial.isNotBlank() && sameSession) {
-                viewModelScope.launch {
-                    withContext(Dispatchers.IO) {
-                        chatRepository.append(active.sessionId, isUser = false, content = partial)
-                    }
-                    refreshSessions()
-                }
-            }
-        } else {
-            // 重新生成：半截内容作为一条**新的 swipe 备选**，旧的那条还留着能翻回去
-            if (partial.isBlank()) {
-                _state.update {
-                    it.copy(
-                        transcript = if (sameSession) {
-                            it.transcript + target.restore
-                        } else {
-                            it.transcript
-                        },
-                        // 原条回来了，版本表跟着回来
-                        lastSwipes = target.base,
-                        lastSwipeId = target.base.lastIndex,
-                        streamingText = "",
-                        isStreaming = false,
-                        status = status,
-                    )
-                }
-            } else {
-                val next = target.base + partial
-                _state.update {
-                    it.copy(
-                        transcript = if (sameSession) {
-                            it.transcript + ChatMessage(ChatRole.Assistant, partial)
-                        } else {
-                            it.transcript
-                        },
-                        lastSwipes = next,
-                        lastSwipeId = next.lastIndex,
-                        streamingText = "",
-                        isStreaming = false,
-                        status = status,
-                    )
-                }
-                viewModelScope.launch {
-                    withContext(Dispatchers.IO) {
-                        chatRepository.updateMessage(target.rowId, partial)
-                        chatRepository.setSwipes(target.rowId, next)
-                    }
-                    refreshSessions()
-                }
-            }
-        }
-        AppLog.i(
-            "chat",
-            "停止：保留 ${partial.length} 字 session=${active.sessionId.take(8)}" +
-                if (target == null) "" else "（重新生成）",
-        )
     }
 
     /**
@@ -2825,13 +2757,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(status = "先填 API Key（设置里填一次就会加密记住）") }
             return
         }
-        // 一个会话只能有一路流：起新流前先把上一轮取消（审计 P1-1）。
-        // 以前 `job` 是谁都能覆盖的单字段，旧流就成了停不掉的孤儿。
-        streaming?.let { active ->
-            active.job.cancel()
-            AppLog.i("chat", "起新流：取消上一轮 session=${active.sessionId.take(8)}")
-            streaming = null
+        // 一个会话只能有一路流（审计 P1-1）。起新流之前先把上一轮放弃 ——
+        // **只有抢得到提交权才能取消**（纪律 1：否则会把正在写库的收尾打断）。
+        currentRound?.let { previous ->
+            if (previous.claimCommitRight()) {
+                roundJob?.cancel()
+                previous.close()
+                AppLog.i("chat", "起新流：放弃上一轮 round=${previous.roundId}")
+            } else {
+                AppLog.i("chat", "起新流：上一轮已在收尾，不取消 round=${previous.roundId}")
+            }
         }
+        roundJob = null
+
+        // 这一轮的身份与提交权。**所有收尾判断都走它**，不再有"谁都可以覆盖的 job 字段"。
+        val round = GenerationRound(
+            roundId = ++roundSeq,
+            sessionId = sessionId,
+            targetDbId = replacing?.rowId,
+            userInput = if (userText != null) snapshot.input else null,
+            baseSwipes = replacing?.base.orEmpty(),
+            // P0 专用：重新生成开场把原来那条从界面撤下去了，收尾不成功要放回来。
+            removedContent = replacing?.restore?.content,
+        )
+        currentRound = round
 
         // 点下去**立刻**进"准备中"：分词与世界书扫描已经挪到后台（审计 P0-2），
         // 但再快也得先有反馈，否则长会话里点发送像没反应
@@ -2844,14 +2793,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isStreaming = true,
                 // 重新生成落库后会带版本条：让串流气泡预留那块高度（见 UiState.streamingRegenerate）
                 streamingRegenerate = replacing != null,
+                activeRoundId = round.roundId,
                 input = "",
                 status = "准备请求…",
                 requestPreview = "",
             )
         }
 
-        // 这一轮"谁写库"的抢票：stop() 与 finish() 共用（审计 P1-2）
-        val written = AtomicBoolean(false)
         // 两张 HashMap（世界书计时状态 / 全局书条目）在主线程取值，后台只读快照 ——
         // 后台扫描因此不碰任何共享可变状态
         val scanState = worldInfoStates[sessionId] ?: LorebookScanState()
@@ -2859,158 +2807,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val task = viewModelScope.launch {
             val buffer = StringBuilder()
-            // 用户消息落库后的行号：失败时要撤回，所以得在下面的本地函数之前声明
-            var userMessageId: Long? = null
-
-            /** 这一轮收尾：只把归属位让给"自己"，别踩到已经起跑的新一轮。 */
-            fun release() {
-                if (streaming?.written === written) streaming = null
-            }
-
-            suspend fun finish(text: String, status: String) {
-                // 停止与收尾抢同一张票：哪边先抢到哪边写库（审计 P1-2）。
-                // 以前两边各写一次 —— 点"停止"晚于 Completed 一点点，同一条回复就落两行。
-                if (!written.compareAndSet(false, true)) return
-                if (replacing != null) {
-                    // 重新生成：不新增一行，改写原来那一行；新文本作为一条新 swipe 备选
-                    if (text.isNotEmpty()) {
-                        val next = replacing.base + text
-                        withContext(Dispatchers.IO) {
-                            chatRepository.updateMessage(replacing.rowId, text)
-                            chatRepository.setSwipes(replacing.rowId, next)
-                        }
-                        refreshSessions()
-                        _state.update { current ->
-                            if (current.sessionId != sessionId) {
-                                current.copy(streamingText = "", isStreaming = false, status = status)
-                            } else {
-                                current.copy(
-                                    transcript = current.transcript +
-                                        ChatMessage(ChatRole.Assistant, text),
-                                    lastSwipes = next,
-                                    lastSwipeId = next.lastIndex,
-                                    streamingText = "",
-                                    isStreaming = false,
-                                    status = status,
-                                )
-                            }
-                        }
-                    } else {
-                        // 一个字都没收到：把撤下去的那条放回来
-                        _state.update { current ->
-                            if (current.sessionId != sessionId) {
-                                current.copy(streamingText = "", isStreaming = false, status = status)
-                            } else {
-                                current.copy(
-                                    transcript = current.transcript + replacing.restore,
-                                    streamingText = "",
-                                    isStreaming = false,
-                                    status = status,
-                                )
-                            }
-                        }
-                        refreshSessions()
-                    }
-                    return
-                }
-                if (text.isNotEmpty()) {
-                    withContext(Dispatchers.IO) {
-                        chatRepository.append(sessionId, isUser = false, content = text)
-                    }
-                    refreshSessions()
-                }
-                _state.update { current ->
-                    // 用户可能已经切到别的会话：那就只收尾全局状态，别把消息塞进新会话
-                    if (current.sessionId != sessionId) {
-                        current.copy(streamingText = "", isStreaming = false, status = status)
-                    } else {
-                        current.copy(
-                            transcript = if (text.isEmpty()) {
-                                current.transcript
-                            } else {
-                                current.transcript + ChatMessage(ChatRole.Assistant, text)
-                            },
-                            // 这条新回复自己的版本表从这里开始（重新生成时它就是 1/N）
-                            lastSwipes = if (text.isEmpty()) current.lastSwipes else listOf(text),
-                            lastSwipeId = 0,
-                            streamingText = "",
-                            isStreaming = false,
-                            status = status,
-                        )
-                    }
-                }
-            }
-
-            suspend fun fail(message: String) {
-                if (replacing != null) {
-                    // 重新生成失败：把撤下去的那条原样放回界面（库里那一行根本没动过）
-                    _state.update { current ->
-                        if (current.sessionId != sessionId) {
-                            current.copy(streamingText = "", isStreaming = false, status = message)
-                        } else {
-                            current.copy(
-                                transcript = current.transcript + replacing.restore,
-                                // 原条回来了，它的版本表也一起回来（否则这颗气泡翻不了版本）
-                                lastSwipes = replacing.base,
-                                lastSwipeId = replacing.base.lastIndex,
-                                streamingText = "",
-                                isStreaming = false,
-                                status = message,
-                            )
-                        }
-                    }
-                    refreshSessions()
-                    return
-                }
-                // 刚写进库的用户消息撤回，输入框还原：否则用户重试一次就多一条
-                withContext(Dispatchers.IO) {
-                    userMessageId?.let { runCatching { chatRepository.deleteMessage(it) } }
-                }
-                // 撤回后条数/排序要跟着变，否则会话列表里还显示着这条没发出去的消息
-                refreshSessions()
-                _state.update { current ->
-                    if (current.sessionId != sessionId) {
-                        current.copy(streamingText = "", isStreaming = false, status = message)
-                    } else {
-                        current.copy(
-                            // 失败时撤回的只有"这次追加的那一条"：重新生成没有追加用户消息，
-                            // 这里再去 dropLast 就会把上一句用户说的话删掉
-                            transcript = if (userText != null) {
-                                current.transcript.dropLast(1)
-                            } else {
-                                current.transcript
-                            },
-                            streamingText = "",
-                            isStreaming = false,
-                            // 只有"真的发了一条"才还原输入框；继续/重新生成没动过它
-                            input = if (userText != null) snapshot.input else current.input,
-                            status = message,
-                        )
-                    }
-                }
-            }
 
             // 用户消息先落库：进程被杀也不会丢"我说了什么"。
             // 重新生成没有新用户消息（userText == null），这一段整块跳过。
             if (userText != null) {
-                userMessageId = withContext(Dispatchers.IO) {
+                val userMessageId = withContext(Dispatchers.IO) {
                     runCatching { chatRepository.append(sessionId, isUser = true, content = userText) }
                         .getOrNull()
                         ?.id
                 }
                 if (userMessageId == null) {
+                    // 连提问都没写进去：这条根本没发出去，直接把这一轮作废。
+                    abandonRound(round)
                     _state.update {
                         it.copy(
                             transcript = it.transcript.dropLast(1),
                             streamingText = "",
                             isStreaming = false,
+                            streamingRegenerate = false,
+                            activeRoundId = null,
                             input = snapshot.input,
                             status = "写库失败：这条消息没有发出去",
                         )
                     }
-                    release()
                     return@launch
                 }
+                // 记进这一轮：生成失败时按它撤销（**只删这一条**，绝不碰更早的消息）。
+                round.userRowDbId = userMessageId
                 refreshSessions()
             }
 
@@ -3040,8 +2863,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 AppLog.e("chat", "准备请求失败", error)
-                release()
-                fail("准备请求失败：${error.message ?: error::class.simpleName}")
+                failRound(round, "准备请求失败：${error.message ?: error::class.simpleName}")
                 return@launch
             }
             // 计时状态回主线程落（HashMap 只在主线程碰），存盘走 IO
@@ -3051,8 +2873,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     sessionScanStates.save(sessionId, LorebookScanStateCodec.encode(worldInfo.state))
                 }
             }
-            _state.update {
-                it.copy(
+            _state.update { st ->
+                // 这一轮可能已经被停止/放弃：别用"已发 N 条"盖掉"已停止"。
+                if (st.activeRoundId != round.roundId) st
+                else st.copy(
                     status = "已发 ${messages.size} 条消息（${snapshot.model}）",
                     // 首行放请求参数：真机上「查看请求」是唯一不靠日志的证据，
                     // 采样五项有没有按三级生效，只能在这里看见（2026-11-26 用户要验采样）
@@ -3111,7 +2935,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     when (event) {
                         is StreamEvent.Delta -> {
                             buffer.append(event.text)
-                            _state.update { it.copy(streamingText = buffer.toString()) }
+                            _state.update { st ->
+                                // 收尾已经清掉了这一轮：迟到的 token **不许**把气泡又点亮
+                                if (st.activeRoundId != round.roundId) st
+                                else st.copy(streamingText = buffer.toString())
+                            }
                         }
 
                         is StreamEvent.Completed -> {
@@ -3120,7 +2948,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 "chat",
                                 "完成 finish=${event.finishReason ?: "null"} chars=${buffer.length}",
                             )
-                            finish(buffer.toString(), "完成（finish_reason=${event.finishReason ?: "null"}）")
+                            finishRound(round, buffer.toString(), "完成（finish_reason=${event.finishReason ?: "null"}）")
                         }
 
                         is StreamEvent.Failed -> {
@@ -3130,28 +2958,216 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 "失败 http=${event.httpCode} msg=${event.message.take(200)}",
                             )
                             val hint = if (event.httpCode == 401) "｜Key 不对或已失效" else ""
-                            fail("失败（HTTP ${event.httpCode}）$hint：${event.message}")
+                            failRound(round, "失败（HTTP ${event.httpCode}）$hint：${event.message}")
                         }
                     }
                 }
                 // 流结束了却没有任何终止事件：别让界面卡在"生成中"
                 if (!settled) {
                     if (buffer.isEmpty()) {
-                        fail("流意外结束：没有收到任何内容")
+                        failRound(round, "流意外结束：没有收到任何内容")
                     } else {
-                        finish(buffer.toString(), "流意外结束（保留了已收到的内容）")
+                        finishRound(round, buffer.toString(), "流意外结束（保留了已收到的内容）")
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 AppLog.e("chat", "客户端异常", error)
-                fail("客户端异常：${error.message ?: error::class.simpleName}")
+                failRound(round, "客户端异常：${error.message ?: error::class.simpleName}")
             }
-            release()
         }
-        // 归属位在**这里**登记：先有 job 才有所有权。这一行之后 stop/切会话才找得到它。
-        streaming = StreamingTask(sessionId, task, written, replacing)
+        // 上面那个 launch 在 Main.immediate 下会**立刻跑第一段**：如果它已经自我作废
+        // （用户消息没写进去），这里不要再把一个死轮次的 job 挂上去。
+        roundJob = if (currentRound === round) task else null
+    }
+
+    // ---- 收尾（P0：提交权 → 写库 → 提交界面）---------------------------------
+
+    /**
+     * 抢提交权。**同一轮只有一个赢家**；输家只记一行日志 —— 不写库、不改界面、不取消 job。
+     */
+    private fun claimFor(round: GenerationRound, reason: SettleReason): Boolean {
+        val won = round.claimCommitRight()
+        if (!won) AppLog.i("chat", "收尾 被抢先 round=${round.roundId} reason=$reason")
+        return won
+    }
+
+    /** 正常情况下做废一轮（连提问都没写进去）。 */
+    private fun abandonRound(round: GenerationRound) {
+        round.close()
+        if (currentRound === round) {
+            currentRound = null
+            roundJob = null
+        }
+    }
+
+    /** 流式正常收尾。 */
+    private suspend fun finishRound(round: GenerationRound, text: String, status: String) {
+        if (!claimFor(round, SettleReason.Completed)) return
+        settleClaimed(round, SettleReason.Completed, text = text, okStatus = status)
+    }
+
+    /** 生成失败（**不是**保存失败：这条只负责撤掉本轮提问）。 */
+    private suspend fun failRound(round: GenerationRound, message: String) {
+        if (!claimFor(round, SettleReason.Failed)) return
+        settleClaimed(round, SettleReason.Failed, text = "", okStatus = message)
+    }
+
+    /**
+     * 收尾的唯一实现：**写库 → 提交界面**。调用前必须已经拿到提交权。
+     *
+     * - `cancelJob`：停止那条路要在**拿到权之后**才停止流（纪律 1）。
+     * - `text == null`：从界面上的 `streamingText` 取（用户点停止时屏幕上是哪截就用哪截）。
+     * - `NonCancellable` **只包这一段**：请求、流式、刷新会话列表都保持可取消。
+     *   以前取消会把"已经写完库、还没提交界面"的收尾打断 → 回复在库里、界面没有。
+     */
+    private suspend fun settleClaimed(
+        round: GenerationRound,
+        reason: SettleReason,
+        text: String?,
+        okStatus: String,
+        cancelJob: Job? = null,
+    ) {
+        cancelJob?.cancel()
+        var refresh = false
+        try {
+            withContext(NonCancellable) {
+                val body = text ?: _state.value.streamingText
+                val plan = round.planWrite(body, reason)
+                val result = executeWrite(round, plan)
+                // 停止的文案跟"保留了几个字"走，只能在这里算（它是唯一一个调用方给不出文案的收尾）
+                val status = okStatus.ifEmpty {
+                    if (body.isBlank()) "已停止" else "已停止（保留了 ${body.length} 字）"
+                }
+                val facts = UiFacts(sessionId = _state.value.sessionId, activeRoundId = _state.value.activeRoundId)
+                val effects = round.planEffects(facts, plan, result, status)
+                // 一次 update 落地全部效果：不露出"行已加、生成中还没清"的中间帧
+                _state.update { applyEffects(it, effects) }
+                refresh = effects.refreshSessions
+                AppLog.i(
+                    "chat",
+                    "收尾 round=${round.roundId} reason=$reason 计划=${plan.logName()} " +
+                        "结果=${result.logName()} 正文=${body.length}字",
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            // 整轮被取消（例如 ViewModel 被清）时不要假装"保存失败"：界面已经不在了。
+            throw cancelled
+        } catch (error: Exception) {
+            // 不该发生（plan/apply 都是纯计算）。真发生就按"保存失败"收界面，别把界面卡在生成中。
+            AppLog.e("chat", "收尾异常 round=${round.roundId}", error)
+            _state.update { st ->
+                if (st.activeRoundId != round.roundId) st
+                else st.copy(
+                    streamingText = "",
+                    isStreaming = false,
+                    streamingRegenerate = false,
+                    activeRoundId = null,
+                    status = "保存失败：${error.message ?: error::class.simpleName}",
+                )
+            }
+        } finally {
+            round.close()
+            if (currentRound === round) {
+                currentRound = null
+                roundJob = null
+            }
+        }
+        if (refresh) viewModelScope.launch { runCatching { refreshSessions() } }
+    }
+
+    /**
+     * 真正落库。**任何异常都变成 [WriteResult.Failed]** —— 不抛给调用方，
+     * 否则界面那一笔就提交不了（而库可能已经写进去了）。
+     */
+    private suspend fun executeWrite(round: GenerationRound, plan: WritePlan): WriteResult =
+        runCatching {
+            when (plan) {
+                WritePlan.Nothing -> WriteResult.Skipped
+
+                is WritePlan.AppendReply -> withContext(Dispatchers.IO) {
+                    chatRepository.append(round.sessionId, isUser = false, content = plan.content)
+                }.let { WriteResult.Ok(it.id) }
+
+                is WritePlan.RewriteReply -> withContext(Dispatchers.IO) {
+                    // 正文 + 版本表一次事务写完（分开写会出现"正文换了、版本表没换"）
+                    chatRepository.replaceMessage(plan.targetDbId, plan.content, plan.swipes)
+                }.let { ok ->
+                    if (ok) WriteResult.Ok(plan.targetDbId) else WriteResult.Failed("目标行不存在")
+                }
+
+                is WritePlan.DeleteUserRow -> withContext(Dispatchers.IO) {
+                    chatRepository.deleteMessage(plan.dbId)
+                }.let { WriteResult.Ok(plan.dbId) }
+            }
+        }.getOrElse { error ->
+            AppLog.e("chat", "写库失败 round=${round.roundId} 计划=${plan.logName()}", error)
+            WriteResult.Failed(error.message ?: error::class.simpleName ?: "写库异常")
+        }
+
+    /** 把收尾效果落到 UI 状态上（一次 update）。语义见 `core/generation` 的 `RowAction`。 */
+    private fun applyEffects(st: UiState, effects: SettleEffects): UiState {
+        var next = st
+        when (val row = effects.row) {
+            RowAction.None -> Unit
+
+            is RowAction.Append -> next = next.copy(
+                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                lastSwipes = row.swipes,
+                lastSwipeId = row.swipeId,
+            )
+
+            // P0：界面仍是"开场撤下、收尾追加"；P1 改成按 dbId 就地改（不动其它行）。
+            is RowAction.Rewrite -> next = next.copy(
+                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                lastSwipes = row.swipes,
+                lastSwipeId = row.swipeId,
+            )
+
+            // 重新生成开场撤下过、这一轮没写成 → 放回界面（版本表一起回来）
+            is RowAction.RestoreRemoved -> next = next.copy(
+                transcript = next.transcript + ChatMessage(ChatRole.Assistant, row.content),
+                lastSwipes = row.swipes,
+                lastSwipeId = row.swipeId,
+            )
+
+            is RowAction.RemoveUserRow -> next = next.copy(
+                transcript = next.transcript.dropLast(1),
+            )
+        }
+        effects.restoreInput?.let { input -> next = next.copy(input = input) }
+        if (effects.clearInflight) {
+            next = next.copy(
+                streamingText = "",
+                isStreaming = false,
+                streamingRegenerate = false,
+                activeRoundId = null,
+            )
+        }
+        effects.status?.let { kind ->
+            next = next.copy(
+                status = when (kind) {
+                    is SettleStatus.Ok -> kind.text
+                    SettleStatus.SaveFailed -> "保存失败：这条回复没有入库（可以重新生成）"
+                    SettleStatus.RollbackFailed -> "取消失败：这条提问可能已经在库里"
+                },
+            )
+        }
+        return next
+    }
+
+    private fun WritePlan.logName(): String = when (this) {
+        WritePlan.Nothing -> "无"
+        is WritePlan.AppendReply -> "追加"
+        is WritePlan.RewriteReply -> "改写#$targetDbId"
+        is WritePlan.DeleteUserRow -> "撤销提问#$dbId"
+    }
+
+    private fun WriteResult.logName(): String = when (this) {
+        WriteResult.Skipped -> "跳过"
+        is WriteResult.Ok -> "成功"
+        is WriteResult.Failed -> "失败($reason)"
     }
 
     // ---- 消息操作（P0-6 的一部分：重新生成 / 编辑 / 删除）---------------------

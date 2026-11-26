@@ -16,6 +16,7 @@
 | `tokenizer` | jtokkit + 模型→编码映射 | `Tokens` |
 | `preset` | 预设与采样参数 | `SamplingPreset` |
 | `ai` | provider 适配、SSE、取消 | `ChatCompletionClient` |
+| `generation` | 一轮生成的**提交权**与收尾决策（谁写、写什么、界面怎么收） | `GenerationRound` |
 
 ## 规矩
 

@@ -245,6 +245,40 @@ class SqliteChatRepository(context: Context) : ChatRepository {
         )
     }
 
+    override fun replaceMessage(messageId: Long, content: String, swipes: List<String>): Boolean {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            val updated = db.update(
+                TavernDatabase.TABLE_MESSAGES,
+                ContentValues().apply { put("content", content) },
+                "id = ?",
+                arrayOf(messageId.toString()),
+            )
+            if (updated == 0) return false
+            db.delete(
+                TavernDatabase.TABLE_MESSAGE_SWIPES,
+                "message_id = ?",
+                arrayOf(messageId.toString()),
+            )
+            swipes.forEachIndexed { seq, text ->
+                db.insertOrThrow(
+                    TavernDatabase.TABLE_MESSAGE_SWIPES,
+                    null,
+                    ContentValues().apply {
+                        put("message_id", messageId)
+                        put("seq", seq)
+                        put("content", text)
+                    },
+                )
+            }
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     override fun append(sessionId: String, isUser: Boolean, content: String): StoredMessage {
         val db = helper.writableDatabase
         val now = System.currentTimeMillis()

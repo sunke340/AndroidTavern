@@ -84,6 +84,16 @@ interface ChatRepository {
     /** 覆盖一条消息的 swipe 备选（不动 `messages.content` 与时间）。 */
     fun setSwipes(messageId: Long, swipes: List<String>)
 
+    /**
+     * 一次事务里改写"正文 + swipe 备选"（重新生成收尾用）。
+     *
+     * 为什么必须是一个方法：以前是 `updateMessage` + `setSwipes` 两次独立调用
+     * （`ChatViewModel` 里成品是两行），进程死在中间就会出现"正文换了、版本表还是旧的"。
+     *
+     * @return false = 目标行不存在（调用方必须按"保存失败"处理，不许假装成功）
+     */
+    fun replaceMessage(messageId: Long, content: String, swipes: List<String>): Boolean
+
     /** 置顶 / 取消置顶（只动排序用的标记，不碰消息）。 */
     fun setSessionPinned(id: String, pinned: Boolean)
 
