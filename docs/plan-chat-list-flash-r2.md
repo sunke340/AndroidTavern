@@ -351,13 +351,18 @@ t1 首 token：item(key="stream") 插入到 index 0
 
 | 批 | 内容 | 观感变化 | 依赖 |
 |---|---|---|---|
-| **P0 数据一致性** | `roundId`；`stop` 先看 `written` 再 cancel；提交块 `NonCancellable`；`fail` 检查 `written`；保存失败独立分支；撤销失败如实提示；`tag=chat` 补 `收尾=`/`提交=` 字段 | 无 | — |
-| **P1 行模型地基** | `ChatRow(uiKey, role, content, dbId)` + `Inflight(roundId, sessionId, uiKey, targetDbId, text)`；`rows`/`transcript` getter；`displayRows`；单一 `RowItem` 渲染入口；删除/撤回/翻版本改按 `dbId`；K1–K5 注释 + `newUiKey()` | **必须不变** | P0 |
+| **P0 数据一致性** | 提交权仲裁（`AtomicReference<CommitPhase>`，取代 `written`）+ 四类失败语义 + `replaceMessage` 单事务。**定稿设计见 [plan-p0-settle.md](plan-p0-settle.md)**（含 21 条纯 JVM 用例） | 无 | — |
+| **P1 行模型地基** | `ChatRow(uiKey, role, content, dbId)` + `Inflight(roundId, sessionId, uiKey, targetDbId, text)`；`rows`/`transcript` getter；`displayRows`；单一 `RowItem` 渲染入口；删除/撤回/翻版本改按 `dbId`；K1–K5 注释 + `newUiKey()` | **零回归**（口径见下） | P0 |
 | **P2 占位行 + 回底** | 用户行与占位行同一帧；`scrollToItem`/`animateScrollToItem` 分档；`imeVisibleNow` 挪位；`ui-map.md` 词条 | 发送/继续立刻出气泡并回底 | P1 |
 | **P3 重新生成就地替换 + 高度守恒** | 删 `ReplaceTarget`/`restore`/`lastSwipes` 摘放/`streamingRegenerate`；行内动作行与版本条常驻占位；光标改固定尺寸 `Box` | 同一个气泡缩回再长出来 | P1 |
 | **P4 动画收口** | `prevKeys` 入场规则（取代 3 个抑制补丁）；`placementSpec` 门控；落库前 `smoothHeight` snap；删除/撤回位移动画；`key(selectionEpoch)` 与身份键的兼容 | 删/撤回滑动归位 | P1–P3 |
 
 实验项（不进批次）：**E1** 开场收缩动画、**E2** `swipe` 切换的 `animateContentSize`、**E3** 占位呼吸点、**E4** 超长气泡的 `atBottom` 真机打点。
+
+**P1「零回归」的口径（2026-11-26 定）**：正常**布局、尺寸、条目顺序、滚动位置、既有功能**无回归。
+**不要求**保留旧版本里本来就不正确的行为 —— 落库帧的重播淡入、离场重建的整屏淡入、
+"AI 气泡掉到输入框下面" 这些若因身份稳定而消失，算**修掉 bug**，不算回归；
+但每条都必须写进 P1 的 verification 文件，并附一行日志证据。
 
 ---
 

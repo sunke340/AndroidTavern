@@ -58,6 +58,11 @@ M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批�
 
 ## 三、下一步优先级
 
+0. **P0 可以开工（设计已定稿）**：[plan-p0-settle.md](../plan-p0-settle.md) —— 提交权仲裁
+   （`AtomicReference<CommitPhase>` 取代 `written`）、`NonCancellable` 只包"写库→提交 UI"、
+   四类失败语义、`replaceMessage` 单事务、21 条纯 JVM 用例（新模块 `:core:generation`）。
+   **四条纪律**：`cancel()` 只在拿到提交权之后；输家不改 UI；清 `inflight` 校验 `roundId`；
+   写行校验 `sessionId`。
 1. **拿 [plan-chat-list-flash.md](../plan-chat-list-flash.md) 的两个决策点去问用户**，
    然后按那份文档的第四~六节**一批做完**（行模型 + 占位气泡 + 重新生成就地替换 + 离散动画），
    配一条专门验证清单（发送 / 首 token / 停止 / 继续 / 重新生成 / 撤回 / 切会话）。
