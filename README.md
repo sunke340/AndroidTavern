@@ -1,47 +1,87 @@
 # AndroidTavern
 
-原生安卓版「酒馆」。目标：兼容 SillyTavern 1.19.1 的**文件格式与提示词行为**，用 Kotlin + Compose 重写 UI 与运行时。单 APK、单进程、无服务端、无 WebView。
+[English](README.en.md) · **中文**
 
-**许可：GNU AGPL-3.0**（[LICENSE](LICENSE)）。本项目是 SillyTavern 1.19.1 的**衍生作品**：
-界面与运行时不共享代码，但 `core/` 里有多处兼容逻辑移植自原版（AGPL-3.0）。
-第三方组件与内置资产见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，决策见 [ADR 0009](docs/adr/0009-agpl-license.md)。
+原生安卓版「酒馆」：把 SillyTavern 的**聊天**搬到手机上。
 
-## 从哪读起
+PC 版酒馆跑在浏览器里，身前挂着一个 Node 服务。这个项目只做客户端那一半 —— 单个 APK、
+单进程、没有服务端、没有 WebView。它读原版的角色卡、世界书与聊天记录，按原版的提示词行为
+发请求，所以 PC 上的卡和会话可以拿过来接着聊。
 
-| 你是谁 | 先读 |
+## 截图
+
+<table>
+  <tr>
+    <td><img src="docs/assets/screenshots/chat.jpg" width="240" alt="聊天页"></td>
+    <td><img src="docs/assets/screenshots/sessions.jpg" width="240" alt="会话列表"></td>
+    <td><img src="docs/assets/screenshots/cards.jpg" width="240" alt="角色卡"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/detail.jpg" width="240" alt="角色详情"></td>
+    <td><img src="docs/assets/screenshots/settings.jpg" width="240" alt="设置"></td>
+    <td></td>
+  </tr>
+</table>
+
+## 能做什么
+
+- **角色卡**：导入 PNG 卡与 `.charx`，海报式详情页，卡内嵌世界书与多条开场白
+- **聊天**：流式输出、多版本翻页（swipe）、重新生成、继续、撤回、复制、长按选字
+- **开场白**：在气泡下就地翻页切换，可在卡上设默认
+- **世界书**：全局书与卡内嵌书，按原版规则激活（关键字、递归、概率、预算），条目三态开关
+- **预设与提示词顺序**：读原版预设文件，`prompt_order` 可拖动改序并持久化
+- **三级配置**：全局 / 角色卡 / 会话逐层跟随或覆盖 —— 模型、采样五项、世界书、正则、预设
+- **消息显示格式**：内置正则清理包裹标签并处理强调，也可加自己的正则；存档与请求始终是原文
+- **数据**：会话落库、置顶与按时间分组、角色卡搜索；聊天记录可导入导出 `.jsonl`
+- **外观**：主题预设、跟随系统深浅色、气泡与卡片两种消息样式
+- **密钥**：API Key 存进 Android Keystore，不落明文、不进日志
+
+## 不做什么
+
+不在范围内（口径见 [docs/plan.md](docs/plan.md)）：浏览器扩展、STscript 全量、主题 CSS、
+多用户、Horde、图片生成、本地 HTTP 服务、WebView。
+
+还没做：世界书 outlet、卡库分组、`forbid_overrides`、任意消息翻版本（原版也只允许翻最后一条）。
+
+## 安装
+
+1. 到 [Releases](https://github.com/sunke340/AndroidTavern/releases) 取 `apk-latest` 里的
+   `app-debug.apk`（每次推送自动构建；`apk-mNNN` 是历史回退点）。
+2. 需要 Android 8.0（API 26）及以上。
+3. 首次运行到 **设置 → 模型** 填接口地址、Key 与模型名。默认预填 DeepSeek 的地址，
+   也可以换成任意兼容 OpenAI 协议的接口。
+
+APK 用仓库内固定的 debug 签名，可以直接覆盖安装，不必先卸载。
+
+## 隐私
+
+- 角色卡、世界书、聊天记录只存在本机（应用私有目录，或你指定的 SAF 目录）。
+- API Key 放在 Android Keystore，不以明文落盘。
+- 除你配置的模型接口外，应用不发起其它网络请求；没有账号体系，没有遥测。
+
+## 自己编
+
+构建在 GitHub Actions 上完成（推到 `main` 即出包，产物进 Releases）。本机只跑得起纯 JVM 的
+`:core:*` 单测与几项静态检查，命令见 [tools/README.md](tools/README.md)；为什么这台机器编不了
+Android 模块，见 [docs/environment.md](docs/environment.md)。
+
+## 想深入
+
+| 想找 | 去哪 |
 |---|---|
-| 贡献者 / AI agent | [AGENTS.md](AGENTS.md)（唯一规则入口） |
-| 想知道做什么、不做什么 | [docs/plan.md](docs/plan.md) |
-| 想知道做到哪了 | [docs/compat-matrix.md](docs/compat-matrix.md) |
-| 想知道现在是什么状态 | [docs/dev/status.md](docs/dev/status.md) |
-| 想知道代码放哪 | [docs/dev/layout.md](docs/dev/layout.md) |
-| 想知道这台机器能不能干活 | [docs/environment.md](docs/environment.md) |
-| 想知道某个决定为什么这么定 | [docs/adr/](docs/adr/) |
+| 规则（人和 agent 共用一份） | [AGENTS.md](AGENTS.md) |
+| 做什么、不做什么 | [docs/plan.md](docs/plan.md) |
+| 每个特性做到什么程度 | [docs/compat-matrix.md](docs/compat-matrix.md) |
+| 现在是什么状态 | [docs/dev/status.md](docs/dev/status.md) |
+| 某个决定为什么这么定 | [docs/adr/](docs/adr/) |
+| 界面元素的标准叫法 | [docs/ui-map.md](docs/ui-map.md) |
 
-## 仓库地图
+## 许可
 
-```
-AGENTS.md      规则入口（agent 与人的共同入口）
-app/           Compose 入口、导航、DI，以及**目前全部界面**
-core/          纯 JVM 兼容内核（禁 android.*，能在本机跑单测）
-feature/       空目录（界面还没拆出来，别当成已存在，见 docs/dev/structure-audit.md）
-data/          SQLite（平台 API，不是 Room）、SAF、Keystore、仓库实现
-docs/          规划、决策、矩阵、开发说明
-tools/         开发期脚本（夹具、检查、出包、内置卡生成）
-fixtures/      golden 夹具（兼容性的物证）
-vendor/        原版 SillyTavern，只读参考，不入库（bash tools/fixture/bootstrap.sh 重建）
-```
+[GNU AGPL-3.0](LICENSE)。本项目是 SillyTavern 1.19.1 的**衍生作品**：界面与运行时不共享代码，
+但 `core/` 里有多处兼容逻辑移植自原版，行为由 [fixtures/](fixtures) 里的 golden 夹具锁定。
+第三方组件与内置资产见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-每个代码目录里有一份自己的 `AGENTS.md`，写该目录独有的规则（`core/` 禁 Android 依赖、
-`data/` 的存储约定、`app/` 只管装配）。依赖方向是单向的 **app → data → core**。
-
-## 状态
-
-已经能日常使用：导卡 / 聊天 / 流式 / 开场白 / 落库 / Key 加密 / 主题 / 世界书 / 预设与
-`prompt_order` / 三级配置 / 消息显示格式。进度以 [docs/compat-matrix.md](docs/compat-matrix.md) 为准，
-当前批次与下一批看 [docs/dev/status.md](docs/dev/status.md)。
-
-两条验收标准（全文见 [ADR 0001](docs/adr/0001-compat-strategy.md)）：
-
-1. PC 版 ST 的卡 / 世界书 / 聊天能导入本 App 且行为一致；本 App 导出的东西 PC 版 ST 能接着聊。
-2. 同一套输入，本 App 发给 API 的 `messages[]` 与 ST 1.19.1 逐条一致（自动比对，不靠肉眼）。
+仓库内不含 SillyTavern 的默认角色卡与图片；内置演示卡「青禾」由
+[tools/cards/make-demo-card.py](tools/cards/make-demo-card.py) 生成。兼容性的验收标准见
+[ADR 0001](docs/adr/0001-compat-strategy.md)。

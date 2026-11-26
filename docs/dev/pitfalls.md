@@ -1257,3 +1257,10 @@ P0/P1 那套是：开场把原来那条从 `rows` 里 `dropLast` 掉、`inflight
 配套删掉的四个 P0/P1 适配器：`ReplaceTarget`、`GenerationRound.removedContent`（+`RowAction.RestoreRemoved`）、
 `Inflight.removed`、`UiState.streamingRegenerate`。0 字停止 / 保存失败现在都只是"不写行"：
 旧正文本来就在界面上，清掉"生成中"它自己就回来了。
+
+## 输入区盖住列表底部是设计，不是漏光（2026-11-27 用户确认）
+
+聊天页的输入区是**浮层**（胶囊 + 发送钮画在列表之上），列表正文从胶囊下方露出来是**故意的**观感，
+不是"磨砂没盖严"。截图放 README 时被当成排版坏掉过一次 —— 别为它加不透明底、也别把列表
+`contentPadding` 加到把正文全挡住。底部让位那条规则（`max(导航栏, 键盘)` + 输入区实测高度）
+管的是"最后一条能不能滚出来"，跟这里说的"露出来"是两件事。

@@ -276,44 +276,15 @@ LICENSE，结果是**当前 APK 里一份许可文本都没有**。补齐只能�
 
 ---
 
-## 附录 A · `THIRD_PARTY_NOTICES.md` 骨架
+## 10. 怎么更新本文与那份声明
 
-```markdown
-# 第三方声明
+`THIRD_PARTY_NOTICES.md` 是**对外**文件：只描述当前组成，不记变更史（"某组件已移除"这类话一律
+不写 —— 没列出来的就是不随包分发），也不写维护推理。维护规则：
 
-本应用包含下列第三方开源组件。各组件的版权归其作者所有，完整许可文本见 licenses/。
-
-## 随 APK 分发
-
-| 组件 | 版本 | 许可 | 版权 | 来源 |
-|---|---|---|---|---|
-| AndroidX Compose（BOM） | 2024.12.01 | Apache-2.0 | The Android Open Source Project | https://developer.android.com/jetpack/androidx |
-| AndroidX Activity / Lifecycle / Core | 1.9.3 / 2.8.7 / 1.15.0 | Apache-2.0 | The Android Open Source Project | 同上 |
-| OkHttp / okhttp-sse | 4.12.0 | Apache-2.0 | Square, Inc. | https://github.com/square/okhttp |
-| jtokkit | 1.1.0 | Apache-2.0 | Knuddels GmbH & Co. KG | https://github.com/knuddels/jtokkit |
-| kotlinx-serialization-json | 1.8.0 | Apache-2.0 | JetBrains s.r.o. | https://github.com/Kotlin/kotlinx.serialization |
-| kotlinx-coroutines | 1.9.0 | Apache-2.0 | JetBrains s.r.o. | https://github.com/Kotlin/kotlinx.coroutines |
-| sh.calvin.reorderable | 3.1.0 | Apache-2.0 | Calvin-LL | https://github.com/Calvin-LL/Reorderable |
-
-## 设计参考（非直接分发）
-
-| 项目 | 用途 | 许可 | 版权 |
-|---|---|---|---|
-| shuding/liquid-glass | 液态玻璃位移场数学 | MIT | Copyright (c) 2025 Shu Ding |
-| emilkowalski/skills | 动效曲线与时长表 | MIT | Copyright (c) Emil Kowalski |
-| Material 3 Expressive motion tokens | 弹簧参数 | Apache-2.0 | The Android Open Source Project |
-
-## 内置资产
-
-- assets/cards/qinghe.png：本项目自制（`tools/cards/make-demo-card.py` 生成，可重跑）。
-- 原先随包的 seraphina.png（SillyTavern 默认内容）已于 2026-11-26 删除。
-```
-
----
-
-## 10. 怎么更新本文
-
-- 加/删依赖后：改第 2 节表格 + 附录 A 骨架，顺手跑一遍 `grep -rh "^import " --include=*.kt app core data`
-  看有没有漏掉的包。
+- 加/删依赖后：改本文件第 2 节表格 + `THIRD_PARTY_NOTICES.md` 的组件表，把新库的许可全文放进
+  `licenses/`；顺手跑一遍 `grep -rh "^import " --include=*.kt app core data` 看有没有漏掉的包。
+- **不能靠构建产物抄许可**：部分 jar 的 `META-INF` 里不带许可文件，所以那张表必须自己维护。
+  测试依赖不进 APK，不列。
+- 只参考了数学/参数、没引入依赖的，放"实现参考"，别混进"随应用分发"。
 - 决定 AGPL 走向后：重写第 7.3～7.4 与第 8 节的 P0 项，把"待确认"里的对应条目划掉。
 - 本文是一次性快照，**不要**把它当规范引用；`build.gradle.kts` 才是真相。

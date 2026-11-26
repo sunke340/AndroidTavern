@@ -1,6 +1,6 @@
 # AGENTS.md — `app/`
 
-> ⚠️ 这个模块装着**全部界面**（35 个文件、约 8.9k 行，包 `app.tavern` 是扁平的）。
+> ⚠️ 这个模块装着**全部界面**（45 个文件、约 15.6k 行，包 `app.tavern` 是扁平的）。
 > 分层评估与「为什么不拆包」见 [structure-audit.md](../docs/dev/structure-audit.md)。
 > **历史与细节不在这里**：踩过什么、数字怎么来的，全在 [pitfalls.md](../docs/dev/pitfalls.md)。
 > 本文件只放每次都要遵守的规则。
