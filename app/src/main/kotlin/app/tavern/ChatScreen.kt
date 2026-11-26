@@ -81,6 +81,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -283,6 +286,197 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     }
     val readingStreamBubble = readingBubble && shownStream.isNotEmpty()
 
+    // ── 揭示节奏（reveal pacing，2026-11-27；口径 docs/plan-reveal-pacing.md）──────────────
+    //
+    // 把「收到文本」与「显示文本」拆开：`inflight.text` / `row.content` 仍是全文（请求、落库、
+    // 导出、复制全不受影响），界面只渲染「已揭示的**前缀**」。打印期间**布局即真相** ——
+    // 气泡高度就是这段前缀自己排出来的高度，不追高、不桥接、不弹簧：那套「用滞后换平滑」
+    // 在攒包输入下必然走走停停（v179 归因错、v180 只缩短了停顿，两次都被用户驳回）。
+    //
+    // 游标**不进 `UiState`**：它每帧都在动，进去就等于整页重组。只让"打印中那一行"的
+    // item 内容 lambda 读它（LazyColumn 的 item 是子组合）；DSL 作用域里不许读。
+    val reveal = remember { RevealState() }
+    var revealKey by remember { mutableStateOf<String?>(null) }
+    var revealRoundId by remember { mutableLongStateOf(-1L) }
+    var revealShown by remember { mutableIntStateOf(0) }
+    var revealDone by remember { mutableStateOf(false) }
+    val latest = rememberUpdatedState(state)
+
+    /** 打印中的正文来源：生成中是 `inflight.text`，收尾后是该行的 `row.content`。 */
+    fun revealSource(): String {
+        val key = revealKey ?: return ""
+        val inf = latest.value.inflight
+        if (inf != null && inf.uiKey == key) return inf.text
+        return latest.value.rows.firstOrNull { it.uiKey == key }?.content.orEmpty()
+    }
+
+    /** 清除游标 = 视觉上立刻补满。正文从来就是全文，这里只是不再截前缀。 */
+    fun clearReveal(reason: String) {
+        val key = revealKey ?: return
+        val left = (reveal.receivedCount - revealShown).coerceAtLeast(0)
+        if (left > 0) AppLog.i("chat", "打印补齐 uiKey=$key 原因=$reason 剩余=${left}cp")
+        revealKey = null
+        revealShown = 0
+        revealDone = false
+        reveal.reset()
+    }
+
+    fun startReveal(key: String, roundId: Long, baseline: String?) {
+        reveal.reset()
+        reveal.startedNanos = System.nanoTime()
+        reveal.baselineContent = baseline
+        revealRoundId = roundId
+        revealShown = 0
+        revealDone = false
+        revealKey = key
+    }
+
+    // 开轮：先把上一轮没打完的补满，再记基线、建游标。
+    // 基线 = 开轮那一刻**这一行**的正文（新消息还没有行 → null）。收尾判定靠它：
+    // 正文跟基线一样 = 这一轮没写进去 = 没东西可打；变过 = 已提交 = 继续按档位打完。
+    LaunchedEffect(state.inflight?.uiKey, state.inflight?.roundId) {
+        val inf = state.inflight ?: return@LaunchedEffect
+        clearReveal("换轮")
+        if (reduceMotion || state.revealSpeed == RevealSpeed.Off) return@LaunchedEffect
+        // 重新生成（targetDbId 非空）：那一行**早就在** rows 里，基线 = 它的旧正文。
+        // 新消息没有行 → baseline = null（收尾后行必有内容，走"正文变过"那一支）。
+        val baseline = if (inf.targetDbId != null) {
+            latest.value.rows.firstOrNull { it.uiKey == inf.uiKey }?.content
+        } else {
+            null
+        }
+        startReveal(inf.uiKey, inf.roundId, baseline)
+        AppLog.i(
+            "chat",
+            "打印开始 uiKey=${inf.uiKey} roundId=${inf.roundId} 速率=${state.revealSpeed.cps}cp/s",
+        )
+    }
+
+    // 推进循环：单个 `withFrameNanos` 循环。速率**每 tick 从最新状态读**，
+    // 所以运行中换档天然生效（不重建本 effect —— 重建会重置计时基准，表现是一帧抖动）。
+    LaunchedEffect(revealKey) {
+        val myKey = revealKey ?: return@LaunchedEffect
+        while (true) {
+            val now = withFrameNanos { it }
+            if (revealKey != myKey) break
+            if (reveal.lastTickNanos == 0L) {
+                // 第一帧只用来立基准：游标是刚建的，没有任何"已经等太久"这回事
+                reveal.lastTickNanos = now
+                reveal.lastAdvanceNanos = now
+                continue
+            }
+            val st = latest.value
+            // 收缩窗口期：布局正被动画改（r2 §13.1 C3），这段时间**禁止推进**
+            if (st.collapse != null) {
+                reveal.lastTickNanos = now
+                continue
+            }
+            if (st.revealSpeed == RevealSpeed.Off) {
+                clearReveal("切不限速")
+                break
+            }
+            val rate = st.revealSpeed.cps.toFloat()
+            // ① 增量数码点（只数新增后缀；全文重数只发生在"非追加变化"）
+            val text = revealSource()
+            val count = countCodePoints(text, reveal.prevText, reveal.prevCount)
+            reveal.prevText = text
+            reveal.prevCount = count
+            reveal.receivedCount = count
+            if (revealShown > count) revealShown = count
+            // ② 生成结束的判定：只用**快照事实**（行在不在 + 正文与开轮基线比是否变过），
+            //    不拿任何缓存文本当依据（缓存可能滞后，误判会把慢档一下子补满）。
+            val inf = st.inflight
+            val streaming = inf != null && inf.uiKey == myKey && inf.roundId == revealRoundId
+            if (!streaming && !revealDone) {
+                val row = st.rows.firstOrNull { it.uiKey == myKey }
+                val unchanged = reveal.baselineContent != null &&
+                    row?.content == reveal.baselineContent
+                if (row == null || unchanged) {
+                    clearReveal(if (row == null) "无行" else "正文未变")
+                    break
+                }
+                val settledCount = row.content.codePointCount(0, row.content.length)
+                reveal.prevText = row.content
+                reveal.prevCount = settledCount
+                reveal.receivedCount = settledCount
+                if (revealShown > settledCount) revealShown = settledCount
+                if (settledCount == 0 || revealShown == 0) {
+                    // 一个字都还没打出来就收尾了：没得续打，直接全文（免得留个空气泡）
+                    clearReveal(if (settledCount == 0) "空正文" else "尚未开始")
+                    break
+                }
+                revealDone = true
+                AppLog.i(
+                    "chat",
+                    "打印续打 uiKey=$myKey 已收=${settledCount}cp 已显示=${revealShown}cp（生成结束，继续按档位打印）",
+                )
+                if (revealShown >= settledCount) {
+                    logRevealDone(myKey, reveal)
+                    clearReveal("已完成")
+                    break
+                }
+            }
+            if (revealDone && revealShown >= reveal.receivedCount) {
+                logRevealDone(myKey, reveal)
+                clearReveal("已完成")
+                break
+            }
+            // ③ 推进
+            val rawDt = now - reveal.lastTickNanos
+            reveal.lastTickNanos = now
+            if (revealShown >= reveal.receivedCount) {
+                // caught-up：**不累计时间、不写状态、保留小数余量**（否则新 delta 一到就暴吐）
+                reveal.windowTick(revealShown < reveal.receivedCount)
+                maybeLogPrintWindow(reveal, now, revealShown, rate)
+                continue
+            }
+            if (rawDt > RevealPauseGapNanos) {
+                // 停顿太久（模型在思考 / 页面进后台）：当"暂停恢复"，丢掉小数余量但不补齐
+                reveal.pending = 0f
+                reveal.lastAdvanceNanos = now
+                reveal.windowTick(revealShown < reveal.receivedCount)
+                continue
+            }
+            val dt = minOf(rawDt, RevealMaxTickNanos)
+            reveal.pending += rate * dt / 1_000_000_000f
+            val n = reveal.pending.toInt()
+            if (n > 0) {
+                reveal.pending -= n
+                val next = minOf(revealShown + n, reveal.receivedCount)
+                if (next > revealShown) {
+                    reveal.windowAdvance(next - revealShown)
+                    revealShown = next
+                    reveal.lastAdvanceNanos = now
+                }
+            }
+            // ④ 停滞看门狗：**异常检测**，不是节奏控制。有账、帧在来、却 5 秒没动 = 有 bug。
+            if (revealShown < reveal.receivedCount &&
+                now - reveal.lastAdvanceNanos > RevealStallNanos &&
+                rawDt <= RevealPauseGapNanos
+            ) {
+                val left = reveal.receivedCount - revealShown
+                AppLog.i(
+                    "chat",
+                    "打印停滞，补齐 uiKey=$myKey 剩余=${left}cp 已等=${(now - reveal.lastAdvanceNanos) / 1e9}s",
+                )
+                clearReveal("停滞")
+                break
+            }
+            reveal.windowTick(revealShown < reveal.receivedCount)
+            maybeLogPrintWindow(reveal, now, revealShown, rate)
+        }
+    }
+
+    // 减动效 / 退页 / 切会话 / 停止 / 删行 / 换 swipe：一律立刻补满（见方案 3.6 的打断表）
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) {
+            AppLog.i("ui", "减动效：打印直接全文")
+            clearReveal("减动效")
+        }
+    }
+    LaunchedEffect(state.sessionId) { clearReveal("切会话") }
+    LaunchedEffect(pageIsCurrent) { if (!pageIsCurrent) clearReveal("退页") }
+
     // 串流气泡的高度：量出来以后用**一条动画去追它**，追不上差多少就往下平移多少。
     // 于是每换一行是"滑"上去的，而不是"啪"地跳一行（用户 2026-11-24）。
     // 旧写法是"每次长高就把补偿加上去、再收回"，文字到得快时补偿越积越多 → 画面抽搐。
@@ -321,6 +515,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 返回 Float：`translationY` 要亚像素差；折滚动量那边沿用 `.toInt()`。
     // B 步（把跟随改成"显式驱动布局高度"）只改这里的**出口接到哪**，调用点不用动。
     fun followBridgePx(): Float = when {
+        // 打印期：气泡是**布局自己长**出来的（前缀自己排版），没有"追高"这回事 —— 桥接恒 0。
+        // 这正是本方案与 v179/v180 的分界：不再"用滞后换平滑"。
+        revealKey != null -> 0f
         !state.isStreaming || state.collapse != null -> 0f
         inflightEnterProgress < 1f -> 0f
         smoothHeight.value <= 0f -> 0f
@@ -818,11 +1015,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 这一行显示的正文。收缩窗口里**显示旧正文**（它会被高度裁掉，观感才是"收下去"）；
                     // 就地改写时正文来自 `inflight`；其余行照旧。
                     val collapseOpen = collapseKey == row.uiKey
-                    val shownContent = when {
+                    // 这一行是不是"正在打印"。游标按 `uiKey` 认 —— 那个 key 跨落库不变，
+                    // 所以"流式中 → 已落库"是同一行、同一个游标（不需要按 rows.last 推断）。
+                    val isPrintingRow = revealKey != null && row.uiKey == revealKey
+                    val fullContent = when {
                         collapseOpen -> row.content
                         !isInflightRow -> row.content
                         else -> inflightNow?.text.orEmpty()
                     }
+                    // 打印期只画**前缀**；其余情况（不限速 / 减动效 / 已打完）画全文。
+                    val shownContent =
+                        if (isPrintingRow && !collapseOpen) takeByCodePoints(fullContent, revealShown)
+                        else fullContent
                     // 还没吐字 → 占位气泡（`生成中` / `重新生成中` + 呼吸点）；
                     // 吐了字就退回正文 + 光标。两者都在**同一行、同一个 item** 里换内容。
                     val pendingKind = when {
@@ -884,7 +1088,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 空闲时量"最后一条助手消息"的高度 = 下一次收缩的起点 H_old。
                     // **收缩窗口期必须排除**：那会儿高度是被夹住的（140px 起），
                     // 量进去就把起点写坏了 —— 涨回来会停在 140，下一次收缩也从小数开始。
-                    val measureIdle = !isInflightRow && !collapseOpen &&
+                    // 打印中的行**不许**当收缩起点量：那会儿高度只是"前缀排出来"的一半，
+                    // 量进 `lastBubbleHeight` 会让下一次重新生成从半截高度开始缩（方案 §3.8 第 2 条）。
+                    val measureIdle = !isInflightRow && !collapseOpen && !isPrintingRow &&
                         row.uiKey == state.rows.lastOrNull()?.uiKey &&
                         row.role == ChatRole.Assistant
                     // 探针挂在**气泡底板**上（量的是气泡自身，不是整行 86% 的槽位），
@@ -910,7 +1116,17 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     } else {
                         Modifier
                     }
-                    Column(modifier = slotProbe.then(itemAnim).fillMaxWidth()) {
+                    // 点一下正在打印的气泡 = 立刻补满（方案 §3.6 的逃生口）。只在打印期挂，
+                    // 打印结束后这里没有点击语义（长按选字照旧，点击落不到它）。
+                    val flushTap = if (isPrintingRow) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { clearReveal("点气泡") }
+                    } else {
+                        Modifier
+                    }
+                    Column(modifier = slotProbe.then(itemAnim).then(flushTap).fillMaxWidth()) {
                         MessageRow(
                             message = ChatMessage(row.role, shownContent),
                             style = state.effectiveMessageStyle,
@@ -954,7 +1170,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                     (state.lastSwipes.size - 1).coerceAtLeast(0),
                                 ),
                                 total = state.lastSwipes.size,
-                                onSelect = viewModel::selectSwipe,
+                                onSelect = { index ->
+                                    clearReveal("换 swipe")
+                                    viewModel.selectSwipe(index)
+                                },
                                 modifier = Modifier.align(Alignment.End),
                             )
                         }
@@ -1002,6 +1221,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             message = "只删这一条，不能撤销。",
             onConfirm = {
                 deletingKey = null
+                if (key == revealKey) clearReveal("删行")
                 viewModel.deleteMessageAt(key)
             },
             onDismiss = { deletingKey = null },
@@ -1236,7 +1456,11 @@ private fun ChatInputBar(
                         viewModel.send()
                         focusManager.clearFocus()
                     },
-                    onStop = viewModel::stop,
+                    onStop = {
+                        // 停止 = 立刻补满（同一笔收尾落库，库里的正文与屏幕上看到的一致）
+                        clearReveal("停止")
+                        viewModel.stop()
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = 6.dp, bottom = 6.dp),
@@ -2039,4 +2263,152 @@ private fun JumpToBottomButton(
             modifier = Modifier.align(Alignment.Center).size(22.dp),
         )
     }
+}
+
+// ── 揭示节奏（reveal pacing）的零件 ────────────────────────────────────────────────
+//
+// 单位全链路是 **Unicode 码点**：`String.length` 是 UTF-16 单元（一个 emoji 算两个），
+// 拿它做速率、比较、剩余都会和"字"对不上。这里只在 `codePointCount` / `offsetByCodePoints`
+// 的入参位置出现 `length`。
+
+/** 停顿超过它就当"暂停恢复"处理（丢弃小数余量，不补齐）。 */
+private const val RevealPauseGapNanos = 1_000_000_000L
+
+/** 单帧最多按 50ms 计入额度：长时间掉帧时"宁可慢也不暴吐"。 */
+private const val RevealMaxTickNanos = 50_000_000L
+
+/** 停滞看门狗：有欠账、帧在来，却 5 秒没前进 = 有 bug（不是节奏控制）。 */
+private const val RevealStallNanos = 5_000_000_000L
+
+/** 打印帧日志的窗口长度。 */
+private const val RevealLogWindowNanos = 2_000_000_000L
+
+/**
+ * 揭示游标的**非组合状态**（不是 `State`，也不进 `UiState`）。
+ *
+ * 只有 [revealed] 那类会被渲染的量放在 composable 的 `mutableStateOf` 里；
+ * 这里全是"算给我自己看"的簿记，改它们不该触发任何重组。
+ */
+private class RevealState {
+    /** 攒着的小数码点余量（`< 1`）。跨 caught-up 保留 —— 否则频繁清小数会系统性偏慢。 */
+    var pending: Float = 0f
+    var lastTickNanos: Long = 0L
+    var lastAdvanceNanos: Long = 0L
+
+    /** 已收到的码点数（增量维护；见 [countCodePoints]）。 */
+    var receivedCount: Int = 0
+    var prevText: String? = null
+    var prevCount: Int = 0
+
+    /** 开轮那一刻这一行的正文；null = 新消息（那时还没有行）。收尾判定靠它。 */
+    var baselineContent: String? = null
+
+    /** 建游标的时刻，只用于"打印完成"日志算用时。 */
+    var startedNanos: Long = 0L
+
+    // 打印帧日志的窗口统计
+    var windowStartNanos: Long = 0L
+    var windowShown: Int = 0
+    var windowTicks: Int = 0
+    var windowDebtTicks: Int = 0
+
+    fun reset() {
+        pending = 0f
+        lastTickNanos = 0L
+        lastAdvanceNanos = 0L
+        receivedCount = 0
+        prevText = null
+        prevCount = 0
+        baselineContent = null
+        startedNanos = 0L
+        windowStartNanos = 0L
+        windowShown = 0
+        windowTicks = 0
+        windowDebtTicks = 0
+    }
+
+    fun windowTick(hasDebt: Boolean) {
+        windowTicks++
+        if (hasDebt) windowDebtTicks++
+    }
+
+    fun windowAdvance(codePoints: Int) {
+        windowShown += codePoints
+    }
+}
+
+/** "打印完成"一条：用时与码点数（用于判断"慢档 = 133 秒"是不是被当成了卡住）。 */
+private fun logRevealDone(key: String, reveal: RevealState) {
+    val seconds = if (reveal.startedNanos == 0L) {
+        0.0
+    } else {
+        (System.nanoTime() - reveal.startedNanos) / 1_000_000_000.0
+    }
+    AppLog.i("chat", "打印完成 uiKey=$key 用时=${round1(seconds)}s 码点=${reveal.receivedCount}")
+}
+
+/** 取前 [codePoints] 个码点的前缀（落在完整码点边界上，不会切出半个代理对）。 */
+private fun takeByCodePoints(text: String, codePoints: Int): String {
+    if (codePoints <= 0) return ""
+    val total = text.codePointCount(0, text.length)
+    if (codePoints >= total) return text
+    return text.substring(0, text.offsetByCodePoints(0, codePoints))
+}
+
+/**
+ * 增量码点计数：**只数新增后缀**，不每个 delta 全文扫。
+ *
+ * 全文重数只发生在：① 新一轮首次取文本（[prevText] 为 null）；
+ * ② 非追加变化（swipe 换正文 / 重新生成收尾换正文）。
+ * 若上一段末尾是高代理、新段第一个是低代理，这个代理对已经被 [prevCount] 计入过 —— 减 1。
+ */
+private fun countCodePoints(newText: String, prevText: String?, prevCount: Int): Int {
+    if (prevText != null && newText === prevText) return prevCount
+    if (prevText != null && newText.length > prevText.length && newText.startsWith(prevText)) {
+        val suffixStart = prevText.length
+        var add = newText.codePointCount(suffixStart, newText.length)
+        if (suffixStart > 0 &&
+            newText[suffixStart - 1].isHighSurrogate() &&
+            newText[suffixStart].isLowSurrogate()
+        ) {
+            add -= 1
+        }
+        return prevCount + add
+    }
+    return newText.codePointCount(0, newText.length)
+}
+
+/**
+ * 每 2 秒一条打印帧日志。
+ *
+ * ⚠️ `tick` 是 `withFrameNanos` 的回调率，**不等于**显示帧率，不能单独证明 UI 流畅；
+ * 它只是"推进循环还活着"的证据。优化触发条件是"连续 3 个供给足的窗口里实际吞吐 < 目标 × 0.8"。
+ */
+private fun maybeLogPrintWindow(reveal: RevealState, now: Long, shown: Int, rate: Float) {
+    if (reveal.windowStartNanos == 0L) {
+        reveal.windowStartNanos = now
+        return
+    }
+    val elapsed = now - reveal.windowStartNanos
+    if (elapsed < RevealLogWindowNanos) return
+    val seconds = elapsed / 1_000_000_000.0
+    val tickPerSec = reveal.windowTicks / seconds
+    val actual = reveal.windowShown / seconds
+    val debt = (reveal.receivedCount - shown).coerceAtLeast(0)
+    val supplyEnough = reveal.windowTicks > 0 && reveal.windowDebtTicks * 5 >= reveal.windowTicks * 4
+    AppLog.i(
+        "scroll",
+        "打印帧 tick=${round1(tickPerSec)}/s 目标速率=${rate.toInt()}cp/s 实际=${round1(actual)}cp/s " +
+            "显示=${shown}cp 收到=${reveal.receivedCount}cp 欠账=${debt}cp 供给足=${if (supplyEnough) "是" else "否"}",
+    )
+    reveal.windowStartNanos = now
+    reveal.windowShown = 0
+    reveal.windowTicks = 0
+    reveal.windowDebtTicks = 0
+}
+
+/** 一位小数，且不受系统 locale 影响（逗号小数点会污染日志解析）。 */
+private fun round1(value: Double): String {
+    val scaled = kotlin.math.round(value * 10.0).toLong()
+    return "${scaled / 10}.${kotlin.math.abs(scaled % 10)}"
 }

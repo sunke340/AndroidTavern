@@ -26,6 +26,11 @@ data class AppSettings(
     val navAnimation: String,
     /** 视觉效果档位，取值见 app 层 `VisualEffects`（`Glass` / `Off`）。 */
     val visualEffects: String,
+    /**
+     * 流式回复的揭示节奏，取值见 app 层 `RevealSpeed`（`Slow` / `Medium` / `Fast` / `Off`）。
+     * **只影响显示**：请求、落库、导出都是全文。这里按名字存，不存序号。
+     */
+    val revealSpeed: String,
 )
 
 /**
@@ -68,6 +73,9 @@ interface SettingsRepository {
 
     /** 保存视觉效果档位（字符串，由 UI 层定义取值）。 */
     fun saveVisualEffects(name: String)
+
+    /** 揭示节奏（码点/秒的档位名）。只影响显示，见 `docs/plan-reveal-pacing.md`。 */
+    fun saveRevealSpeed(name: String)
 
     /**
      * 内置显示正则的**关闭**集合（id 见 `core/regex` 的 `BuiltinRegex`）。

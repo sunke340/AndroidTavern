@@ -317,6 +317,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val frequencyPenaltyText: String = "",
         val presencePenaltyText: String = "",
         val messageStyle: MessageStyle = MessageStyle.Card,
+        /** 流式回复的揭示节奏（码点/秒）。只影响显示，见 `docs/plan-reveal-pacing.md`。 */
+        val revealSpeed: RevealSpeed = RevealSpeed.Default,
         /** 全局气泡字号（sp，只影响聊天页气泡正文）。会话/卡级可在它之上覆盖。 */
         val bubbleFontSize: Float = DefaultBubbleFontSize,
         val themePreset: ThemePreset = ThemePreset.Violet,
@@ -623,6 +625,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     // 免得"预读"和"正式读"哪天不一致。
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
+                    revealSpeed = RevealSpeed.fromName(saved.revealSpeed),
                     themePreset = runCatching { ThemePreset.valueOf(saved.themePreset) }
                         .getOrDefault(ThemePreset.Violet),
                     themeMode = runCatching { ThemeMode.valueOf(saved.themeMode) }
@@ -2161,6 +2164,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(messageStyle = style) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) { settingsRepository.saveMessageStyle(style.name) }
+        }
+    }
+
+    /**
+     * 揭示节奏换档。**运行中改也立刻生效**：推进循环每个 tick 都从最新状态读速率，
+     * 所以这里只写状态、不重启任何循环（重启会重置计时基准，表现是一帧抖动）。
+     */
+    fun onRevealSpeedChange(speed: RevealSpeed) {
+        _state.update { it.copy(revealSpeed = speed) }
+        AppLog.i("chat", "揭示节奏换档=${speed.name}(${speed.cps}cp/s)")
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.saveRevealSpeed(speed.name) }
         }
     }
 

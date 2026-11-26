@@ -61,6 +61,8 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_NAV_ANIMATION,
         visualEffects = prefs.getString(KEY_VISUAL_EFFECTS, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_VISUAL_EFFECTS,
+        revealSpeed = prefs.getString(KEY_REVEAL_SPEED, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_REVEAL_SPEED,
         bubbleFontSize = prefs.getFloatOrNull(KEY_BUBBLE_FONT_SIZE),
     )
 
@@ -145,6 +147,10 @@ class PreferencesSettingsRepository(
         prefs.edit().putString(KEY_VISUAL_EFFECTS, name).apply()
     }
 
+    override fun saveRevealSpeed(name: String) {
+        prefs.edit().putString(KEY_REVEAL_SPEED, name).apply()
+    }
+
     override fun cardBookOverride(cardId: String): CardBookOverride = CardBookOverride(
         off = prefs.getStringSet(KEY_CARD_BOOK_OFF_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
         forcedOn = prefs.getStringSet(KEY_CARD_BOOK_FORCED_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
@@ -198,6 +204,7 @@ class PreferencesSettingsRepository(
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_NAV_ANIMATION = "nav_animation"
         const val KEY_VISUAL_EFFECTS = "visual_effects"
+        const val KEY_REVEAL_SPEED = "reveal_speed"
         const val KEY_BUBBLE_FONT_SIZE = "bubble_font_size"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         // 老版本按下标存的"关掉"集合，只用于一次性迁移到 uid
@@ -214,6 +221,7 @@ class PreferencesSettingsRepository(
         const val DEFAULT_THEME_MODE = "Follow"
         const val DEFAULT_NAV_ANIMATION = "Slide"
         const val DEFAULT_VISUAL_EFFECTS = "Off"
+        const val DEFAULT_REVEAL_SPEED = "Medium"
     }
 }
 

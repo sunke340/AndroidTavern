@@ -309,6 +309,22 @@ private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewMode
         onSelect = viewModel::setBubbleFontSize,
     )
 
+    // 揭示节奏（2026-11-27，plan-reveal-pacing）：回复"逐字打出来"的速度。
+    // 单位是码点/秒；不限速 = 收到就显示（这个方案之前的行为）。程序不会自己加速，
+    // 也不设最长打印时间 —— 觉得慢就换档，逃生口是点一下正在打印的气泡。
+    SectionLabel("打印节奏")
+    SegmentedRow(
+        options = RevealSpeed.entries,
+        selected = state.revealSpeed,
+        label = { it.label },
+        onSelect = viewModel::onRevealSpeedChange,
+    )
+    Text(
+        state.revealSpeed.summary,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     // 玻璃档要 API 33+（AGSL 液态玻璃）；不支持就只留轻量，不给选
     if (glassSupported) {
         SectionLabel("视觉效果")
