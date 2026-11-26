@@ -121,8 +121,27 @@ assertEquals(expected.request.messages, actual.messages)
 - 只覆盖「默认预设 + 单卡 + 首轮」。世界书、作者注、群聊、预设变体都要各自录一份，命名对齐矩阵 ID。
 - 每次升级 `ST_TAG` 要重录全部 fixture，diff 出来就是"原版变了什么"。
 
+## 4.5 录制开关总表（2026-11-27 更新）
+
+`capture.mjs` 现在能改原版的**活对象**，所以"某一轮特殊配置"不用手点 UI：
+
+| 开关 | 作用 | 用它的夹具 |
+|---|---|---|
+| `--character <名字>` | 选哪张卡（必须已经装在原版 `characters/` 里） | 全部 |
+| `--no-wi` | 跳过世界书激活 | P0-5 系列、P1-7、P1-8 |
+| `--select-world <书名>` | 把某本全局书挂上（名字**不带** `.json`） | P1-1 / P1-2 / P1-3 系列 |
+| `--copy-world <仓库里的书>` | 录之前把书夹具拷进原版 `worlds/` | P1-3-outlet |
+| `--wi-settings '<json>'` | 世界书全局开关（递归 / 预算 / 深度 …） | P1-3 / P1-4 |
+| `--prompt-order '<json>'` | 改预设的 `prompt_order`（顺序即发送顺序） | P1-5-prompt-order |
+| `--prompt-content '{"main":"…"}'` | 改某条提示词的正文（用来录"提示词里引用宏"） | P1-3-outlet |
+| `--forbid-overrides main,jailbreak` | 给这几条提示词打 `forbid_overrides` | P0-5-forbid-overrides |
+| `--persona-name` / `--persona-desc` / `--persona-position` | 设用户名与人设描述 | P1-8-persona-prompt |
+| `--an-text` / `--an-depth` / `--an-role` / `--an-interval` | 设作者注（走原版 `setFloatingPrompt()`，**别直接塞 extension_prompts**） | P1-7-an-* |
+| `--seed <文件>` | 像用户一样先发几轮（文件是 `{"userTurns":["…"]}`） | P1-7-an-depth-2 |
+| `--swipes N` / `--continue` / `--dump-chat` | swipe / 继续 / 存下内存里的 chat | P0-6 / P0-8 |
+
 ## 5. 后续（M1 之前要补的）
 
-- [ ] `--preset` / `--worldinfo` 参数，让 fixture 能带不同预设和世界书
-- [ ] 一份「有历史消息」的 recorder（现在只有开场白）
+- [x] `--preset` / `--worldinfo` 参数（现在有 `--select-world` / `--copy-world` / `--prompt-content`）
+- [x] 「有历史消息」的 recorder：`--seed`（先像用户一样发几轮，再录最后一轮）
 - [ ] 把录制放进 CI（`workflow_dispatch`），产物作为 artifact 回传，避免人工跑
