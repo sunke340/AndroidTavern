@@ -52,6 +52,7 @@ import app.tavern.data.cards.ImportResult
 import app.tavern.data.chat.ChatSession
 import app.tavern.data.chat.ImportMessage
 import app.tavern.data.log.AppLog
+import app.tavern.data.settings.Persona
 import app.tavern.data.presets.PresetRef
 import app.tavern.data.sessionstate.SessionScanStateRepository
 import app.tavern.data.config.ConfigOverride
@@ -319,6 +320,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val messageStyle: MessageStyle = MessageStyle.Card,
         /** 流式回复的揭示节奏（码点/秒）。只影响显示，见 `docs/plan-reveal-pacing.md`。 */
         val revealSpeed: RevealSpeed = RevealSpeed.Default,
+        /** 人设列表（需求批 F）。[effectivePersona] 决定 `{{user}}` 与 `personaDescription` 那一段。 */
+        val personas: List<Persona> = emptyList(),
+        /** 全局默认人设；null = 没有默认，`{{user}}` 退回 "User"。 */
+        val personaDefaultId: String? = null,
         /** 全局气泡字号（sp，只影响聊天页气泡正文）。会话/卡级可在它之上覆盖。 */
         val bubbleFontSize: Float = DefaultBubbleFontSize,
         val themePreset: ThemePreset = ThemePreset.Violet,
@@ -390,6 +395,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         /** 聊天页实际用的样式：卡级覆盖优先，否则全局。 */
         val effectiveMessageStyle: MessageStyle
             get() = cardMessageStyle ?: messageStyle
+
+        /** 生效人设 id：会话 > 卡 > 全局默认（三级）。 */
+        val effectivePersonaId: String?
+            get() = sessionOverride.personaId ?: cardOverride.personaId ?: personaDefaultId
+
+        /** 生效人设；null = 一个都没选（或选的那个被删了）。 */
+        val effectivePersona: Persona?
+            get() = effectivePersonaId?.let { id -> personas.firstOrNull { it.id == id } }
+
+        /**
+         * `{{user}}` 展开成什么。**只认生效人设的名字**；没人设时保持原来的 "User"
+         * （原版未设置用户名时也是这个值，所以夹具里的旧断言不受影响）。
+         */
+        val effectiveUserName: String
+            get() = effectivePersona?.name?.takeIf { it.isNotBlank() } ?: "User"
 
         /**
          * 实际生效的气泡字号：会话 > 卡 > 全局（用户 2026-11-26 第 6 条）。
@@ -626,6 +646,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     messageStyle = runCatching { MessageStyle.valueOf(saved.messageStyle) }
                         .getOrDefault(MessageStyle.Card),
                     revealSpeed = RevealSpeed.fromName(saved.revealSpeed),
+                    personas = saved.personas,
+                    personaDefaultId = saved.personaDefaultId,
                     themePreset = runCatching { ThemePreset.valueOf(saved.themePreset) }
                         .getOrDefault(ThemePreset.Violet),
                     themeMode = runCatching { ThemeMode.valueOf(saved.themeMode) }
@@ -1659,6 +1681,64 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val snapshot = _state.value
             if (snapshot.sessionOverride.presetName == null) loadPresetIntoState(name)
             AppLog.i("config", "卡级预设 card=${cardId.take(8)} preset=${name ?: "跟随"}")
+        }
+    }
+
+    // ---- 人设（需求批 F）----------------------------------------------------
+
+    /**
+     * 保存一个人设（同 id 覆盖）。名字就是 `{{user}}`，描述会进 `personaDescription` 那一格。
+     * 只改本地列表 + 落盘，不动已经发出的请求。
+     */
+    fun savePersona(persona: Persona) {
+        _state.update { st ->
+            st.copy(personas = (st.personas.filterNot { it.id == persona.id } + persona).sortedBy { it.name })
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.savePersona(persona) }
+            AppLog.i("config", "人设保存 id=${persona.id.take(6)} 名字=${persona.name}")
+        }
+    }
+
+    fun deletePersona(id: String) {
+        _state.update { st ->
+            st.copy(
+                personas = st.personas.filterNot { it.id == id },
+                personaDefaultId = if (st.personaDefaultId == id) null else st.personaDefaultId,
+            )
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.deletePersona(id) }
+            AppLog.i("config", "人设删除 id=${id.take(6)}")
+        }
+    }
+
+    /** 全局默认人设；null = 没有默认（`{{user}}` 退回 "User"）。 */
+    fun setDefaultPersona(id: String?) {
+        _state.update { it.copy(personaDefaultId = id) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { settingsRepository.savePersonaDefaultId(id) }
+            AppLog.i("config", "默认人设=${id?.take(6) ?: "无"}")
+        }
+    }
+
+    /** 会话级人设：null = 跟随（卡 → 全局）。 */
+    fun useSessionPersona(id: String?) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            persistSessionConfig(sessionId) { it.copy(personaId = id) }
+            _state.update { it.copy(sessionOverride = it.sessionOverride.copy(personaId = id)) }
+            AppLog.i("config", "会话人设=${id?.take(6) ?: "跟随"}")
+        }
+    }
+
+    /** 卡级人设：null = 跟随全局默认。 */
+    fun useCardPersona(id: String?) {
+        val cardId = _state.value.detailCardId ?: return
+        viewModelScope.launch {
+            persistCardConfig(cardId) { it.copy(personaId = id) }
+            _state.update { it.copy(cardOverride = it.cardOverride.copy(personaId = id)) }
+            AppLog.i("config", "卡级人设 card=${cardId.take(8)} persona=${id?.take(6) ?: "跟随"}")
         }
     }
 
@@ -2769,7 +2849,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val entries = cardEntries + globalEntries
         if (entries.isEmpty()) return LorebookScanResult()
 
-        val userName = "User"
+        val userName = snapshot.effectiveUserName
         val settings = LorebookScanSettings(
             charName = card.name,
             userName = userName,
@@ -2979,12 +3059,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     val scan = scanWorldInfo(characterCard, snapshot, history, scanState, globalEntries)
                     val built = PromptBuilder().build(
                         characterCard,
-                        userName = "User",
+                        userName = snapshot.effectiveUserName,
                         history = history,
                         worldInfo = scan,
                         // 顺序与提示词内容都跟着当前预设走；没选预设时是原版默认预设那张表
                         order = snapshot.promptOrder.ifEmpty { PresetDefaults.ORDER },
                         prompts = snapshot.presetPrompts,
+                        // 人设描述：原版把它插进 prompt_order 的 `personaDescription` 那一格
+                        // （夹具 P1-8-persona-prompt 钉住位置与形态）
+                        personaDescription = snapshot.effectivePersona?.description.orEmpty(),
                     )
                     // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
                     scan to if (continuation) built + continueHint else built

@@ -40,6 +40,18 @@ const SELECT_WORLD = arg('select-world', null);
 // 用来证明"预设里的 prompt_order 真的会被按序执行"，而不只是"我们照着默认顺序拼"。
 // 传一个 JSON 数组：[{"identifier":"scenario","enabled":true}, ...]，没列到的按原相对顺序追在后面。
 const PROMPT_ORDER = arg('prompt-order', null) ? JSON.parse(arg('prompt-order')) : null;
+// --persona-desc：人设描述（原版 power_user.persona_description）。默认位置 IN_PROMPT，
+// 作为一条 system 消息进 systemPrompts —— P1-8 要钉死的正是"它落在 messages 的哪里"。
+const PERSONA_DESC = arg('persona-desc', null);
+// --persona-name：用户名（`{{user}}` 的来源，原版存在 name1）。走原版的 setUserName()。
+const PERSONA_NAME = arg('persona-name', null);
+// --persona-position：人设描述的位置（原版 persona_description_positions 的数值：0/2/3/4/9）。
+const PERSONA_POSITION = arg('persona-position', null) ? Number(arg('persona-position')) : null;
+// --an-text / --an-depth / --an-role：作者注（原版存在 extension_prompts['2_floating_prompt']，
+// 字段是 value / depth / role）。深度注入的位置要原版自己算，所以必须录出来。
+const AN_TEXT = arg('an-text', null);
+const AN_DEPTH = arg('an-depth', null) ? Number(arg('an-depth')) : null;
+const AN_ROLE = arg('an-role', null) ? Number(arg('an-role')) : null;
 
 // --swipes N：录**消息 swipe**（P0-6）。先正常生成一条，再对最后一条助手消息 swipe N 次。
 // 为什么要这一步：原版把"被换掉的那一条"存进 `swipes[]`、并把 `swipe_id` 指向当前这条；
@@ -99,7 +111,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -161,6 +173,27 @@ try {
             entries.length = 0;
             entries.push(...next);
             appliedOrder = entries.map(e => ({ identifier: e.identifier, enabled: e.enabled }));
+        }
+
+        // 人设（P1-8）：描述与用户名都要在 Generate 之前设进原版的活对象里。
+        // 注意 `persona_description_positions` 默认是 IN_PROMPT(0)，那条描述会作为
+        // 一条 system 消息被塞进 systemPrompts —— 位置对齐只能靠这份夹具，不能猜。
+        if (anText != null) {
+            const ep = getContext().extensionPrompts;
+            ep['2_floating_prompt'] = {
+                value: anText,
+                depth: anDepth ?? 4,
+                role: anRole ?? 0,
+                position: 1, // extension_prompt_types.IN_CHAT
+            };
+        }
+        if (personaDesc != null || personaName != null || personaPosition != null) {
+            const pu = getContext().powerUserSettings;
+            if (personaDesc != null) pu.persona_description = personaDesc;
+            if (personaPosition != null) pu.persona_description_position = personaPosition;
+            if (personaName != null && typeof S.setUserName === 'function') {
+                S.setUserName(personaName, { toastPersonaNameChange: false });
+            }
         }
 
         // Generate 在 online_status === 'no_connection' 时会直接早退（它以为后端没连上）。
@@ -238,7 +271,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);

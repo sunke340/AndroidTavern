@@ -47,6 +47,11 @@ data class ConfigOverride(
      */
     val bubbleFontSize: Float? = null,
     /**
+     * 这一层用哪个人设（`Persona.id`）。null = 跟随上级；三级：会话 > 卡 > 全局默认。
+     * 生效人设的**名字**就是 `{{user}}`，**描述**按 `prompt_order` 里的 `personaDescription` 进提示词。
+     */
+    val personaId: String? = null,
+    /**
      * 卡级专用：默认用第几条开场白。0 = `first_mes`，N = `alternateGreetings[N-1]`。
      * 会话级不用这一项（它读的是已经写进库里的第一条消息）。
      */
@@ -55,6 +60,7 @@ data class ConfigOverride(
     /** 全是"跟随"？那这条覆盖不必落盘。 */
     val isEmpty: Boolean
         get() = profileId == null && reasoningEffort == null && presetName == null &&
+            personaId == null &&
             worldBookNames == null && regexIds == null && builtinDisabled == null &&
             bubbleFontSize == null &&
             temperature == null && maxTokens == null && topP == null &&

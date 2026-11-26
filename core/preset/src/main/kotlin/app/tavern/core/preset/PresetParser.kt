@@ -16,9 +16,17 @@ public object PresetParser {
     /**
      * 预设里"全局顺序"那一条的伪角色 id。
      *
-     * 出处：`public/scripts/PromptManager.js` 的 `configuration.promptOrder.dummyId = 100000`。
-     * 每个角色也可以有自己的顺序；我们只做全局那一条（原版默认就是这个策略）。
+     * 出处：`public/scripts/PromptManager.js` 的 `configuration.promptOrder.dummyId = 100000`
+     * —— 那是文本补全那条线；**聊天补全**（OpenAI 兼容接口）用的是
+     * `public/scripts/openai.js` 里的 `dummyId: 100001`。
+     *
+     * 原版 Default.json 于是有**两张表**：100000 那张没有 `personaDescription`，
+     * 100001 那张有（在 `worldInfoBefore` 之后、`charDescription` 之前）。
+     * 本项目只走聊天补全，所以优先 100001，没有才退回 100000、再退回第一条。
      */
+    public const val CHAT_ORDER_ID: String = "100001"
+
+    /** 文本补全那条线的全局顺序（老预设只有这一张）。 */
     public const val GLOBAL_ORDER_ID: String = "100000"
 
     /**
@@ -46,8 +54,10 @@ public object PresetParser {
 
     private fun parseOrder(element: JsonElement?): List<PromptOrderEntry> {
         val lists = (element as? JsonArray)?.mapNotNull { it as? JsonObject } ?: return emptyList()
-        // 优先全局那一条；老预设可能没有 character_id，退化成第一条
-        val chosen = lists.firstOrNull { it.primitive("character_id") == GLOBAL_ORDER_ID }
+        // 优先聊天补全那张表（100001）；再退文本补全那张（100000）；
+        // 老预设可能没有 character_id，最后退化成第一条。
+        val chosen = lists.firstOrNull { it.primitive("character_id") == CHAT_ORDER_ID }
+            ?: lists.firstOrNull { it.primitive("character_id") == GLOBAL_ORDER_ID }
             ?: lists.firstOrNull()
             ?: return emptyList()
         val entries = chosen["order"] as? JsonArray ?: return emptyList()

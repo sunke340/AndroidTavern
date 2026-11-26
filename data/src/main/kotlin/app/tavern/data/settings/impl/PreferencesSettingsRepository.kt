@@ -1,5 +1,7 @@
 package app.tavern.data.settings.impl
 
+import app.tavern.data.settings.Persona
+
 import android.content.Context
 import app.tavern.data.secret.SecretStore
 import app.tavern.data.secret.impl.KeystoreSecretStore
@@ -63,6 +65,8 @@ class PreferencesSettingsRepository(
             ?: DEFAULT_VISUAL_EFFECTS,
         revealSpeed = prefs.getString(KEY_REVEAL_SPEED, null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_REVEAL_SPEED,
+        personas = loadPersonas(),
+        personaDefaultId = prefs.getString(KEY_PERSONA_DEFAULT, null)?.takeIf { it.isNotBlank() },
         bubbleFontSize = prefs.getFloatOrNull(KEY_BUBBLE_FONT_SIZE),
     )
 
@@ -151,6 +155,52 @@ class PreferencesSettingsRepository(
         prefs.edit().putString(KEY_REVEAL_SPEED, name).apply()
     }
 
+    override fun savePersona(persona: Persona) {
+        prefs.edit()
+            .putString(KEY_PERSONA_NAME + persona.id, persona.name)
+            .putString(KEY_PERSONA_DESC + persona.id, persona.description)
+            .putStringSet(
+                KEY_PERSONA_IDS,
+                (prefs.getStringSet(KEY_PERSONA_IDS, emptySet()) ?: emptySet()) + persona.id,
+            )
+            .apply()
+    }
+
+    override fun deletePersona(id: String) {
+        prefs.edit()
+            .remove(KEY_PERSONA_NAME + id)
+            .remove(KEY_PERSONA_DESC + id)
+            .putStringSet(
+                KEY_PERSONA_IDS,
+                (prefs.getStringSet(KEY_PERSONA_IDS, emptySet()) ?: emptySet()) - id,
+            )
+            .apply()
+        // 删掉的正好是默认人设：一起清掉，否则下次启动会指向一个不存在的 id
+        if (prefs.getString(KEY_PERSONA_DEFAULT, null) == id) {
+            prefs.edit().remove(KEY_PERSONA_DEFAULT).apply()
+        }
+    }
+
+    override fun savePersonaDefaultId(id: String?) {
+        prefs.edit().apply {
+            if (id == null) remove(KEY_PERSONA_DEFAULT) else putString(KEY_PERSONA_DEFAULT, id)
+        }.apply()
+    }
+
+    /**
+     * 人设列表按**名字**排序（用户看的是名字；id 是随机串，排序没有意义）。
+     * 用一组独立 key 存，不塞 JSON：SharedPreferences 对 StringSet 支持最好，
+     * 也不会因为一个字符坏了整张表就读不出来。
+     */
+    private fun loadPersonas(): List<Persona> {
+        val ids = prefs.getStringSet(KEY_PERSONA_IDS, emptySet()) ?: emptySet()
+        return ids.mapNotNull { id ->
+            val name = prefs.getString(KEY_PERSONA_NAME + id, null)?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            Persona(id = id, name = name, description = prefs.getString(KEY_PERSONA_DESC + id, "").orEmpty())
+        }.sortedBy { it.name }
+    }
+
     override fun cardBookOverride(cardId: String): CardBookOverride = CardBookOverride(
         off = prefs.getStringSet(KEY_CARD_BOOK_OFF_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
         forcedOn = prefs.getStringSet(KEY_CARD_BOOK_FORCED_PREFIX + cardId, emptySet()).orEmpty().toIntSet(),
@@ -205,6 +255,10 @@ class PreferencesSettingsRepository(
         const val KEY_NAV_ANIMATION = "nav_animation"
         const val KEY_VISUAL_EFFECTS = "visual_effects"
         const val KEY_REVEAL_SPEED = "reveal_speed"
+        const val KEY_PERSONA_IDS = "persona_ids"
+        const val KEY_PERSONA_DEFAULT = "persona_default"
+        const val KEY_PERSONA_NAME = "persona_name:"
+        const val KEY_PERSONA_DESC = "persona_desc:"
         const val KEY_BUBBLE_FONT_SIZE = "bubble_font_size"
         const val KEY_THEME_MIGRATED = "theme_migrated_violet"
         // 老版本按下标存的"关掉"集合，只用于一次性迁移到 uid

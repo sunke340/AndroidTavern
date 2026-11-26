@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import app.tavern.core.model.ModelProfile
 import app.tavern.data.log.AppLog
+import app.tavern.data.settings.Persona
 
 /**
  * 设置的二级页面。
@@ -73,6 +74,9 @@ import app.tavern.data.log.AppLog
 @Composable
 fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val page = state.settingsPage ?: return
+    // 人设的编辑/删除是**页级**动作（「+」在页头、长按在行上），所以状态提到这里
+    var personaDraft by remember { mutableStateOf<Persona?>(null) }
+    var personaDelete by remember { mutableStateOf<Persona?>(null) }
 
     // 「导入」统一放右上角胶囊（和模型页「新建」同一个位置）：列表本身就占整页，
     // 底部再挂一条通栏按钮会把页面又切一刀 —— 预设编辑页是同一个理由。
@@ -110,6 +114,17 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "导入预设") { presetImport.launch(jsonMime) } }
             }
 
+            SettingsPage.Persona -> {
+                { CapsuleIcon(icon = Icons.Filled.Add, contentDescription = "新建人设") {
+                    personaDraft = Persona(
+                        // id 只用来认人，不参与排序也不显示；时间戳够唯一致
+                        id = "p" + System.currentTimeMillis().toString(36),
+                        name = "",
+                        description = "",
+                    )
+                } }
+            }
+
             else -> null
         },
     ) { padding ->
@@ -133,7 +148,37 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 SettingsPage.Appearance -> AppearancePage(state, viewModel)
                 SettingsPage.WorldBook -> WorldBookPage(state, viewModel)
                 SettingsPage.Regex -> RegexPage(state, viewModel)
+                SettingsPage.Persona -> PersonaPage(
+                    state = state,
+                    viewModel = viewModel,
+                    onEdit = { personaDraft = it },
+                    onDelete = { personaDelete = it },
+                )
                 SettingsPage.About -> AboutPage(state, viewModel)
+            }
+            // 人设的编辑层与删除确认（在滚动层里，不受滚动手势影响）
+            personaDraft?.let { draft ->
+                PersonaEditorDialog(
+                    draft = draft,
+                    onSave = {
+                        viewModel.savePersona(it)
+                        // 新建的第一个自动成为默认 —— 用户刚填完不该再去点一次"设为默认"
+                        if (state.personaDefaultId == null) viewModel.setDefaultPersona(it.id)
+                        personaDraft = null
+                    },
+                    onClose = { personaDraft = null },
+                )
+            }
+            personaDelete?.let { victim ->
+                ConfirmDeleteDialog(
+                    title = "删除人设？",
+                    message = "「${victim.name}」会从这台设备删掉。用它的会话会退回上一级的人设。",
+                    onConfirm = {
+                        viewModel.deletePersona(victim.id)
+                        personaDelete = null
+                    },
+                    onDismiss = { personaDelete = null },
+                )
             }
             Box(modifier = Modifier.size(1.dp).padding(bottom = Space.xl))
         }
@@ -826,6 +871,107 @@ private fun NoticeDialog(file: NoticeFile, onClose: () -> Unit) {
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+// ---- 人设（需求批 F）-------------------------------------------------------
+
+/**
+ * 人设列表：**点一行 = 设为全局默认**，长按 = 编辑 / 删除。
+ *
+ * 这一页管的是三级里的**最外层（全局默认）**；会话级与卡级在各自的配置页里覆盖，
+ * 生效顺序是 会话 > 角色卡 > 全局默认。生效人设的**名字**就是 `{{user}}` 展开后的样子，
+ * **描述**会作为一条独立 system 消息进 `prompt_order` 的 `personaDescription` 那一格
+ * （形态与位置由夹具 `P1-8-persona-prompt` 钉住）。
+ */
+@Composable
+private fun PersonaPage(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    onEdit: (Persona) -> Unit,
+    onDelete: (Persona) -> Unit,
+) {
+    val sheet = LocalSheetController.current
+    if (state.personas.isEmpty()) {
+        EmptyHint("还没有人设。点右上「+」新建：名字会替换提示词里的 {{user}}，描述是一段自述。")
+        return
+    }
+    ListGroup(count = state.personas.size) { index, _ ->
+        val persona = state.personas[index]
+        ListRow(
+            title = persona.name,
+            subtitle = persona.description.lineSequence().firstOrNull().orEmpty().ifBlank { "没有描述" },
+            leading = { ActiveMark(persona.id == state.personaDefaultId) },
+            onClick = { viewModel.setDefaultPersona(persona.id) },
+            onLongClick = {
+                sheet.show(
+                    title = persona.name,
+                    actions = listOf(
+                        SheetAction("编辑") { onEdit(persona) },
+                        SheetAction("删除人设", destructive = true) { onDelete(persona) },
+                    ),
+                )
+            },
+        )
+    }
+    Spacer(Modifier.height(Space.m))
+    Text(
+        "名字就是 {{user}} 展开后的样子；描述进提示词的人设那一段。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** 人设的编辑层：名字 + 描述。 */
+@Composable
+private fun PersonaEditorDialog(
+    draft: Persona,
+    onSave: (Persona) -> Unit,
+    onClose: () -> Unit,
+) {
+    var name by remember(draft.id) { mutableStateOf(draft.name) }
+    var description by remember(draft.id) { mutableStateOf(draft.description) }
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding()
+                    .padding(Space.l),
+                verticalArrangement = Arrangement.spacedBy(Space.m),
+            ) {
+                Text(
+                    if (draft.name.isBlank()) "新建人设" else "编辑人设",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("名字") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("描述") },
+                    modifier = Modifier.fillMaxWidth().height(240.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                    Button(
+                        onClick = {
+                            onSave(draft.copy(name = name.trim(), description = description))
+                        },
+                        enabled = name.isNotBlank(),
+                    ) { Text("保存") }
+                    OutlinedButton(onClick = onClose) { Text("取消") }
                 }
             }
         }

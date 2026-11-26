@@ -345,7 +345,10 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                         val cardPreset = state.cardOverride.presetName ?: state.activePreset ?: "内置默认"
                         val cardPresetSrc = if (state.cardOverride.presetName != null) "角色卡" else "全局"
 
-                        ListGroup(count = 8) { index, _ ->
+                        val cardPersonaStored = state.cardOverride.personaId
+                        val cardPersonaSrc = if (cardPersonaStored != null) "角色卡" else "全局"
+                        val cardPersonaName = state.effectivePersona?.name ?: "未设置"
+                        ListGroup(count = 9) { index, _ ->
                             when (index) {
                                 0 -> SettingLinkRow(
                                     title = "内嵌世界书",
@@ -393,7 +396,11 @@ fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel
                                     viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Preset)
                                 }
 
-                                6 -> SettingLinkRow("对话样式", styleLabel) {
+                                6 -> SettingLinkRow("人设", "$cardPersonaName · $cardPersonaSrc") {
+                                    viewModel.openConfigPicker(ConfigScope.Card, ConfigKind.Persona)
+                                }
+
+                                7 -> SettingLinkRow("对话样式", styleLabel) {
                                     viewModel.openCardConfigPage(CardConfigPage.MessageStyle)
                                 }
 

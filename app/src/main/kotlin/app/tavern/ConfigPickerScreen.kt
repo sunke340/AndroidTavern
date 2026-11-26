@@ -63,12 +63,18 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ConfigScope.Card -> state.cardOverride.bubbleFontSize
         }.let { it == null }
 
+        ConfigKind.Persona -> when (target.scope) {
+            ConfigScope.Session -> state.sessionOverride.personaId
+            ConfigScope.Card -> state.cardOverride.personaId
+        }.let { it == null }
+
         else -> false
     }
     // 这三类都有"跟随上级"这一档；模型/预设/采样在页面里各自表达，副标题只写作用域
     val followable = target.kind == ConfigKind.WorldBook ||
         target.kind == ConfigKind.Regex ||
-        target.kind == ConfigKind.FontSize
+        target.kind == ConfigKind.FontSize ||
+        target.kind == ConfigKind.Persona
     val subtitle = if (followable) {
         if (following) "$scopeLabel · 跟随上级" else scopeLabel
     } else {
@@ -192,6 +198,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 ConfigKind.Regex -> RegexPickerBody(state, viewModel, target.scope)
                 ConfigKind.Preset -> PresetPickerBody(state, viewModel, target.scope)
                 ConfigKind.FontSize -> FontSizePickerBody(state, viewModel, target.scope)
+                ConfigKind.Persona -> PersonaPickerBody(state, viewModel, target.scope)
             }
         }
     }
@@ -549,5 +556,73 @@ private fun FontSizePickerBody(
                 },
             )
         }
+    }
+}
+
+/**
+ * 人设选择（三级里的中间两层：会话 / 卡）。
+ *
+ * 「跟随上级」常驻第一行（和其它选择页同一条规矩：它一出现/消失就会把整列挪一格）。
+ * 副标题写的是**生效人设的描述首行**，这样不用点进去也知道现在是谁在说话。
+ */
+@Composable
+private fun PersonaPickerBody(
+    state: ChatViewModel.UiState,
+    viewModel: ChatViewModel,
+    scope: ConfigScope,
+) {
+    val stored = when (scope) {
+        ConfigScope.Session -> state.sessionOverride.personaId
+        ConfigScope.Card -> state.cardOverride.personaId
+    }
+    val following = stored == null
+    val effective = state.effectivePersona
+    val followSummary = when (scope) {
+        ConfigScope.Session ->
+            state.personas.firstOrNull { it.id == state.cardOverride.personaId }?.name
+                ?: state.personas.firstOrNull { it.id == state.personaDefaultId }?.name
+                ?: "没有默认人设"
+
+        ConfigScope.Card ->
+            state.personas.firstOrNull { it.id == state.personaDefaultId }?.name
+                ?: "没有默认人设"
+    }
+
+    ListGroup(count = state.personas.size + 1) { index, _ ->
+        if (index == 0) {
+            ListRow(
+                title = "跟随上级",
+                subtitle = followSummary,
+                leading = { ActiveMark(following) },
+                onClick = {
+                    when (scope) {
+                        ConfigScope.Session -> viewModel.useSessionPersona(null)
+                        ConfigScope.Card -> viewModel.useCardPersona(null)
+                    }
+                },
+            )
+        } else {
+            val persona = state.personas[index - 1]
+            ListRow(
+                title = persona.name,
+                subtitle = persona.description.lineSequence().firstOrNull().orEmpty()
+                    .ifBlank { "没有描述" },
+                leading = { ActiveMark(!following && persona.id == effective?.id) },
+                onClick = {
+                    when (scope) {
+                        ConfigScope.Session -> viewModel.useSessionPersona(persona.id)
+                        ConfigScope.Card -> viewModel.useCardPersona(persona.id)
+                    }
+                },
+            )
+        }
+    }
+
+    if (state.personas.isEmpty()) {
+        Text(
+            "还没有人设。到设置 → 人设里先建一个。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

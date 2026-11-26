@@ -26,7 +26,9 @@ import app.tavern.core.preset.PromptOrderEntry
  *
  * 世界书内容由 `:core:lorebook` 扫出来（[LorebookScanResult]），这里只负责**按位置插进去**。
  * 刻意不做的事：不读文件、不碰设置、不算 token。
- * 还没做的注入点：`personaDescription`（人设）、`enhanceDefinitions` 之外的扩展、群聊。
+ * 还没做的注入点：`enhanceDefinitions` 之外的扩展、群聊。
+ * 人设（`personaDescription`）已接：原版把它当**独立的一条 system 消息**，位置由 `prompt_order`
+ * 决定（默认在 `worldInfoBefore` 之后、`charDescription` 之前）。夹具 `P1-8-persona-prompt`。
  */
 public class PromptBuilder {
     /**
@@ -40,6 +42,11 @@ public class PromptBuilder {
         worldInfo: LorebookScanResult = LorebookScanResult(),
         order: List<PromptOrderEntry> = PresetDefaults.ORDER,
         prompts: Map<String, String> = PresetDefaults.PROMPTS,
+        /**
+         * 生效人设的描述。空串 = 没写 / 没选人设 —— 那一段就不发（原版同样只在有值时插）。
+         * 位置由 `prompt_order` 里的 `personaDescription` 决定，不在这里写死。
+         */
+        personaDescription: String = "",
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         val charName = character.name
@@ -60,6 +67,11 @@ public class PromptBuilder {
                     if (content.isBlank()) continue
                     messages += system(substitute(content, charName, userName))
                 }
+
+                Id.PERSONA_DESCRIPTION ->
+                    if (personaDescription.isNotBlank()) {
+                        messages += system(substitute(personaDescription, charName, userName))
+                    }
 
                 Id.WORLD_INFO_BEFORE ->
                     if (worldInfo.beforeChar.isNotBlank()) messages += system(worldInfo.beforeChar)
@@ -100,7 +112,7 @@ public class PromptBuilder {
                     messages += history.map { it.copy(content = it.content.replace("\r", "")) }
                 }
 
-                // 还没实现的注入点（personaDescription / 未知 identifier）：不静默插到别处，
+                // 还没实现的注入点（未知 identifier）：不静默插到别处，
                 // 直接不发。宁可少一条，也不要打乱原版的顺序语义。
                 else -> Unit
             }
@@ -141,6 +153,7 @@ public class PromptBuilder {
         const val ENHANCE_DEFINITIONS = "enhanceDefinitions"
         const val WORLD_INFO_BEFORE = "worldInfoBefore"
         const val WORLD_INFO_AFTER = "worldInfoAfter"
+        const val PERSONA_DESCRIPTION = "personaDescription"
         const val CHAR_DESCRIPTION = "charDescription"
         const val CHAR_PERSONALITY = "charPersonality"
         const val SCENARIO = "scenario"

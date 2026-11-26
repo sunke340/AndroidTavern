@@ -80,7 +80,14 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                 samplingOverride.frequencyPenalty,
                 samplingOverride.presencePenalty,
             ).any { it != null }
-            ListGroup(count = 6) { index, _ ->
+            val personaStored = state.sessionOverride.personaId
+            val personaSrc = when {
+                personaStored != null -> "本会话"
+                state.cardOverride.personaId != null -> "跟随角色卡"
+                else -> "跟随全局"
+            }
+            val personaName = state.effectivePersona?.name ?: "未设置"
+            ListGroup(count = 7) { index, _ ->
                 when (index) {
                     0 -> SettingLinkRow("模型", "$profileName · $modelSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Model)
@@ -104,6 +111,10 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
 
                     4 -> SettingLinkRow("预设", "$preset · $presetSrc") {
                         viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Preset)
+                    }
+
+                    5 -> SettingLinkRow("人设", "$personaName · $personaSrc") {
+                        viewModel.openConfigPicker(ConfigScope.Session, ConfigKind.Persona)
                     }
 
                     else -> SettingLinkRow(

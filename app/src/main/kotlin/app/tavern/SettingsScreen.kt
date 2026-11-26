@@ -24,6 +24,9 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val appearanceSummary = "${state.themePreset.label} · ${state.themeMode.label} · " +
         if (state.messageStyle == MessageStyle.Bubble) "气泡" else "整行卡片"
     val presetSummary = state.activePreset ?: "内置默认"
+    val defaultPersona = state.personas.firstOrNull { it.id == state.personaDefaultId }
+    val personaSummary = defaultPersona?.let { "${it.name} · 共 ${state.personas.size} 个" }
+        ?: if (state.personas.isEmpty()) "未设置" else "未设默认（共 ${state.personas.size} 个）"
     // 页头一直铺到状态栏后面，内容要让出"状态栏 + 页头"的高度
     val statusBar = statusBarTop()
     val bookCards = state.cards.count { it.bookEntryCount > 0 }
@@ -45,6 +48,7 @@ fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             SettingsLink("模型", modelSummary, SettingsPage.Model),
             SettingsLink("采样", samplingSummary, SettingsPage.Sampling),
             SettingsLink("预设", presetSummary, SettingsPage.Preset),
+            SettingsLink("人设", personaSummary, SettingsPage.Persona),
             SettingsLink("外观", appearanceSummary, SettingsPage.Appearance),
             SettingsLink("世界书", worldBookSummary, SettingsPage.WorldBook),
             SettingsLink(

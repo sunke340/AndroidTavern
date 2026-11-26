@@ -12,10 +12,17 @@ public object PresetDefaults {
     public const val MAIN: String =
         "Write {{char}}'s next reply in a fictional chat between {{char}} and {{user}}."
 
-    /** 默认预设的 `prompt_order`（全局那一条，`character_id = 100000`）。 */
+    /**
+     * 默认预设的 `prompt_order`（全局那一条，`character_id = 100000`）。
+     *
+     * 原版 Default.json 里有两张表：文本补全那张没有 `personaDescription`，聊天补全那张有
+     * （在 `worldInfoBefore` 与 `charDescription` 之间）。我们走的是聊天补全这条线，
+     * 所以按第二张表抄；人设为空时那一段不发，输出与之前完全一致。
+     */
     public val ORDER: List<PromptOrderEntry> = listOf(
         PromptOrderEntry("main"),
         PromptOrderEntry("worldInfoBefore"),
+        PromptOrderEntry("personaDescription"),
         PromptOrderEntry("charDescription"),
         PromptOrderEntry("charPersonality"),
         PromptOrderEntry("scenario"),

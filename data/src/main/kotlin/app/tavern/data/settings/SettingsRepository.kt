@@ -31,6 +31,10 @@ data class AppSettings(
      * **只影响显示**：请求、落库、导出都是全文。这里按名字存，不存序号。
      */
     val revealSpeed: String,
+    /** 人设列表（用户 2026-11-26 需求批 F：多人设 + 三级）。 */
+    val personas: List<Persona> = emptyList(),
+    /** 全局默认人设；null = 没有默认（`{{user}}` 退回 "User"）。 */
+    val personaDefaultId: String? = null,
 )
 
 /**
@@ -76,6 +80,13 @@ interface SettingsRepository {
 
     /** 揭示节奏（码点/秒的档位名）。只影响显示，见 `docs/plan-reveal-pacing.md`。 */
     fun saveRevealSpeed(name: String)
+
+    /** 存一个人设（同 id 覆盖）。名字是 `{{user}}`，描述按 `personaDescription` 进提示词。 */
+    fun savePersona(persona: Persona)
+
+    fun deletePersona(id: String)
+
+    fun savePersonaDefaultId(id: String?)
 
     /**
      * 内置显示正则的**关闭**集合（id 见 `core/regex` 的 `BuiltinRegex`）。
@@ -140,4 +151,16 @@ data class UiAppearance(
 data class CardBookOverride(
     val off: Set<Int> = emptySet(),
     val forcedOn: Set<Int> = emptySet(),
+)
+
+/**
+ * 一个用户人设（需求批 F）。
+ *
+ * [name] 就是 `{{user}}` 展开后的名字；[description] 是「你是谁」的那段自述，
+ * 原版把它当**独立的一条 system 消息**插在 `personaDescription` 那一格（夹具 `P1-8-persona-prompt`）。
+ */
+data class Persona(
+    val id: String,
+    val name: String,
+    val description: String = "",
 )

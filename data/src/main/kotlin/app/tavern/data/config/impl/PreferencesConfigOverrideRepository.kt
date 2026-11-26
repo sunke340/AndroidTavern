@@ -33,6 +33,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         var freq: Double? = null
         var presence: Double? = null
         var bubbleFontSize: Float? = null
+        var persona: String? = null
         raw.lineSequence().forEach { line ->
             val at = line.indexOf('=')
             if (at <= 0) return@forEach
@@ -45,6 +46,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 KEY_BOOKS -> books = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_REGEX -> regex = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_GREETING -> greeting = value.toIntOrNull()
+                KEY_PERSONA -> persona = value.ifBlank { null }
                 KEY_BUILTIN -> builtin = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_TEMPERATURE -> temperature = value.toDoubleOrNull()
                 KEY_MAX_TOKENS -> maxTokens = value.toIntOrNull()
@@ -62,6 +64,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             regexIds = regex,
             builtinDisabled = builtin,
             greetingIndex = greeting,
+            personaId = persona,
             temperature = temperature,
             maxTokens = maxTokens,
             topP = topP,
@@ -88,6 +91,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 append(KEY_REGEX).append('=').append(it.joinToString(SEP)).append('\n')
             }
             value.greetingIndex?.let { append(KEY_GREETING).append('=').append(it).append('\n') }
+            value.personaId?.let { append(KEY_PERSONA).append('=').append(it).append('\n') }
             // 内置正则的开关集合：和世界书/正则一样，空集要写出来（"明确全开"≠跟随）
             value.builtinDisabled?.let {
                 append(KEY_BUILTIN).append('=').append(it.joinToString(SEP)).append('\n')
@@ -118,6 +122,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         const val KEY_PRESET = "preset"
         const val KEY_BOOKS = "books"
         const val KEY_REGEX = "regex"
+        const val KEY_PERSONA = "persona"
         const val KEY_GREETING = "greeting"
         const val KEY_BUILTIN = "builtin_disabled"
         const val KEY_TEMPERATURE = "temperature"
