@@ -13,7 +13,7 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)；其它决策见 `docs/adr/`）。
-- **代码基线**：`e37ded3`（v168）。
+- **代码基线**：`87e5b56`（v169）。
 - **主线状态**：聊天列表重构的四批里 **P0 / P1 / P2 已交付且真机全通过**（M23 / M24 / M25），
   **P3 已交付、等 M26 回执**。**下一步 P4**（动画收口）。
 - **用户的节奏**：一次一批 → 一个 APK → 真机回执 → 下一批。**不要跨批混改**，也不要在回执前叠补丁。
@@ -27,7 +27,7 @@
 | **P0 收尾提交权** | v165 `2b1c101` | Stop/Finish/失败/切会话收敛成 `GenerationRound` 的一个 `AtomicReference<CommitPhase>`；`cancel()` 只在拿到权之后；`NonCancellable` 只包"写库→提交界面"；四类失败语义分开；`replaceMessage` 单事务 | [plan-p0-settle.md](../plan-p0-settle.md) + [M23](../dev/verification/2026-11-26-M23.md) |
 | **P1 行模型** | v166 `806a0db` | `ChatRow(uiKey, role, content, dbId)` + `Inflight` 顶替 `transcript`/`streamingText`/`isStreaming`；渲染收敛成**一个** `itemsIndexed(key = uiKey)`；删除/撤回/翻版本按 `uiKey` 定位、按 `dbId` 落库（审计 P1-5 的下标耦合解除） | [r2](../plan-chat-list-flash-r2.md) §10 + [M24](../dev/verification/2026-11-26-M24.md) |
 | **P2 占位气泡** | v167 `85bccc2` | 点发送/继续/重新生成**当帧**出 `生成中`/`重新生成中` + 呼吸点（`PendingLine`/`TypingDots`）；首 token 只改正文 → 顺带修掉「AI 气泡掉到输入框下面」；回底分档（贴底瞬时 / 读历史动画）；测量状态按轮分开；键盘可见性不再每帧重组 | [r2](../plan-chat-list-flash-r2.md) §13.2 + [M25](../dev/verification/2026-11-26-M25.md) |
-| **P3 就地改写 + 平滑收缩** | v168 `e37ded3` | 重新生成**同一行改写**（`inflight.uiKey` 直接用 `m{dbId}`，行不离开 `rows`）；删掉 `ReplaceTarget`/`removedContent`/`Inflight.removed`/`RestoreRemoved`/`streamingRegenerate`；开场 `animateContentSize` 收缩 260ms，四条硬约束（只挂收缩阶段 / token 只攒不推 / 桥接三件套全关 / 0 字停止等收尾落地再关窗口） | [r2](../plan-chat-list-flash-r2.md) §13.1 + [M26](../dev/verification/2026-11-26-M26.md) |
+| **P3 就地改写 + 平滑收缩** | v169 `87e5b56` | 重新生成**同一行改写**（`inflight.uiKey` 直接用 `m{dbId}`，行不离开 `rows`）；删掉 `ReplaceTarget`/`removedContent`/`Inflight.removed`/`RestoreRemoved`/`streamingRegenerate`；开场 `animateContentSize` 收缩 260ms，四条硬约束（只挂收缩阶段 / token 只攒不推 / 桥接三件套全关 / 0 字停止等收尾落地再关窗口） | [r2](../plan-chat-list-flash-r2.md) §13.1 + [M26](../dev/verification/2026-11-26-M26.md) |
 
 **已被否决的方案**（别再提一遍）：
 
@@ -41,7 +41,7 @@
 
 ## 二、下一步（按顺序，别跳）
 
-1. **P3 回执（M26）**：v168 已出包、CI 三 job 全绿，等真机验
+1. **P3 回执（M26）**：v169 已出包、CI 三 job 全绿，等真机验
    [M26 那张表](../dev/verification/2026-11-26-M26.md)（重点是"旧气泡原地收下去""旧正文平滑涨回来"
    "版本条挂在同一条下面"三件事）。有问题按批修，别跨批叠补丁。
 2. **P4 动画收口**：`prevKeys` 入场规则（取代 `justSettled`/`suppressNewestFade`/`suppressItemFade` 三个补丁）、
@@ -58,7 +58,8 @@
 | v165 | `2b1c101` | `apk-m196` | `artifacts/app-v165-2b1c101.apk` |
 | v166 | `806a0db` | `apk-m197` | `artifacts/app-v166-806a0db.apk` |
 | v167 | `85bccc2` | `apk-m198` | `artifacts/app-v167-85bccc2.apk` |
-| v168 | `e37ded3` | `apk-m199` | `artifacts/app-v168-e37ded3.apk` |
+| v168 | `e37ded3` | `apk-m199` | 作废（收缩不合格）|
+| v169 | `87e5b56` | `apk-m200` | `artifacts/app-v169-87e5b56.apk` |
 
 更早的 v159–v164 在同目录；历史记录 M0–M16 归档在 [device-verification.md](../dev/device-verification.md)（冻结）。
 
@@ -139,9 +140,10 @@
 8. **占位行不能进 `rows`/`transcript`/DB**：行身份与"是否已落库"必须分开（`dbId == null` 是类型事实）。
 9. **`collectIsPressedAsState()` 会吞掉同帧按下+抬起**：要吃 `interactions` 流 + 最短可视 90ms。
 10. **提交消息里有引号/反引号就写文件 + `git commit -F`**；本机编不了 → 缺 import 只能 CI 抓。
-11. **`animateContentSize`（1.7.6）没有 `clip` 参数**，裁剪写死；而且**节点挂上那一帧不播动画**
-    （`AnimData` 以当时尺寸初始化）→ 必须用 `withFrameNanos` 隔一帧再换正文，否则收缩仍是硬切。
-    它有 `alignment`，反排列表用 `BottomStart`。减动效要手动退成 `snap()`。
+11. **`animateContentSize` 不能用来做"气泡变小"**：它只把动画尺寸报给**父级**，子内容仍按自然
+    尺寸画 → 真机看到的是"气泡瞬间变小、只有历史在滑"。要气泡自己收，得显式 `Modifier.height(h)`
+    + `Animatable`，并且自己裁绘制（`Text` 被高度约束后绘制不裁；用 `drawWithContent { clipRect }`，
+    别用 `clipToBounds()`）。细节见 pitfalls 那一节。
 12. **重新生成别再"撤行 + 追加行"**：那在界面上是"删条目 + 建条目"（换 key），开场闪就是它。
     行留在 `rows` 里、`inflight.uiKey` 复用 `m{dbId}` 才是正解。
 
