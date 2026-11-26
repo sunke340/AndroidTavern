@@ -1112,3 +1112,23 @@ IME 的退场有 200~300ms 动画，`imeVisible` 在动画**跑完**才变假 �
 修法：串流气泡里加一个 `Spacer`，高度 = 动作行（`ActionRowHeight`）+ 重新生成时的版本条
 （`SwipeBarBlockHeight`）。是否重新生成由 `UiState.streamingRegenerate` 带下来
 （只在 `isStreaming` 为真时有意义，所以不用在收尾的十几处状态里逐个清）。
+
+## 收尾：`cancel()` 不能在拿到提交权之前（2026-11-26，v165 修）
+
+`stop()` 的旧写法是"先 `job.cancel()`，再 CAS 抢 who-writes"。看着更"及时"，实际会吃掉提交：
+
+- `finish()` 已经 CAS 成功、正在 `withContext(Dispatchers.IO) { append(...) }` 里写库；
+- 用户这时点停止 → `cancel()` → 写库**已经完成**，但 `withContext` 返回时检查到取消，
+  抛 `CancellationException`；
+- 于是 `refreshSessions()` 与 `_state.update` 都不执行 → **回复在库里、界面没有**；
+  重进会话它又出现（用户报的"消失又回来"）。
+- 紧接着 `stop()` 的 CAS 失败分支把 `isStreaming` 置 false → 下一轮可以立刻起跑 →
+  旧轮迟到的 `_state.update` 再把新轮按回 `isStreaming=false`（看起来"发送没反应"）。
+
+修法（`core/generation` 的 `GenerationRound`）：提交权换成 `AtomicReference<CommitPhase>`
+（`Open → CAS → Writing → Closed`），**`cancel()` 只在抢到权之后**；写完库到提交界面这一段包
+`withContext(NonCancellable)`；输家什么都不做（连"已停止"都不写）。四条纪律见
+[plan-p0-settle.md](../plan-p0-settle.md) §2。
+
+配套一条：**迟到的 token 与"已发 N 条"状态都要校验 `activeRoundId`**，否则停止后还在路上的
+token 会把气泡又点亮。

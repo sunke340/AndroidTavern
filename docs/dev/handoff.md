@@ -13,8 +13,9 @@
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
   单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)；其它决策见 `docs/adr/`）。
-- **代码基线**：`8c5c5d9`（v164：新消息回底 + 落库不跳）。
-- **真机跑到**：v164。用户回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
+- **代码基线**：`2b1c101`（v165：**P0 收尾提交权**，`apk-m196`）。
+- **真机跑到**：v164；**v165 待 M23**（P0 只动收尾状态机，观感应与 v164 完全一致）。
+  v164 回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
   继续长消息闪**仍未解决 —— 已确认是**结构性**问题。**2026-11-26 午后已按代码逐行重审**，
   方案在 [plan-chat-list-flash.md](../plan-chat-list-flash.md)（重写版）+ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)
   （**二轮审查：`uiKey` 不变量 / `roundId` / 先出 P0 数据一致性 / 回底分档**）。
@@ -34,6 +35,7 @@
 | v162 | `5d8266e` | `apk-m193` | `artifacts/app-v162-5d8266e.apk` | 「继续」改为落新气泡（与原版的有意差异） |
 | v163 | `9bbf3a6` | `apk-m194` | `artifacts/app-v163-9bbf3a6.apk` | 版本条挂错气泡 + 落库淡入 |
 | v164 | `8c5c5d9` | `apk-m195` | `artifacts/app-v164-8c5c5d9.apk` | 新消息回底 + 落库高度占位 |
+| v165 | `2b1c101` | `apk-m196` | `artifacts/app-v165-2b1c101.apk` | **P0 收尾提交权**：Stop/Finish/失败/切会话收敛成一个提交权，`NonCancellable` 只包"写库→提交界面"，四类失败分开，`replaceMessage` 单事务（设计 → [plan-p0-settle.md](../plan-p0-settle.md)）|
 
 **真机验证记录**：`docs/dev/verification/2026-11-26-M17…M22.md`（一批一个文件）。
 M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批项用户口头确认正常。
@@ -58,12 +60,13 @@ M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批�
 
 ## 三、下一步优先级
 
-0. **P0 可以开工（设计已定稿）**：[plan-p0-settle.md](../plan-p0-settle.md) —— 提交权仲裁
-   （`AtomicReference<CommitPhase>` 取代 `written`）、`NonCancellable` 只包"写库→提交 UI"、
-   四类失败语义、`replaceMessage` 单事务、21 条纯 JVM 用例（新模块 `:core:generation`）。
-   **四条纪律**：`cancel()` 只在拿到提交权之后；输家不改 UI；清 `inflight` 校验 `roundId`；
-   写行校验 `sessionId`。
-1. **拿 [plan-chat-list-flash.md](../plan-chat-list-flash.md) 的两个决策点去问用户**，
+0. **P0 已出包，等 M23 回执**：[plan-p0-settle.md](../plan-p0-settle.md) 是设计与实施记录；
+   清单在 [verification/2026-11-26-M23.md](verification/2026-11-26-M23.md)（12 条，判据全在
+   `tag=chat` 的 `收尾 round=… reason=… 计划=… 结果=…`）。**这一批的验收前提是"观感零变化"**，
+   真机若看到任何布局/动画变化都算回归。四条纪律：`cancel()` 只在拿到提交权之后；
+   输家不改 UI；清"生成中"校验 `roundId`；写行校验 `sessionId`。
+1. **P1 行模型（下一批，等拍板）**：先拿 [plan-chat-list-flash.md](../plan-chat-list-flash.md) /
+   [r2](../plan-chat-list-flash-r2.md) 的两个决策点去问用户，
    然后按那份文档的第四~六节**一批做完**（行模型 + 占位气泡 + 重新生成就地替换 + 离散动画），
    配一条专门验证清单（发送 / 首 token / 停止 / 继续 / 重新生成 / 撤回 / 切会话）。
 2. 收 v164 之后那一批的真机回执；三包（v162/v163/v164）都还有没复验的条目。
@@ -134,5 +137,9 @@ M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批�
 7. **`collectIsPressedAsState()` 会吞掉同帧按下+抬起**：要吃 `interactions` 流 + 最短可视 90ms。
 8. **键盘收起不能等 `imeVisible == false`**：盯 `snapshotFlow { ime.getBottom(density) }` 的"开始下降"。
 9. **底部浮动控件不许进被测量的那一层**（列表让位读输入区实测高度）。
-10. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；本机编不了 → 缺 import 只能 CI 抓；
+10. **`cancel()` 只能在拿到提交权之后**：先 cancel 再抢权，会让"已经写完库、还没提交界面"的
+    收尾在 `withContext` 返回时抛 `CancellationException` → 回复在库里、界面没有（v164 及之前的老 bug）。
+11. **纯 JVM 新模块要在三处登记**：`settings.gradle.kts` + `tools/test-core.sh` + **`app/build.gradle.kts`
+    的 project 依赖**（漏了第三处，CI 报 107 处 Unresolved reference，本机 `:core` 跑得再绿也发现不了）。
+12. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；本机编不了 → 缺 import 只能 CI 抓；
     `if (常量) A else B` 会静默杀死一支。

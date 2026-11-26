@@ -306,3 +306,23 @@ withContext(NonCancellable) {
 但必须逐条记录：`docs/dev/verification/` 的 P1 文件里写清"哪一处观感变了 + 为什么它是 bug 被修掉
 而不是引入回归"，并配一条对应日志证据。反过来说：任何**布局尺寸、条目顺序、滚动位置、既有功能**
 的变化，仍然算 P1 失败。
+
+---
+
+## 10. 实施记录（2026-11-26，与上面设计的差异）
+
+实现在 `f78d788`（代码）+ `a1823ea`（补 `:app` 依赖）+ `2b1c101`（文档链接），交付包
+`artifacts/app-v165-2b1c101.apk`（tag `apk-m196`）。落地时改了四处设计细节，都比原设计更小：
+
+| 原设计 | 实际 | 为什么 |
+|---|---|---|
+| `SettleReason` 四值（含 `Cancelled`） | **三值**（`Completed/Stopped/Failed`） | 切会话那条路"半截丢弃"是既有语义，它**不该收界面**（收的会是刚打开那页的界面）。改成：抢到权 → `cancel` → `close()`，不进 `settle` |
+| 核心直接产出状态栏文案 | 核心产出 `SettleStatus` 类别（`Ok(text)` / `SaveFailed` / `RollbackFailed`），**文案留在 `:app`** | `core` 不写界面文案 |
+| `inflight.replaceTargetId`（P1 的行模型） | `GenerationRound.targetDbId` + `removedContent` | P0 还没有行模型：重新生成开场仍是"撤下原行、收尾追加"，所以额外带一个 `removedContent`，失败/0 字时放回去。**P1 换成按 `dbId` 就地改，`removedContent` 删除** |
+| `written` 的"已落库"标记 | 不需要 | 抢到权 = 唯一提交者；输家什么都不做，不需要再问"写过没有" |
+
+另外补了一条纪律（设计里没有）：**迟到的 token 与"已发 N 条"状态都要校验 `activeRoundId`** ——
+否则停止之后还在路上的 token 会把气泡又点亮、状态栏会被"已发 N 条"盖掉"已停止"。
+
+测试：`:core:generation` 21 条（含 8 线程 × 500 轮 CAS 竞争），`tools/test-core.sh` 全绿
+（十个 core 模块 129 条）。真机清单见 [verification/2026-11-26-M23.md](dev/verification/2026-11-26-M23.md)。
