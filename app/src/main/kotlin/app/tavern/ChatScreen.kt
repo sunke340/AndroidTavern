@@ -746,6 +746,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     glass = glassOn,
                     backdrop = backdrop,
                     onHeightChanged = { inputBarHeightPx = it },
+                    // 停止之前先把揭示游标清掉：屏幕上的正文与落库的正文才是同一份
+                    onBeforeStop = { clearReveal("停止") },
                 )
             }
         },
@@ -1273,6 +1275,8 @@ private fun ChatInputBar(
     glass: Boolean,
     backdrop: GlassBackdrop,
     onHeightChanged: (Int) -> Unit,
+    /** 点「停止」之前要做的收尾（聊天页用它把揭示游标清掉 = 立刻补满）。 */
+    onBeforeStop: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -1457,8 +1461,7 @@ private fun ChatInputBar(
                         focusManager.clearFocus()
                     },
                     onStop = {
-                        // 停止 = 立刻补满（同一笔收尾落库，库里的正文与屏幕上看到的一致）
-                        clearReveal("停止")
+                        onBeforeStop()
                         viewModel.stop()
                     },
                     modifier = Modifier
