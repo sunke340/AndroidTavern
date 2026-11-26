@@ -1,0 +1,97 @@
+{
+  "_meta": {
+    "stVersion": "1.19.1",
+    "capturedAt": "2026-11-26T22:41:04.795Z",
+    "endpoint": "/api/backends/chat-completions/generate",
+    "how": "playwright + window.fetch 拦截，调用原版 Generate(\"normal\") + Generate(\"swipe\") x1",
+    "swipes": 1,
+    "continued": false,
+    "character": "Seraphina",
+    "world": null,
+    "wiSettings": null,
+    "maxPromptTokens": 3795,
+    "promptOrder": null,
+    "context": {
+      "name1": "User",
+      "name2": "",
+      "chatId": "17958000000002",
+      "chatLength": 4
+    },
+    "generateError": null
+  },
+  "request": {
+    "type": "swipe",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Write Synthetic's next reply in a fictional chat between Synthetic and User."
+      },
+      {
+        "role": "system",
+        "content": "DESC-ALPHA first line\nDESC-ALPHA second line mentions User and Synthetic"
+      },
+      {
+        "role": "system",
+        "content": "PERS-BETA"
+      },
+      {
+        "role": "system",
+        "content": "SCEN-GAMMA"
+      },
+      {
+        "role": "system",
+        "content": "[Example Chat]"
+      },
+      {
+        "role": "system",
+        "content": "User: EXAMPLE-DELTA-user line",
+        "name": "example_user"
+      },
+      {
+        "role": "system",
+        "content": "Synthetic: EXAMPLE-DELTA-char line",
+        "name": "example_assistant"
+      },
+      {
+        "role": "system",
+        "content": "[Start a new group chat. Group members: Synthetic, SysPrompt]"
+      },
+      {
+        "role": "assistant",
+        "content": "Synthetic: FIRST-OMEGA"
+      },
+      {
+        "role": "assistant",
+        "content": "SysPrompt: FIRST-SYS"
+      },
+      {
+        "role": "assistant",
+        "content": "SysPrompt: ok"
+      },
+      {
+        "role": "system",
+        "content": "[Write the next reply only as Synthetic.]"
+      }
+    ],
+    "model": "gpt-4-turbo",
+    "temperature": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "top_p": 1,
+    "max_tokens": 300,
+    "stream": true,
+    "chat_completion_source": "openai",
+    "user_name": "User",
+    "char_name": "Synthetic",
+    "group_names": [
+      "Synthetic",
+      "SysPrompt"
+    ],
+    "include_reasoning": true,
+    "enable_web_search": false,
+    "request_images": false,
+    "request_image_resolution": "",
+    "request_image_aspect_ratio": "",
+    "custom_prompt_post_processing": ""
+  }
+}

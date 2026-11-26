@@ -84,10 +84,17 @@ public data class GroupContext(
    （那份里是 SysPrompt，和最后一条 `SysPrompt: ok` 一致）；请求最末尾还会多一条
    `[Continue your last message without repeating its original content.]`（在 group nudge 之后）。
    → 我们"继续 = 同一说话人再落一条"的设计成立。
-2. **群里的 swipe —— 半查实**（夹具 `P2-1-group-swipe`）：被替换的是最后一条
-   （`SysPrompt: ok ok`），但请求里的 `char_name` 是 **Synthetic** —— 和"翻谁的消息"对不上，
-   更像是"下一个该说话的人"。**这条还没想明白**，实现 swipe 之前要再录一份能明确区分
-   "谁的消息被翻"与"谁下一个说"的夹具（例如成员顺序/策略换成 manual，再点指定人翻）。
+2. **群里的 swipe —— 现象一致，但语义可疑**。两份夹具（`P2-1-group-swipe` pooled、
+   `P2-1-group-manual-swipe` manual）都是同一副样子：
+   - 被替换的是**最后一条**，说话人 `SysPrompt`；
+   - 但请求里 `char_name` = **Synthetic**，末尾 nudge 也是
+     `[Write the next reply only as Synthetic.]`。
+
+   两次都是"下一个该说话的人"，不是"被翻那条的说话人"。这有两种解释：
+   ① 原版 swipe 就是"以**下一位**的口吻重写这条"（怪的，但可能）；
+   ② 我们抓到的是**下一次生成**的请求（`--swipes` 的时序问题），并不是 swipe 本身。
+   **实现之前必须分清**：用 `--swipes 1 --dump-chat` 看原版内存里那条消息的 `name` 有没有被改写，
+   或去源码 `Generate('swipe')` 分支看它怎么定 speaker。**先别照抄 char_name**。
 3. **成员卡被删**：会话里的 `groupMembers` 会指向不存在的卡 —— 建议**只丢那一个成员**并提示，
    不要整条会话报废（单聊删卡连带删会话是另一条规矩，别混）。
 4. **群里的 `first_mes`**：建群时第一条是"每个人的开场白"还是"发起人的"？还没录 ——
