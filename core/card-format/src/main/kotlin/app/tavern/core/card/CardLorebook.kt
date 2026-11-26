@@ -50,6 +50,8 @@ public fun CharacterCard.lorebookEntries(): List<LorebookEntry> {
             selective = entry.bool("selective") ?: false,
             order = entry.int("insertion_order") ?: 100,
             position = LorebookPosition.fromValue(position),
+            // 原版卡里 outlet 名在 `extensions.outlet_name`（V2 映射时从 `outletName` 来）
+            outletName = extensions.string("outlet_name").orEmpty(),
             // 原版就是 !entry.enabled：缺字段等于关闭
             disabled = entry.bool("enabled") != true,
             probability = extensions.int("probability") ?: 100,

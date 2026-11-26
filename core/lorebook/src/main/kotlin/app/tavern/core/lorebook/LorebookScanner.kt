@@ -235,6 +235,7 @@ public class LorebookScanner(private val random: Random = Random.Default) {
         settings: LorebookScanSettings,
     ): LorebookScanResult {
         val before = mutableListOf<String>()
+        val outlets = linkedMapOf<String, MutableList<String>>()
         val after = mutableListOf<String>()
         val exampleTop = mutableListOf<String>()
         val exampleBottom = mutableListOf<String>()
@@ -265,7 +266,13 @@ public class LorebookScanner(private val random: Random = Random.Default) {
                         depthEntries += LorebookDepthEntry(depth, role, listOf(content))
                     }
                 }
-                LorebookPosition.Outlet -> Unit // 出口要别的扩展消费，本实现不注入
+                // 出口：不进系统提示，攒成 outletName → 正文，等 `{{outlet::名字}}` 来取
+                LorebookPosition.Outlet -> {
+                    val name = entry.outletName
+                    if (name.isNotBlank()) {
+                        outlets.getOrPut(name) { mutableListOf() }.add(content)
+                    }
+                }
             }
         }
 
@@ -277,6 +284,7 @@ public class LorebookScanner(private val random: Random = Random.Default) {
             exampleBottom = exampleBottom,
             authorNoteTop = authorNoteTop,
             authorNoteBottom = authorNoteBottom,
+            outletEntries = outlets.mapValues { it.value.toList() },
             activated = allActivated.values.toList(),
             state = timed.toState(),
         )

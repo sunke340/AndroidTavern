@@ -57,7 +57,22 @@ const AN_INTERVAL = arg('an-interval', null) ? Number(arg('an-interval')) : null
 const AN_POSITION = arg('an-position', null) ? Number(arg('an-position')) : null;
 // --forbid-overrides "main,jailbreak"：给预设里这几条提示词打上 `forbid_overrides`，
 // 让卡里的 system_prompt / post_history_instructions **顶不掉**预设正文（原版 openai.js:1498/1508）。
-const FORBID_OVERRIDES = arg('forbid-overrides', null)
+const FORBID_OVERRIDES = arg('forbid-overrides', null);
+// --copy-world <fixtures 里的书路径>：录之前把这本书放进原版的 worlds/ 目录，
+// 这样 `--select-world <书名>` 才有得挂（仓库里的书夹具原本不会出现在 vendor 里）。
+const COPY_WORLD = arg('copy-world', null);
+// --prompt-content '{"main":"…{{outlet::OUT}}…"}'：直接改原版预设里某几条提示词的正文，
+// 用来录"提示词里引用了某个宏/出口"这种夹具。
+const PROMPT_CONTENT = arg('prompt-content', null) ? JSON.parse(arg('prompt-content')) : null;
+
+if (COPY_WORLD) {
+    const src = path.resolve(ROOT, COPY_WORLD);
+    const name = path.basename(src);
+    const dir = path.join(ROOT, 'vendor/SillyTavern/data/default-user/worlds');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(src, path.join(dir, name));
+    console.log(`书已放进原版：worlds/${name}`);
+}
 
 // --swipes N：录**消息 swipe**（P0-6）。先正常生成一条，再对最后一条助手消息 swipe N 次。
 // 为什么要这一步：原版把"被换掉的那一条"存进 `swipes[]`、并把 `swipe_id` 指向当前这条；
@@ -117,7 +132,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole, anInterval, anPosition, forbidOverrides }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole, anInterval, anPosition, forbidOverrides, promptContent }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -187,6 +202,14 @@ try {
         // 作者注：**不能**直接塞 extension_prompts —— 原版每一轮由 authors-note 的
         // setFloatingPrompt() 按 chat_metadata（interval / position / depth / role）重算，
         // 直接赋值要么被覆盖、要么 interval 判定不通过（= 一条都不注入）。
+        if (promptContent) {
+            const OAI = await import('./scripts/openai.js');
+            for (const [id, text] of Object.entries(promptContent)) {
+                const prompt = OAI.promptManager?.getPromptById(id);
+                if (!prompt) throw new Error('没有这条提示词：' + id);
+                prompt.content = text;
+            }
+        }
         if (forbidOverrides) {
             // 这些提示词对象是 live 的（PromptManager 每轮按它组装），改了立刻生效
             const OAI = await import('./scripts/openai.js');
@@ -292,7 +315,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE, anInterval: AN_INTERVAL, anPosition: AN_POSITION, forbidOverrides: FORBID_OVERRIDES });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE, anInterval: AN_INTERVAL, anPosition: AN_POSITION, forbidOverrides: FORBID_OVERRIDES, promptContent: PROMPT_CONTENT });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);

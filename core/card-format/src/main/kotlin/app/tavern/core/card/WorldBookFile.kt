@@ -44,6 +44,7 @@ public fun parseWorldBook(name: String, json: String): WorldBookFile {
             selective = obj.bool("selective") ?: false,
             order = obj.int("order") ?: 100,
             position = LorebookPosition.fromValue(obj.int("position")),
+            outletName = obj.string("outletName").orEmpty(),
             disabled = obj.bool("disable") ?: false,
             probability = obj.int("probability") ?: 100,
             useProbability = obj.bool("useProbability") ?: true,

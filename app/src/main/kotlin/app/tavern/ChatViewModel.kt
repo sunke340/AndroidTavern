@@ -3131,6 +3131,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         authorNote = snapshot.effectiveAuthorNote,
                         // 预设里打了 forbid_overrides 的段：卡里的 system_prompt 顶不掉它
                         forbidOverrideIds = snapshot.presetForbidOverrides,
+                        // 世界书 outlet：`{{outlet::名字}}` 的取值表
+                        outlets = scan.outletEntries,
                     )
                     // 继续：原版在 messages 末尾追加一条固定的 system 提示（不是我们发明的措辞）
                     scan to if (continuation) built + continueHint else built

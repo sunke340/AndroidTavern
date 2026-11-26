@@ -54,6 +54,11 @@ public class PromptBuilder {
          * 来自预设里每条提示词的 `forbid_overrides`（夹具 `P0-5-forbid-overrides`）。
          */
         forbidOverrideIds: Set<String> = emptySet(),
+        /**
+         * 出口条目（世界书 `position = outlet`）：`{{outlet::名字}}` 会被替换成这些正文，
+         * `\n` 分隔。原版这一条走 `macros.js` 的 `{{outlet::(.+?)}}`（夹具 `P1-3-outlet`）。
+         */
+        outlets: Map<String, List<String>> = emptyMap(),
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         val charName = character.name
@@ -75,12 +80,12 @@ public class PromptBuilder {
                     }
                     val content = override.ifBlank { prompts[entry.identifier].orEmpty() }
                     if (content.isBlank()) continue
-                    messages += system(substitute(content, charName, userName))
+                    messages += system(substitute(content, charName, userName, outlets))
                 }
 
                 Id.PERSONA_DESCRIPTION ->
                     if (personaDescription.isNotBlank()) {
-                        messages += system(substitute(personaDescription, charName, userName))
+                        messages += system(substitute(personaDescription, charName, userName, outlets))
                     }
 
                 Id.WORLD_INFO_BEFORE ->
@@ -88,21 +93,21 @@ public class PromptBuilder {
 
                 Id.CHAR_DESCRIPTION ->
                     if (character.description.isNotBlank()) {
-                        messages += system(substitute(character.description, charName, userName))
+                        messages += system(substitute(character.description, charName, userName, outlets))
                     }
 
                 Id.CHAR_PERSONALITY ->
                     if (character.personality.isNotBlank()) {
                         val formatted = SillyTavernDefaults.PERSONALITY_FORMAT
                             .replace("{{personality}}", character.personality)
-                        messages += system(substitute(formatted, charName, userName))
+                        messages += system(substitute(formatted, charName, userName, outlets))
                     }
 
                 Id.SCENARIO ->
                     if (character.scenario.isNotBlank()) {
                         val formatted = SillyTavernDefaults.SCENARIO_FORMAT
                             .replace("{{scenario}}", character.scenario)
-                        messages += system(substitute(formatted, charName, userName))
+                        messages += system(substitute(formatted, charName, userName, outlets))
                     }
 
                 Id.WORLD_INFO_AFTER ->
@@ -134,7 +139,7 @@ public class PromptBuilder {
                                 blockStart + offset,
                                 ChatMessage(
                                     role = note.role,
-                                    content = substitute(note.text, charName, userName),
+                                    content = substitute(note.text, charName, userName, outlets),
                                 ),
                             )
                         }
@@ -167,12 +172,26 @@ public class PromptBuilder {
      * `{{charIfNotGroup}}` 对单人卡就等于 `{{char}}`（群聊还没做）；预设里的 main 模板用的就是它。
      * CRLF 那条不是可选项：默认卡里描述是 CRLF，原版发出去的是 LF —— 已在夹具 diff 里逐字确认。
      */
-    private fun substitute(text: String, characterName: String, userName: String): String =
-        text
+    private fun substitute(
+        text: String,
+        characterName: String,
+        userName: String,
+        outlets: Map<String, List<String>> = emptyMap(),
+    ): String {
+        var out = text
             .replace("{{charIfNotGroup}}", characterName)
             .replace("{{char}}", characterName)
             .replace("{{user}}", userName)
             .replace("\r", "")
+        // 出口：`{{outlet::名字}}` → 该出口激活的正文（`\n` 拼接）。原版在 macros.js 里做同一件事。
+        // 原版对"没激活的出口"也是替换成空串（`getOutletPrompt(key) || ''`），所以这里不判 outlets 是否为空
+        if (out.contains("{{outlet::")) {
+            out = Regex("\\{\\{outlet::(.+?)\\}\\}").replace(out) { match ->
+                outlets[match.groupValues[1].trim()]?.joinToString("\n").orEmpty()
+            }
+        }
+        return out
+    }
 
     /** `prompt_order` 里用到的 identifier。出处见原版 `PromptManager.js` 的默认提示词表。 */
     private object Id {

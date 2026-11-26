@@ -81,6 +81,12 @@ public class LorebookEntry(
     /** 插入序号，越大越靠前（原版 `sortFn = (a,b) => b.order - a.order`，`world-info.js:88`）。 */
     public val order: Int = 100,
     public val position: LorebookPosition = LorebookPosition.BeforeChar,
+    /**
+     * 出口名（`outletName` / 卡里的 `extensions.outlet_name`）。只在 [LorebookPosition.Outlet] 时有意义：
+     * 这些条目不会直接进系统提示，而是被 `{{outlet::名字}}` 宏取走（原版 `world-info.js` 的
+     * `WIOutletEntries` + `macros.js` 的 `{{outlet::(.+?)}}`）。
+     */
+    public val outletName: String = "",
     /** 原版叫 `disable`，卡文件叫 `enabled`（取反）。 */
     public val disabled: Boolean = false,
     public val probability: Int = 100,

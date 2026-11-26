@@ -1,0 +1,36 @@
+{
+  "entries": {
+    "0": {
+      "key": [],
+      "keysecondary": [],
+      "comment": "outlet alpha",
+      "content": "OUTLET-ALPHA 这段是出口内容。",
+      "constant": true,
+      "selective": true,
+      "order": 100,
+      "position": 7,
+      "outletName": "OUT",
+      "disable": false,
+      "addMemo": true,
+      "group": "",
+      "groupOverride": false,
+      "groupWeight": 100,
+      "sticky": 0,
+      "cooldown": 0,
+      "delay": 0,
+      "probability": 100,
+      "useProbability": true,
+      "role": null,
+      "vectorized": false,
+      "excludeRecursion": false,
+      "preventRecursion": false,
+      "delayUntilRecursion": false,
+      "scanDepth": null,
+      "caseSensitive": null,
+      "matchWholeWords": null,
+      "useGroupScoring": null,
+      "automationId": "",
+      "uid": 0
+    }
+  }
+}

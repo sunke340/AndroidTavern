@@ -41,6 +41,11 @@ public class LorebookScanResult(
     public val exampleBottom: List<String> = emptyList(),
     public val authorNoteTop: List<String> = emptyList(),
     public val authorNoteBottom: List<String> = emptyList(),
+    /**
+     * 出口条目：`outletName` → 正文列表（按激活顺序，`\n` 拼在取用时做）。
+     * 它们**不进系统提示**，只被 `{{outlet::名字}}` 宏取走（原版 `WIOutletEntries`）。
+     */
+    public val outletEntries: Map<String, List<String>> = emptyMap(),
     /** 本轮真正进了提示词的条目，按激活顺序。 */
     public val activated: List<LorebookEntry> = emptyList(),
     /** 更新后的计时状态，下一轮要原样传回来。 */
