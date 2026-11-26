@@ -49,6 +49,47 @@
 `COMPLETION=1`（不加，走 completion 模式）。预设默认是 `DEFAULT`。
 证据：源码 `openai.js` 的 `character_names_behavior` 与 595–611 行；单聊夹具里没有前缀即为 DEFAULT 的表现。
 
+### 人设描述：`prompt_order` 里的一格，不是"拼进 main"
+
+人设描述（`power_user.persona_description`，默认位置 `IN_PROMPT`）是**独立的一条 system 消息**，
+位置由 `prompt_order` 的 `personaDescription` 决定 —— 默认预设里在 `worldInfoBefore` 之后、
+`charDescription` 之前。`{{user}}` 展开成人设名。
+证据：`P1-8-persona-prompt` [1]；源码 `openai.js:1433`。
+
+**顺带一个坑**：原版 `Default.json` 有**两张** `prompt_order`：`character_id = 100000`（文本补全）
+与 `100001`（聊天补全，多了 `personaDescription`）。我们走 100001（`openai.js` 的 `dummyId: 100001`）。
+
+### 作者注：一条按间隔插进历史的文本
+
+`ANWithWI = ANTop.join("\n") + "\n" + 正文 + "\n" + ANBottom.join("\n")`，只削掉**首尾各一个**换行
+（不是 trim —— 正文为空时中间的空行会留下）；然后按 `interval` 决定插不插：
+`interval = 1` 是特判（每轮都插，连一句用户消息都没有也插），否则 `用户消息数 % interval == 0`。
+插进历史时深度 = 「它后面正好留几条消息」，最少退到 `[Start a new Chat]` 之后。
+位置三档：`IN_PROMPT`（紧跟主提示词，`P1-7-an-pos-0`）、`IN_CHAT`（`P1-7-an-depth-2`）、
+`BEFORE_PROMPT`（主提示词之前，`P1-7-an-pos-2`）。
+证据：`P1-7-an-prompt` / `-depth-2` / `-with-wi` / `-pos-0` / `-pos-2`；源码 `world-info.js:5270`、`authors-note.js:324`。
+
+### 示例对话也能被世界书插：EMTop / EMBottom
+
+`position = 5 / 6` 的世界书条目并进「示例对话」块：**每一块（世界书每条 + 卡自己的 `mes_example`）
+都自带一个 `[Example Chat]`**，顶部在卡示例之前、底部在之后。内容同样过 `parseMesExamples`
+（以 `<START>` 分段并剥名字前缀）—— 没写 `<START>` 的单段内容会被整段丢掉（我第一次录出来就是三个空标记）。
+证据：`P1-3-example-injection`；源码 `script.js:4639`。
+
+### 出口（outlet）：`{{outlet::名字}}` 宏
+
+`position = 7` 的条目收进 `WIOutletEntries`，以 `extension_prompt_types.NONE` 挂成扩展提示词 ——
+**永远不会自己出现在系统提示里**，只被 `{{outlet::名字}}` 宏取走（`getOutletPrompt(key) || ''`，
+没激活时替换成空串，宏本身不留）。
+证据：`P1-3-outlet`；源码 `world-info.js:5249`、`macros.js:668`。
+
+### `forbid_overrides`：逐条提示词的旗标
+
+预设里某条提示词带 `forbid_overrides: true` 时，**卡里的 `system_prompt` / `post_history_instructions`
+不许顶掉它**（判定是 `!== true`，所以没写 / false 都算"可以被顶掉"）。
+证据：`P0-5-sysprompt`（没旗标，卡里的顶掉了）vs `P0-5-forbid-overrides`（打旗标后回落到预设正文；
+jailbreak 在默认预设里是空串，于是整条消息消失）；源码 `openai.js:1498/1508`。
+
 ---
 
 ## 角色卡文件
