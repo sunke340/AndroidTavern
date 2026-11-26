@@ -95,7 +95,8 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | **当前状态与下一步** | [docs/dev/status.md](docs/dev/status.md)（**只写现状，每次整篇重写**；不是规则，别当硬性要求引用） |
 | 可复用资源盘点、目录分层、分轮整理计划 | [docs/dev/structure-audit.md](docs/dev/structure-audit.md) |
 | **架构审计（2026-11-26，只读）**：实际架构模式、职责边界、God Class/并发/安全/技术债清单 | [docs/dev/architecture-audit.md](docs/dev/architecture-audit.md) |
-| **聊天列表动画/消息生命周期：代码级审查 + 重构方案（2026-11-26 午后重写，等拍板）** | [docs/plan-chat-list-flash.md](docs/plan-chat-list-flash.md) |
+| **聊天列表动画/消息生命周期：代码级审查 + 重构方案（2026-11-26，等拍板）** | [docs/plan-chat-list-flash.md](docs/plan-chat-list-flash.md) |
+| **聊天列表重构：第二轮技术审查（5 处修订，以此为准）** | [docs/plan-chat-list-flash-r2.md](docs/plan-chat-list-flash-r2.md) |
 | **UI 地图与词表**（用户怎么叫、代码叫什么；对不上就问，不猜） | [docs/ui-map.md](docs/ui-map.md) |
 | **UI 不变量规格**（必须成立什么 + 三批防回归计划；脚本管结构、清单管观感） | [docs/ui-invariants.md](docs/ui-invariants.md) |
 | **历史踩坑与细节**（为什么是这个数字、试过哪几条路） | [docs/dev/pitfalls.md](docs/dev/pitfalls.md) |

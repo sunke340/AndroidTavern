@@ -1,5 +1,11 @@
 # 聊天列表的动画与消息生命周期：架构审查与重构方案（2026-11-26 午后版）
 
+> ⚠️ **第二轮审查已完成：[plan-chat-list-flash-r2.md](plan-chat-list-flash-r2.md)**。
+> 本页的根因分析与模型仍然成立，但 **5 处以 r2 为准**：①`uiKey` 的命名与 K1–K5 不变量（本页 §6.2）；
+> ②`inflight` 增加 `roundId`/`sessionId`（本页 §6.2）；③回底方式分档（本页 §5.4）；
+> ④实施批次改为 **P0 数据一致性 → P1 → P2 → P3 → P4**（本页 §8 少了 P0）；
+> ⑤新增一条根因：**插入本身会把 `atBottom` 翻成 false**（本页 §2.2 没有，见 r2 §6.2）。
+
 > 状态：**审查完成、仍等拍板，未开工**。本页是**重写**，不是叠加：
 > 上午版基于"真机现象 + 局部代码"做的推断，午后这一版逐行核对了
 > `ChatScreen.kt`（1623 行）、`ChatViewModel.kt`（3384 行）、`SqliteChatRepository` / `TavernDatabase`、

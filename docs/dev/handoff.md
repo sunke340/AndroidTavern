@@ -2,7 +2,8 @@
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
-> **聊天列表闪烁的诊断与改造方案（当前主线）→ [plan-chat-list-flash.md](../plan-chat-list-flash.md)**；
+> **聊天列表闪烁的诊断与改造方案（当前主线）→ [plan-chat-list-flash.md](../plan-chat-list-flash.md)
+> + 第二轮技术审查（**5 处修订、以它为准**）→ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)**；
 > 需求批口径 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md) / [plan-req-2026-11-26.md](../plan-req-2026-11-26.md)；
 > 词表 → [ui-map.md](../ui-map.md)；必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
 > 真机验证 → [verification/](verification/)（**一批一个文件**，索引在 README）；
@@ -15,8 +16,9 @@
 - **代码基线**：`8c5c5d9`（v164：新消息回底 + 落库不跳）。
 - **真机跑到**：v164。用户回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
   继续长消息闪**仍未解决 —— 已确认是**结构性**问题。**2026-11-26 午后已按代码逐行重审**，
-  方案在 [plan-chat-list-flash.md](../plan-chat-list-flash.md)（**重写版**：身份键 + `inflight` 单例 +
-  占位行 + 就地替换 + 四批实施）。**仍是"等两个决策点拍板"，不要直接开工、也不要再叠补丁。**
+  方案在 [plan-chat-list-flash.md](../plan-chat-list-flash.md)（重写版）+ [plan-chat-list-flash-r2.md](../plan-chat-list-flash-r2.md)
+  （**二轮审查：`uiKey` 不变量 / `roundId` / 先出 P0 数据一致性 / 回底分档**）。
+  **P0 是数据 bug（会丢回复、会删用户的提问），可以不等拍板先修；P1 起仍要拍板。**
 - **在做的活**：2026-11-25 的 16 条需求（A/B/C 确认、D 待验、**E/F 未开工**）+
   2026-11-26 的七条（已出 v160）+ 聊天列表结构性改造（等拍板）。
 - **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；能复用先复用；
