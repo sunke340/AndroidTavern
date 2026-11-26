@@ -47,7 +47,7 @@
 | P1-4 | 世界书 token 预算与裁剪顺序 | 🟨 | fixture:P1-4-budget（5% 预算，6 条等长条目只进 3 条）。预算用的是"当一条消息算"的 token（裸计数 + 6），见 P1-6 | 同上 |
 | P1-5 | 预设（采样参数子集）与 prompt_order 编辑 | ✅ | 解析 + 顺序 + 界面都做完：`fixture:P1-5-prompt-order`（原版用改过的顺序表实发）逐条相等；`PresetParser` 对 vendor `Default.json` 反向核对；设置→预设：导入/选择/删除，长按→编辑进二级页做顺序开关 + **长按拖动换位**（松手落盘）、恢复原顺序；拼提示词带 order/prompts，请求带 top_p 与两个 penalty。**不做**：逐角色顺序（只做全局那条）、提示词正文编辑（手机上改长文本不如在 PC 版改）。`forbid_overrides`（预设里每条提示词上的旗标：打了就**不许**被卡里的 system_prompt / post_history_instructions 顶掉）**已做**，夹具 `P0-5-forbid-overrides` | `default/content/presets/openai/Default.json`、`public/scripts/PromptManager.js` |
 | P1-6 | Token 计数（cl100k / o200k）与上下文裁剪 | 🟨 | fixture:P1-6-tokens（原版页面里调 `getTokenCountAsync()` 录的 10 条计数，逐条相等）。Claude/Llama 等 sentencepiece 词表未接，回落 cl100k；上下文裁剪未做 | `public/scripts/tokenizers.js`、`src/endpoints/tokenizers.js` |
-| P1-7 | 作者注（深度注入、role、间隔） | 🟨 | fixture:P1-7-an-prompt / P1-7-an-depth-2（2026-11-27 录）。规则：**插进聊天历史**而不是系统提示固定一段；深度 = 「它后面正好留几条消息」（块长 − 深度，最少退到 `[Start a new Chat]` 之后）；`interval = 1` 是原版特判（每轮都插，连一句用户消息都没有也插），否则 `用户消息数 % interval == 0` 才插；role 三选一。界面在会话配置 →「作者注」。**未做**：`IN_PROMPT` / `BEFORE_PROMPT` 两种位置、参与世界书扫描（`allowWIScan`）、按角色的 AN（character notes） | `public/scripts/authors-note.js` |
+| P1-7 | 作者注（深度注入、role、间隔） | 🟨 | fixture:P1-7-an-prompt / P1-7-an-depth-2（2026-11-27 录）。规则：**插进聊天历史**而不是系统提示固定一段；深度 = 「它后面正好留几条消息」（块长 − 深度，最少退到 `[Start a new Chat]` 之后）；`interval = 1` 是原版特判（每轮都插，连一句用户消息都没有也插），否则 `用户消息数 % interval == 0` 才插；role 三选一。界面在会话配置 →「作者注」。位置三档都做了（`IN_PROMPT` 紧跟主提示词 / `IN_CHAT` 默认 / `BEFORE_PROMPT` 在主提示词之前，夹具 `P1-7-an-pos-0` `-pos-2`）。**未做**：参与世界书扫描（`allowWIScan`）、按角色的 AN（character notes） | `public/scripts/authors-note.js` |
 | P1-8 | 人设 / 用户名 / 名称宏 | 🟨 | fixture:P1-8-persona-prompt（2026-11-27 录：人设描述是**一条独立的 system 消息**，位置由 `prompt_order` 的 `personaDescription` 决定 —— 默认预设里在 `worldInfoBefore` 之后、`charDescription` 之前；`{{user}}` 展开成人设名）。多人设 + 三级（会话 > 卡 > 全局默认），设置 → 人设；描述为空时那一段不发。**未做**：人设头像、按角色锁定人设（原版 `locked.character`） | `public/scripts/personas.js`、`openai.js` |
 | P1-9 | 聊天导入导出（含群聊），与 PC 版互转 | ⬜ | fixture:P1-9-io | `src/endpoints/chats.js` |
 | P1-12 | 消息显示格式：Markdown 强调 + 包裹标签清洗 | ✅ | **只影响显示**（存档/导出/请求/提示词都是原文）。两组**只读内置正则**（设置→正则「内置」，可关，关掉=原文）：① 白名单包裹标签（`</content>` / `<output>` / `<response>` / `<message>` / `<text>` / `<answer>`）；② 强调：`**粗**` / `*斜*` / `_斜_`。强调语义用 fixture:P1-12-inline-markup 对齐（同一文本先过原版 `showdown` + `showdown-underscore` 渲染，再比 `<em>`/`<strong>`/`<br>` 的位置）。渲染只认 `<i> <em> <b> <strong> <br>`，其他标签原样显示；不渲染列表/标题等完整 Markdown | `public/script.js`（messageFormatting）、`public/scripts/showdown-underscore.js` |
@@ -59,8 +59,8 @@
 |---|---|---|---|
 | P2-1 | 群聊（natural / list / manual / pool 激活策略） | ⬜ | **夹具已录**（2026-11-27：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`，**四种激活策略各一份**（四份请求形状一致，只有说话人不同），形状见 original-behavior「群聊」）；**提示词组装已完成**（`PromptBuilder.build(group = GroupContext(members, speaker))`，两份夹具断言）；**其余未动** —— 数据模型（一条会话多张卡）、历史里的 `名字: ` 前缀、末尾 `[Write the next reply only as X.]` 都还没有 |
 | P2-2 | 后台生成 + 通知（前台服务，Android 14 限制） | ⬜ | 手工 |
-| P2-3 | 系统 TTS 朗读 / 语音输入 | 🟨 | 朗读已做：气泡底下动作行第一颗「朗读」（再点一次停），走系统 `TextToSpeech`，不引引擎、不联网、不要权限；离场即 `shutdown()`。**未做**：语音输入（要 `RECORD_AUDIO` + 权限流程，必须真机验）、朗读音色/语速设置 | 手工 |
-| P2-4 | 分享菜单收卡、图片长按保存、桌面小组件 | 🟨 | **收卡已做**：`ACTION_SEND`（image/* + zip）→ `SharedIntake` 一次性交接 → 走正常的导入链路（导完进角色详情）。冷启动与 `onNewIntent` 两条路都接。**未做**：图片长按保存、桌面小组件 | 手工 |
+| P2-3 | 系统 TTS 朗读 / 语音输入 | 🟨 | 朗读已做：气泡底下动作行第一颗「朗读」（再点一次停），走系统 `TextToSpeech`，不引引擎、不联网、不要权限；离场即 `shutdown()`。语音输入也做了：聊天页 ⋮ →「语音输入」，走系统识别器（`RecognizerIntent`），**不要麦克风权限、不动输入区版式**。**未做**：朗读音色/语速设置 | 手工 |
+| P2-4 | 分享菜单收卡、图片长按保存、桌面小组件 | 🟨 | **收卡已做**：`ACTION_SEND`（image/* + zip）→ `SharedIntake` 一次性交接 → 走正常的导入链路（导完进角色详情）。冷启动与 `onNewIntent` 两条路都接。保存卡图也做了：卡详情 ⋮ →「保存卡图」（MediaStore；29+ 不要权限，26–28 按需申请）。**未做**：桌面小组件 | 手工 |
 | P2-5 | 本地离线模型（llama.cpp JNI，4B 4bit） | ⬜ | 手工 |
 
 ## P3 · 明确不做
