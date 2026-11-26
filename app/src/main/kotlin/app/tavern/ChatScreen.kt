@@ -238,9 +238,19 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 观感就是"掉到输入框下面、不会自动滚到底部"（用户 2026-11-26 报的）。
     // 所以贴底时显式回 index 0；自己发的那条无论如何都回底（发了就该看见），
     // 而读历史时到达的回复不动阅读位置。
-    LaunchedEffect(state.rows.size) {
+    // 新一轮 / 新消息进列表：列表用了稳定 key，插到头部时会**锚住原来那条**，新气泡于是停在
+    // 视口外（"掉到输入框下面"）。所以由我们自己回底，并且分档：
+    //   - 贴底附近（第一可见项 ≤ 2 且没滚进气泡）→ **瞬时**对齐：距离只有一行，动画反而多一次倒手；
+    //   - 正在读更早的消息 → **动画**滑回去（用户按了发送/继续/重新生成，就该看见结果）。
+    // 判据用"第一可见项 ≤ 2 && offset == 0"而不是"插入前 atBottom"：插入本身会把 atBottom 翻成
+    // false，而这两个数在"插入前"与"插入后"两种时序下结论一致（插入在最前面的只有 1–2 行）。
+    LaunchedEffect(state.rows.size, state.inflight?.roundId) {
         val mine = state.rows.lastOrNull()?.role == ChatRole.User
-        if (atBottom || mine) listState.scrollToItem(0)
+        val roundStarted = state.inflight != null
+        if (!mine && !roundStarted && !atBottom) return@LaunchedEffect
+        val near = listState.firstVisibleItemIndex <= 2 &&
+            listState.firstVisibleItemScrollOffset == 0
+        if (near) listState.scrollToItem(0) else listState.animateScrollToItem(0)
     }
 
     // 串流气泡永远显示最新文本：冻结已撤掉（用户 2026-11-24 晚：卡住的观感不是我要的）。
@@ -260,8 +270,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 串流气泡的高度：量出来以后用**一条动画去追它**，追不上差多少就往下平移多少。
     // 于是每换一行是"滑"上去的，而不是"啪"地跳一行（用户 2026-11-24）。
     // 旧写法是"每次长高就把补偿加上去、再收回"，文字到得快时补偿越积越多 → 画面抽搐。
-    var streamHeight by remember { mutableIntStateOf(0) }
-    val smoothHeight = remember { Animatable(0f) }
+    // 测量状态按**轮**分开（`remember(roundId)`）：新一轮天然从 0 开始，
+    // 就不需要"进流时清零"—— 那个清零会和同一帧的首次测量打架（先测到 48dp、再被清成 0，
+    // 于是平滑高度永远追 0，整轮都不跟底）。现在占位气泡与 isStreaming 同帧出现，这条更要紧。
+    val roundKey = state.inflight?.roundId
+    var streamHeight by remember(roundKey) { mutableIntStateOf(0) }
+    val smoothHeight = remember(roundKey) { Animatable(0f) }
     LaunchedEffect(streamHeight) {
         val target = streamHeight.toFloat()
         // 气泡刚出现的那一次不产生位移：直接对齐（否则会从半空滑下来）
@@ -286,7 +300,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     //
     // 布局与滚动仍是两趟：差量这一帧先由 translationY 抹平，等补偿落地时两边同时归零
     // （恒等于原位置）—— 所以既不是用绘制位移长期掩盖布局，也不会闪。
-    var anchoredHeight by remember { mutableIntStateOf(0) }
+    var anchoredHeight by remember(roundKey) { mutableIntStateOf(0) }
     val streamProbe = remember { StreamProbe() }
     val anchorDiag = remember { AnchorDiag() }
     // 贴底那套"追高欠账"（`平滑差`）是**绘制量**，只在贴底时起作用。跨边界时它会凭空丢掉
@@ -367,16 +381,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
     }
 
-    // 新一轮串流 / 换会话：高度归零，下一轮气泡重新量；上一轮收尾时把补偿总量写进日志
-    LaunchedEffect(state.isStreaming, state.sessionId) {
-        if (state.isStreaming) {
-            streamHeight = 0
-            smoothHeight.snapTo(0f)
-            anchoredHeight = 0
-            anchorDiag.reset()
-        } else {
-            anchorDiag.finish()
-        }
+    // 上一轮收尾把补偿总量写进日志（高度不再清零：它随 `remember(roundKey)` 换新的一套）
+    LaunchedEffect(roundKey) {
+        if (roundKey == null) anchorDiag.finish() else anchorDiag.reset()
     }
     // 显示用的脚本 = 生效中的用户脚本 + 没关掉的内置规则（清包裹标签 / 动作强调）。
     // 只走显示：存档、导出、看请求、发给模型的提示词都是原文（用户 2026-11-25 定的方案）。
@@ -490,10 +497,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 只在"打开时键盘还在"才冻：那种情况下收键盘会让让位整块消失。
         // 键盘本来就没开（输入区是一行）时，打开抽屉什么都没变 —— 冻住反而会把"收起后键盘回来"
         // 那一段变成延迟的硬跳，不如让它跟着键盘自然长。
-        val imeVisibleNow = WindowInsets.ime.getBottom(density) > 0
+        // 键盘可见性**不要**在这里读成 composition 依赖：那样整个 content lambda 会在
+        // 键盘动画期间每帧重组（连带重建 LazyColumn 的 DSL）。只在真要判断时读一次。
         LaunchedEffect(sheetOpen) {
             if (sheetOpen) {
-                if (imeVisibleNow) {
+                if (WindowInsets.ime.getBottom(density) > 0) {
                     frozenListBottom = liveListBottom
                     AppLog.i("ui", "抽屉打开：冻结列表底部让位 ${liveListBottom.value.toInt()}dp")
                 }
@@ -520,7 +528,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 落库那一帧只是数据变化 —— 不删条目、不建条目、不重播淡入、不重排长文本。
         val inflightNow = state.inflight
         val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
-            if (inflightNow == null || inflightNow.text.isEmpty()) state.rows
+            // 占位行与用户行在**同一次状态更新**里出现（生成行一直在这里合成，正文可能还是空）：
+            // 列表只插入一次，反排列表的 atBottom 也只翻一次 —— 这是"发送时历史不闪"的前提。
+            if (inflightNow == null) state.rows
             else state.rows + ChatViewModel.ChatRow(
                 uiKey = inflightNow.uiKey,
                 role = ChatRole.Assistant,
@@ -619,11 +629,19 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     // 最后一条助手消息有多个 swipe 时，气泡下面挂一条 ‹ 2/3 ›（和开场白那条同款）
                     val showSwipeBar = !state.isStreaming && !isGreetingMessage &&
                         isLast && isAssistant && state.lastSwipes.size > 1
+                    // 还没吐字 → 占位气泡（`生成中` / `重新生成中` + 呼吸点）；
+                    // 吐了字就退回正文 + 光标。两者都在**同一行、同一个 item** 里换内容。
+                    val pendingKind = when {
+                        !isInflightRow || row.content.isNotEmpty() -> null
+                        inflightNow?.targetDbId != null -> PendingKind.Regenerating
+                        else -> PendingKind.Generating
+                    }
                     Column(modifier = itemAnim.fillMaxWidth()) {
                         MessageRow(
                             message = ChatMessage(row.role, row.content),
                             style = state.effectiveMessageStyle,
-                            showCursor = isInflightRow,
+                            showCursor = isInflightRow && pendingKind == null,
+                            pending = pendingKind,
                             displayText = displayText,
                             fontSizeSp = state.effectiveBubbleFontSize,
                             // 量气泡高度（贴底跟随与锚点补偿都靠它），顺带记一下上沿在窗口里的 Y：
@@ -1115,13 +1133,15 @@ private fun MessageRow(
     style: MessageStyle,
     modifier: Modifier = Modifier,
     showCursor: Boolean = false,
+    /** 非 null = 这一条还没吐字，气泡里显示占位行（见 [PendingLine]）。 */
+    pending: PendingKind? = null,
     displayText: (String) -> String = { it },
     /** 气泡正文的字号（sp）：三级继承的生效值，只有聊天页气泡用它。 */
     fontSizeSp: Float = DefaultBubbleFontSize,
 ) {
     when (style) {
-        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, displayText, fontSizeSp)
-        MessageStyle.Card -> CardRow(message, modifier, showCursor, displayText, fontSizeSp)
+        MessageStyle.Bubble -> BubbleRow(message, modifier, showCursor, pending, displayText, fontSizeSp)
+        MessageStyle.Card -> CardRow(message, modifier, showCursor, pending, displayText, fontSizeSp)
     }
 }
 
@@ -1339,6 +1359,7 @@ private fun BubbleRow(
     message: ChatMessage,
     modifier: Modifier,
     showCursor: Boolean,
+    pending: PendingKind?,
     displayText: (String) -> String,
     fontSizeSp: Float,
 ) {
@@ -1363,15 +1384,20 @@ private fun BubbleRow(
                 border = if (isUser) null else BorderStroke(1.dp, palette.cardBorder),
             ) {
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
-                    // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
-                    SelectionContainer {
-                        Text(
-                            markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
-                            // 只改字号：行高跟着字号走，气泡自己会跟着长高
-                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
-                        )
+                    if (pending != null) {
+                        // 还没吐字：占位行（不可选字 —— 没有正文可选）
+                        PendingLine(kind = pending, fontSizeSp = fontSizeSp)
+                    } else {
+                        // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
+                        SelectionContainer {
+                            Text(
+                                markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
+                                // 只改字号：行高跟着字号走，气泡自己会跟着长高
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
+                            )
+                        }
+                        if (showCursor) StreamingCursor()
                     }
-                    if (showCursor) StreamingCursor()
                 }
             }
         }
@@ -1384,6 +1410,7 @@ private fun CardRow(
     message: ChatMessage,
     modifier: Modifier,
     showCursor: Boolean,
+    pending: PendingKind?,
     displayText: (String) -> String,
     fontSizeSp: Float,
 ) {
@@ -1402,13 +1429,17 @@ private fun CardRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row {
-                SelectionContainer {
-                    Text(
-                        markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
-                    )
+                if (pending != null) {
+                    PendingLine(kind = pending, fontSizeSp = fontSizeSp)
+                } else {
+                    SelectionContainer {
+                        Text(
+                            markupText(displayText(message.content), MaterialTheme.colorScheme.primary),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSizeSp.sp),
+                        )
+                    }
+                    if (showCursor) StreamingCursor()
                 }
-                if (showCursor) StreamingCursor()
             }
         }
     }

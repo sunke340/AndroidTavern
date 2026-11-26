@@ -70,7 +70,7 @@ core = [
     'GlassDetailScaffold', 'DetailHeaderMode', 'contentSpacing', 'headerScrim', 'HeaderScrimAlpha',
     'LiquidGlassSpec', 'GlassSurface', 'CapsuleIcon',
     'MessagePanel', 'MessageActionRow', 'SendStopButton', 'ModelButton', 'ChatInputBar',
-    'StreamingCursor', 'NoFocusScrollSpec',
+    'StreamingCursor', 'NoFocusScrollSpec', 'PendingLine', 'TypingDots',
     'ListRow', 'ListGroup', 'GroupPiece', 'RowAvatar', 'SettingLinkRow',
     'WorldBookEntryRow', 'ActiveMark', 'SegmentedRow', 'SectionLabel',
     'PrimaryAction', 'SecondaryAction', 'EmptyHint',
