@@ -32,4 +32,8 @@ dependencies {
 
     // 暂时没有额外依赖：SAF 读流、SharedPreferences、File 都是平台的。
     // 加 Room/DataStore 时再在这里加，别提前引入。
+
+    // 本机没有 Android SDK，`./gradlew :data:testDebugUnitTest` 只能在 CI 跑；
+    // 所以这里只放**不碰 Android API** 的纯逻辑测试（例如 ConfigOverride 的值语义）。
+    testImplementation("junit:junit:4.13.2")
 }
