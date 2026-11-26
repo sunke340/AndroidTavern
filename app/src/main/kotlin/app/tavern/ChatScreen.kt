@@ -71,6 +71,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -1767,8 +1768,6 @@ private fun MessageActionIcon(
     }
 }
 
-/** 「复制」字形：两张错开的圆角纸（core 里没有 ContentCopy）。 */
-@Composable
 /** 喇叭（朗读）。`speaking` 时在右下方画一个小方块 = 停止，和系统播放器的语感一致。 */
 @Composable
 private fun SpeakGlyph(tint: Color, speaking: Boolean) {
@@ -1805,6 +1804,8 @@ private fun SpeakGlyph(tint: Color, speaking: Boolean) {
     }
 }
 
+/** 「复制」字形：两张错开的圆角纸（core 里没有 ContentCopy）。 */
+@Composable
 private fun CopyGlyph(tint: Color) {
     Canvas(Modifier.size(18.dp)) {
         val w = size.width
