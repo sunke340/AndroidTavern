@@ -138,6 +138,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.countCodePointsIncrementally
+import app.tavern.core.model.RevealPacer
 import app.tavern.core.model.takeCodePoints
 import app.tavern.core.model.ChatRole
 import app.tavern.data.log.AppLog
@@ -364,16 +365,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         while (true) {
             val now = withFrameNanos { it }
             if (revealKey != myKey) break
-            if (reveal.lastTickNanos == 0L) {
+            if (reveal.pacer.needsBaseline()) {
                 // 第一帧只用来立基准：游标是刚建的，没有任何"已经等太久"这回事
-                reveal.lastTickNanos = now
-                reveal.lastAdvanceNanos = now
+                reveal.pacer.markBaseline(now)
                 continue
             }
             val st = latest.value
             // 收缩窗口期：布局正被动画改（r2 §13.1 C3），这段时间**禁止推进**
             if (st.collapse != null) {
-                reveal.lastTickNanos = now
+                reveal.pacer.idle(now)
                 continue
             }
             if (st.revealSpeed == RevealSpeed.Off) {
@@ -426,43 +426,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 clearReveal("已完成")
                 break
             }
-            // ③ 推进
-            val rawDt = now - reveal.lastTickNanos
-            reveal.lastTickNanos = now
-            if (revealShown >= reveal.receivedCount) {
-                // caught-up：**不累计时间、不写状态、保留小数余量**（否则新 delta 一到就暴吐）
-                reveal.windowTick(revealShown < reveal.receivedCount)
-                maybeLogPrintWindow(reveal, now, revealShown, rate)
-                continue
-            }
-            if (rawDt > RevealPauseGapNanos) {
-                // 停顿太久（模型在思考 / 页面进后台）：当"暂停恢复"，丢掉小数余量但不补齐
-                reveal.pending = 0f
-                reveal.lastAdvanceNanos = now
-                reveal.windowTick(revealShown < reveal.receivedCount)
-                continue
-            }
-            val dt = minOf(rawDt, RevealMaxTickNanos)
-            reveal.pending += rate * dt / 1_000_000_000f
-            val n = reveal.pending.toInt()
-            if (n > 0) {
-                reveal.pending -= n
-                val next = minOf(revealShown + n, reveal.receivedCount)
-                if (next > revealShown) {
-                    reveal.windowAdvance(next - revealShown)
-                    revealShown = next
-                    reveal.lastAdvanceNanos = now
-                }
+            // ③ 推进（"这一帧该显示到第几个码点"的数学在 core/model 的 RevealPacer 里，有单测）
+            val next = reveal.pacer.step(now, rate, revealShown, reveal.receivedCount)
+            if (next > revealShown) {
+                reveal.windowAdvance(next - revealShown)
+                revealShown = next
             }
             // ④ 停滞看门狗：**异常检测**，不是节奏控制。有账、帧在来、却 5 秒没动 = 有 bug。
+            //    （pacer 在"暂停恢复"和"真的前进"时都会重置计时，所以这里不用再判 rawDt。）
             if (revealShown < reveal.receivedCount &&
-                now - reveal.lastAdvanceNanos > RevealStallNanos &&
-                rawDt <= RevealPauseGapNanos
+                reveal.pacer.stalledFor(now) > RevealStallNanos
             ) {
                 val left = reveal.receivedCount - revealShown
                 AppLog.i(
                     "chat",
-                    "打印停滞，补齐 uiKey=$myKey 剩余=${left}cp 已等=${(now - reveal.lastAdvanceNanos) / 1e9}s",
+                    "打印停滞，补齐 uiKey=$myKey 剩余=${left}cp 已等=${reveal.pacer.stalledFor(now) / 1e9}s",
                 )
                 clearReveal("停滞")
                 break
@@ -2352,12 +2330,6 @@ private fun JumpToBottomButton(
 // 拿它做速率、比较、剩余都会和"字"对不上。这里只在 `codePointCount` / `offsetByCodePoints`
 // 的入参位置出现 `length`。
 
-/** 停顿超过它就当"暂停恢复"处理（丢弃小数余量，不补齐）。 */
-private const val RevealPauseGapNanos = 1_000_000_000L
-
-/** 单帧最多按 50ms 计入额度：长时间掉帧时"宁可慢也不暴吐"。 */
-private const val RevealMaxTickNanos = 50_000_000L
-
 /** 停滞看门狗：有欠账、帧在来，却 5 秒没前进 = 有 bug（不是节奏控制）。 */
 private const val RevealStallNanos = 5_000_000_000L
 
@@ -2371,10 +2343,8 @@ private const val RevealLogWindowNanos = 2_000_000_000L
  * 这里全是"算给我自己看"的簿记，改它们不该触发任何重组。
  */
 private class RevealState {
-    /** 攒着的小数码点余量（`< 1`）。跨 caught-up 保留 —— 否则频繁清小数会系统性偏慢。 */
-    var pending: Float = 0f
-    var lastTickNanos: Long = 0L
-    var lastAdvanceNanos: Long = 0L
+    /** 推进器（速率 / 暂停 / 夹帧的数学在 core，有单测）。 */
+    val pacer: RevealPacer = RevealPacer()
 
     /** 已收到的码点数（增量维护；见 [countCodePoints]）。 */
     var receivedCount: Int = 0
@@ -2394,9 +2364,7 @@ private class RevealState {
     var windowDebtTicks: Int = 0
 
     fun reset() {
-        pending = 0f
-        lastTickNanos = 0L
-        lastAdvanceNanos = 0L
+        pacer.reset()
         receivedCount = 0
         prevText = null
         prevCount = 0
