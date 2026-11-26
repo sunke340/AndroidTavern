@@ -92,8 +92,9 @@ jailbreak 在默认预设里是空串，于是整条消息消失）；源码 `op
 
 ### 群聊：一条链里"只写当前说话的那个人"
 
-夹具 `P2-1-group-natural`（nasural）/ `P2-1-group-list`（list）两份，成员都是
-`Synthetic` + `SysPrompt`：
+四份夹具把四种激活策略都录了（`P2-1-group-natural` / `-list` / `-manual` / `-pooled`），
+成员都是 `Synthetic` + `SysPrompt`；**四份的请求形状完全一样**，只有"这一轮谁说话"不同
+（natural ← Synthetic、list ← SysPrompt、manual ← SysPrompt、pooled ← Synthetic）：
 
 | 位置 | 单聊 | 群聊 |
 |---|---|---|
@@ -110,7 +111,7 @@ jailbreak 在默认预设里是空串，于是整条消息消失）；源码 `op
 `allow_self_responses` / `generation_mode` / `activation_strategy` 会改变"这一轮谁说话"，
 但**每一条请求的形状是上面这样**。
 
-证据：`P2-1-group-natural` / `P2-1-group-list`。
+证据：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`。
 
 ---
 
