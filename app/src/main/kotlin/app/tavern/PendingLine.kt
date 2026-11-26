@@ -38,8 +38,11 @@ internal enum class PendingKind { Generating, Regenerating }
  * "帮助理解状态变化的动画"，不是装饰。减动效时退成静止三点（[rememberReduceMotion]）。
  */
 @Composable
-internal fun PendingLine(kind: PendingKind, fontSizeSp: Float) {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant
+internal fun PendingLine(kind: PendingKind, fontSizeSp: Float, contentAlpha: Float = 1f) {
+    // 颜色是写死的 `onSurfaceVariant`（不走 LocalContentColor），所以外层那句
+    // "把 contentColor 乘一个 alpha"对它无效 —— 得自己乘。重新生成收缩结束时靠它渐显。
+    val base = MaterialTheme.colorScheme.onSurfaceVariant
+    val color = base.copy(alpha = base.alpha * contentAlpha)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = if (kind == PendingKind.Regenerating) "重新生成中" else "生成中",

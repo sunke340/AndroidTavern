@@ -58,11 +58,15 @@ object Motion {
     /**
      * 新消息**入场**（淡入 + 上浮 10dp）。
      *
-     * 180 → **320**（2026-11-26 真机）：180ms 配 10dp 的上浮，用户的原话是"太快了"。
+     * 180 → 320 → **380**（2026-11-26 真机，两轮）：180ms 配 10dp 上浮，用户的原话是"太快了"；
+     * 320ms 还嫌快 —— 因为真正的问题是**上浮距离太小**（10dp ≈ 看不出来），已改成 28dp。
      * 入场是"这道变化本身要看清楚"的那一类（同 [InputExpand]），可以比常规过渡长；
      * 发送错峰的那个停顿（`PendingAppearDelayMs`）就是按它算的，改这里要一起看。
      */
-    const val Entry = 320
+    const val Entry = 380
+
+    /** 收缩结束后占位/首字**渐显**的时长（从 0.3 淡到 1）。比常规过渡略长，才看得出是"淡出来"。 */
+    const val Reveal = 240
 
     /** 标准曲线：快出慢入，Material 的 emphasized 近似 */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)

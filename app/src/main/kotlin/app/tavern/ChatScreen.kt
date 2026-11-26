@@ -204,9 +204,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 以前用 `Modifier.animateItem` + 三个抑制开关（justSettled / suppressNewestFade /
     // suppressItemFade）。那些开关一翻，**已经有 key 的老行**也会被重新装上一次 animateItem，
     // 动画器把它当成"新出现"再闪一次 —— 用户看到的"发送时用户气泡和历史一起消失又渐显"就是这个。
-    // 现在只认身份：上一帧的 key 集合里没有 → 这一行是新的 → 排一次入场（淡入 + 轻微上浮）。
-    // 重建（离场 epoch）不会让老行重新入场：prevKeys 在 epoch 之外，重建后 key 都还在里面。
-    var prevKeys by remember { mutableStateOf<Set<String>?>(null) }
+    // 现在只认身份，而且判据是**出厂序号**（不是"上一帧的 key 集合"）：
+    // `u{seq}` / `p{seq}` 的 seq 全局自增，比"进场时的水位"新就一定是这次会话里新长出来的行；
+    // `m{dbId}`（库里读出来的）一律算老行。用集合比会判错 —— LazyColumn 的新条目可能在回底
+    // 滚动之后那一帧才真正组合出来，那时集合里已经有它了，动画整个不播（用户 2026-11-26 问的
+    // "是参数没生效吗"就是这个）。水位在进场时记一次，所以离场重建也不会让老行重新入场。
+    val bornFloor = remember { state.rows.maxOfOrNull { bornSeq(it.uiKey) } ?: -1L }
     // 页面级确认框的控制器：本页面在 GlassDetailScaffold **之前**，直接读 CompositionLocal
     // 会拿到没有宿主的实例，确认框静默不弹（2026-11-25 真机清单的根因）。自己建一个传进去。
     val confirm = remember { ConfirmController() }
@@ -607,7 +610,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             if (wasCollapsing.value && collapseKey == null && state.isStreaming) {
                 // 不从 0 起：从"快看不见"淡到 1，像接着收缩的尾巴
                 reveal.snapTo(0.3f)
-                reveal.animateTo(1f, tween(Motion.Base, easing = Motion.Decelerate))
+                reveal.animateTo(1f, tween(Motion.Reveal, easing = Motion.Decelerate))
             }
             wasCollapsing.value = collapseKey != null
         }
@@ -626,8 +629,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 )
             }
         }
-        // 记下这一帧的行身份，下一次新增才有得比（入场动画只给真正新出现的行）
-        SideEffect { prevKeys = displayRows.map { it.uiKey }.toSet() }
+
         // 选字要拿焦点才能出手柄/工具栏，而焦点系统会请求 bringIntoView ——
         // 消息节点比视口高得多时，默认算法会把列表挪一小段（用户 2026-11-25 报的"长按一下列表就跳"）。
         // 这里把焦点滚动关掉：这个列表的阅读位置只由三种东西决定 —— 手指滚动、串流跟随、撤回回底。
@@ -697,7 +699,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val isAssistant = row.role == ChatRole.Assistant
                     // 入场：只有"上一帧还不存在的那一行"才排动画（淡入 + 轻微上浮）。
                     // 身份在 `remember(uiKey)` 里定一次 —— 后面无论怎么重组、重建都不会重播。
-                    val entering = prevKeys != null && row.uiKey !in prevKeys.orEmpty()
+                    val entering = bornSeq(row.uiKey) > bornFloor
                     val enter = remember(row.uiKey) { Animatable(if (entering) 0f else 1f) }
                     LaunchedEffect(row.uiKey) {
                         if (enter.value < 1f) {
@@ -706,9 +708,11 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     }
                     // 动画期间才挂 graphicsLayer（19k px 的气泡常年挂本地图层就是 INV-02 的老坑）
                     val itemAnim = if (enter.value < 1f) {
+                        // 上浮距离要**看得见**：10dp 在 320ms 里几乎读不出来，观感就是"直接出现"。
+                        // 28dp 才看得出是"从下面浮上来"。
                         Modifier.graphicsLayer {
                             alpha = enter.value
-                            translationY = (1f - enter.value) * 10.dp.toPx()
+                            translationY = (1f - enter.value) * 28.dp.toPx()
                         }
                     } else {
                         Modifier
@@ -933,7 +937,7 @@ private val SwipeBarBlockHeight: Dp = 40.dp
  * = [Motion.Entry]（用户气泡的入场动画）+ 约 100ms 的停顿：先看清自己那条浮上来，再出占位。
  * 太短会两拍并成一拍，太长会觉得"发了没反应"。
  */
-private const val PendingAppearDelayMs = 420L
+private const val PendingAppearDelayMs = 480L
 
 /**
  * 聊天输入区：一个玻璃输入胶囊，发送钮**装在胶囊里**（用户 2026-11-25 第 5 条）。
@@ -1562,6 +1566,15 @@ private fun Modifier.clampReportedSize(width: Int, height: Int): Modifier = layo
     layout(w, h) { placeable.place(0, 0) }
 }
 
+/**
+ * 这一行的"出厂序号"：`u{seq}` / `p{seq}` 里的自增号；`m{dbId}`（库里读出来的）返回 -1。
+ *
+ * 用途：入场动画只给**这次会话里新长出来的行**（见 `bornFloor`）。用序号而不是"上一帧的 key 集合"，
+ * 是因为后者对"新条目晚一帧才组合出来"这种情况判错。
+ */
+private fun bornSeq(uiKey: String): Long =
+    if (uiKey.startsWith("u") || uiKey.startsWith("p")) uiKey.drop(1).toLongOrNull() ?: -1L else -1L
+
 /** 把绘制裁到自己的尺寸（`size` = 上面 clamp 报出去的那个）。手裁，不起本地图层。 */
 private fun Modifier.clipToOwnSize(): Modifier = drawWithContent {
     clipRect(right = size.width, bottom = size.height) { this@drawWithContent.drawContent() }
@@ -1629,7 +1642,7 @@ private fun BubbleRow(
                 Row(modifier = Modifier.padding(horizontal = Space.m, vertical = 10.dp)) {
                     if (pending != null) {
                         // 还没吐字：占位行（不可选字 —— 没有正文可选）
-                        PendingLine(kind = pending, fontSizeSp = fontSizeSp)
+                        PendingLine(kind = pending, fontSizeSp = fontSizeSp, contentAlpha = contentAlpha)
                     } else {
                         // 长按气泡 = 选文字（用户 2026-11-25 第 11 条）：操作都在底下那排按钮里。
                         SelectionContainer {
