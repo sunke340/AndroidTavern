@@ -562,11 +562,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         // 气泡一点点收下去、文字被吃掉，而不是一帧变小。
         /** 收缩前这一行有多高（最后一条助手消息在**空闲时**量到的）。 */
         var lastBubbleHeight by remember { mutableIntStateOf(0) }
-        /** 占位气泡的自然高度：窗口期用一个"只量不占位"的副本量出来。 */
-        var placeholderHeight by remember(collapseKey) { mutableIntStateOf(0) }
-        // 起点就是"收缩前的高度"：**建的时候**就带上，别从 0 开始 ——
-        // 否则窗口打开的第一帧会被夹成 0 高，看上去是"先闪没、再弹回来"。
-        val collapseHeight = remember(collapseKey) { Animatable(lastBubbleHeight.toFloat()) }
+        /**
+         * 占位气泡的自然高度：窗口期用一个"只量不占位"的副本量出来。
+         *
+         * **不随窗口重建**：收尾之后补开的"涨回"窗口要用它当起点，那时窗口刚换过（`null → 新窗口`）。
+         */
+        var placeholderHeight by remember { mutableIntStateOf(0) }
+        // 起点：开场窗口从"收缩前的高度"开始，补开的涨回窗口从"占位高度"开始。
+        // **建 Animatable 的时候就带上**，别从 0 开始 —— 否则窗口打开的第一帧会被夹成 0 高，
+        // 看上去是"先闪没、再弹回来"。
+        val collapseFrom = if (collapse?.growBack == true && placeholderHeight > 0) {
+            placeholderHeight
+        } else {
+            lastBubbleHeight
+        }
+        val collapseHeight = remember(collapseKey) { Animatable(collapseFrom.toFloat()) }
         // 收尾了（0 字停止 / 失败）→ 目标换成"涨回原高度"，让旧正文回来也走同一条动画（C4）
         val collapseGrowBack = collapseKey != null && !state.isStreaming
         LaunchedEffect(collapseKey, collapseGrowBack, placeholderHeight) {

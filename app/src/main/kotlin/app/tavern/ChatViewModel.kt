@@ -208,13 +208,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 重新生成的**平滑收缩窗口**（r2 §13.1）。
      *
-     * 非 null = 那一行还挂着 `animateContentSize`：这段时间新 token 只攒不推（C2）、
+     * 非 null = 那一行的高度正被窗口的动画值夹着：这段时间新 token 只攒不推（C2）、
      * 桥接三件套全关（C3）。为什么窗口要有自己的一份状态而不是从 `inflight` 推：
      * 0 字停止 / 失败时 `inflight` 已经清掉了，可"旧正文涨回来"还得走完同一条动画（C4）。
      *
      * [roundId] 是守卫：同一行上一轮留下的定时器不许把这一轮的动画掐掉。
+     *
+     * [growBack] = 这个窗口是**收尾之后补开的**：起点是占位高度、终点是收缩前的高度
+     * （涨回来）；否则是开场那个窗口（收缩前的高度 → 占位高度）。两者是相反方向的同一条动画。
      */
-    data class Collapse(val roundId: Long, val uiKey: String)
+    data class Collapse(
+        val roundId: Long,
+        val uiKey: String,
+        val growBack: Boolean = false,
+    )
 
     data class UiState(
         val baseUrl: String = "https://api.deepseek.com/v1",
@@ -3163,10 +3170,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // 之后再关一整个动画时长 —— 让"缩下去"和"涨回来"走同一条动画（C4）。
                 openCollapse = now.collapse
                     ?.takeIf { it.roundId == round.roundId && it.uiKey == round.replyUiKey }
+                // 窗口**已经关了**（收缩 380ms 早就走完，界面停在"重新生成中"占位上）时点停止：
+                // 旧正文一样要"长回来"，否则就是"缩得平滑、涨得瞬跳"。这里补开一个涨回窗口
+                // （`growBack` 告诉界面：起点是占位高度，不是收缩前的高度）。
+                val growBack =
+                    if (round.targetDbId != null && plan is WritePlan.Nothing && openCollapse == null) {
+                        Collapse(round.roundId, round.replyUiKey, growBack = true)
+                    } else {
+                        null
+                    }
                 // 一次 update 落地全部效果：不露出"行已加、生成中还没清"的中间帧
-                _state.update {
-                    applyEffects(it, effects, round.replyUiKey, (result as? WriteResult.Ok)?.dbId)
+                _state.update { st ->
+                    val next = applyEffects(
+                        st,
+                        effects,
+                        round.replyUiKey,
+                        (result as? WriteResult.Ok)?.dbId,
+                    )
+                    // 换会话之后不许给别人的会话开窗口
+                    if (growBack != null && st.sessionId == round.sessionId) {
+                        next.copy(collapse = growBack)
+                    } else {
+                        next
+                    }
                 }
+                if (growBack != null) openCollapse = growBack
                 refresh = effects.refreshSessions
                 AppLog.i(
                     "chat",
