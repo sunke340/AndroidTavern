@@ -75,6 +75,8 @@ dependencies {
     implementation(project(":core:tokenizer"))
     implementation(project(":core:regex"))
     implementation(project(":core:ai"))
+    // 一轮生成的提交权与收尾决策（纯 JVM，本机可单测；P0）
+    implementation(project(":core:generation"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
