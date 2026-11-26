@@ -140,6 +140,35 @@ assertEquals(expected.request.messages, actual.messages)
 | `--seed <文件>` | 像用户一样先发几轮（文件是 `{"userTurns":["…"]}`） | P1-7-an-depth-2 |
 | `--swipes N` / `--continue` / `--dump-chat` | swipe / 继续 / 存下内存里的 chat | P0-6 / P0-8 |
 
+## 4.6 群聊（P2-1）拿夹具：今晚试到哪、卡在哪（2026-11-27 05:30）
+
+**已确认可行的一步**：群是可以用原版自己的接口建出来的 —— 从页面里发
+`POST /api/groups/create`（必须带 `getRequestHeaders()` 的 CSRF 头，curl 直连会被 403），
+body 用 `group-chats.js` 里 `createGroup()` 那份 `groupCreateModel`：
+
+```json
+{"name":"FIXGROUP","members":["Synthetic.png","SysPrompt.png"],"avatar_url":"",
+ "allow_self_responses":false,"hideMutedSprites":false,"activation_strategy":0,
+ "generation_mode":0,"disabled_members":[],"fav":false,"chat_id":"","chats":[],"auto_mode_delay":5}
+```
+
+`activation_strategy`：0 natural / 1 list / 2 manual / 3 pooled（`group_activation_strategy`）。
+
+**卡住的一步**：建完必须让页面**重新读一次 `groups`**（`getContext().groups` 是启动时读进内存的
+数组，接口建完不会热更新）。试了两条都不通：
+1. `page.reload()` 之后等 `#preloader` 消失 —— 一直等到 8 分钟超时（多半是群聊/首页状态的问题，
+   或者 reload 被某个未完成的 fetch 卡住）；
+2. 想手动把群塞进内存（`groups.push(model)`）—— `groups` 没有导出 setter，只能拿到同一引用，
+   推完 `openGroupChat()` 仍然走不到（它还要求 `group.chats.includes(chatId)`，新群 `chats` 是空的，
+   得先 `createNewGroupChat(groupId)`）。
+
+**下一轮建议的顺序**（都比 reload 稳）：
+1. `createNewGroupChat(groupId)` 之后再 `Generate` —— 它内部会补齐 chats 并切过去（没试完）；
+2. 或者干脆**用两个进程**：先跑一次"建群"的小脚本（页面里 fetch 完就退），再跑一次 capture ——
+   第二次启动时原版自然会读到 groups；
+3. 最差也要留一条：手写 `data/default-user/settings.json` 的 `groups` 数组 + **重启 ST**，
+   再录（settings 是启动时读的，这条路一定能成，只是脏）。
+
 ## 5. 后续（M1 之前要补的）
 
 - [x] `--preset` / `--worldinfo` 参数（现在有 `--select-world` / `--copy-world` / `--prompt-content`）
