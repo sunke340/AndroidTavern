@@ -14,7 +14,13 @@ package app.tavern.core.prompt
  *    所以正文中间出现 `Synthetic:` 也会被吃掉。
  */
 internal object ExampleDialogue {
-    fun parse(raw: String, characterName: String, userName: String): List<String> {
+    fun parse(
+        raw: String,
+        characterName: String,
+        userName: String,
+        /** 群聊里**保留** `名字:` 前缀（夹具 `P2-1-group-natural`），单聊才剥。 */
+        stripNames: Boolean = true,
+    ): List<String> {
         if (raw.isBlank()) return emptyList()
 
         // 原版是先 substituteParams() 再解析，所以这里也先做宏替换——
@@ -35,7 +41,8 @@ internal object ExampleDialogue {
         var inBot = false
 
         fun flush(name: String) {
-            messages += current.joinToString("\n").replaceFirst("$name:", "").trim()
+            val text = current.joinToString("\n")
+            messages += (if (stripNames) text.replaceFirst("$name:", "") else text).trim()
             current.clear()
         }
 

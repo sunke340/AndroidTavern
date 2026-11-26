@@ -30,6 +30,21 @@ import app.tavern.core.preset.PromptOrderEntry
  * 人设（`personaDescription`）已接：原版把它当**独立的一条 system 消息**，位置由 `prompt_order`
  * 决定（默认在 `worldInfoBefore` 之后、`charDescription` 之前）。夹具 `P1-8-persona-prompt`。
  */
+/**
+ * 群聊这一轮的上下文（P2-1）。
+ *
+ * 原版的群聊请求**只有说话人不同**：`char_name` = [speaker]（角色三段也只取那张卡），
+ * 历史块首换成 `[Start a new group chat. Group members: …]`，末尾多一条
+ * `[Write the next reply only as <speaker>.]`，示例对话**保留**名字前缀。
+ * 四种激活策略只影响"谁说话"，不改请求形状。夹具：`P2-1-group-*`。
+ */
+public data class GroupContext(
+    /** 成员名（顺序即 `group_names`）。 */
+    public val members: List<String>,
+    /** 这一轮谁说话。 */
+    public val speaker: String,
+)
+
 public class PromptBuilder {
     /**
      * @param order 发送顺序（来自预设的 `prompt_order`；默认是原版默认预设那张表）
@@ -63,9 +78,12 @@ public class PromptBuilder {
          * `\n` 分隔。原版这一条走 `macros.js` 的 `{{outlet::(.+?)}}`（夹具 `P1-3-outlet`）。
          */
         outlets: Map<String, List<String>> = emptyMap(),
+        /** 非 null = 这一轮是群聊：说话人、成员、块首与末尾 nudge 都跟着变（见 [GroupContext]）。 */
+        group: GroupContext? = null,
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
-        val charName = character.name
+        // 群聊里"这个角色"= 这一轮的说话人；单聊就是卡名
+        val charName = group?.speaker ?: character.name
         // 作者注：先把"这一轮插不插 / 插的是什么"算好（三种位置共用同一段文本）
         val noteText = authorNote?.let { note ->
             val merged = mergeAuthorNote(authorNoteTop, note.text, authorNoteBottom)
@@ -136,10 +154,11 @@ public class PromptBuilder {
                     if (worldInfo.afterChar.isNotBlank()) messages += system(worldInfo.afterChar)
 
                 Id.DIALOGUE_EXAMPLES -> {
+                    val keepNames = group != null
                     // 每一"块"示例都自带一个 `[Example Chat]` 标记：世界书里 position=EMTop/EMBottom
                     // 的条目各算一块，卡里的 mes_example 算一块（夹具 P1-3-example-injection）。
                     fun block(raw: String) {
-                        val parsed = ExampleDialogue.parse(raw, charName, userName)
+                        val parsed = ExampleDialogue.parse(raw, charName, userName, stripNames = !keepNames)
                         if (parsed.isEmpty()) return
                         messages += system(SillyTavernDefaults.EXAMPLE_CHAT)
                         parsed.forEach { messages += system(it) }
@@ -151,7 +170,7 @@ public class PromptBuilder {
 
                 Id.CHAT_HISTORY -> {
                     val blockStart = messages.size
-                    messages += newChatMarker()
+                    messages += newChatMarker(group)
                     // 历史消息原版也会逐条去掉 \r（"waste of tokens"，见 openai.js），这里照做
                     messages += history.map { it.copy(content = it.content.replace("\r", "")) }
                     // 作者注：插进**这一段历史**里（原版是往倒序的历史数组里 splice(depth)）。
@@ -171,6 +190,10 @@ public class PromptBuilder {
                             )
                         }
                     }
+                    // 群聊：一条"只写谁"的控制提示（夹具里它紧跟在历史后面、post_history 之前）
+                    if (group != null) {
+                        messages += system("[Write the next reply only as ${group.speaker}.]")
+                    }
                 }
 
                 // 还没实现的注入点（未知 identifier）：不静默插到别处，
@@ -186,9 +209,16 @@ public class PromptBuilder {
     public fun mainPrompt(characterName: String, userName: String): ChatMessage =
         system(substitute(PresetDefaults.MAIN, characterName, userName))
 
-    /** 新聊天时插在聊天历史块最前面的标记。 */
-    public fun newChatMarker(): ChatMessage =
-        ChatMessage(role = ChatRole.System, content = SillyTavernDefaults.NEW_CHAT)
+    /** 新聊天时插在聊天历史块最前面的标记；群聊换成带成员名的版本（夹具 `P2-1-group-*`）。 */
+    public fun newChatMarker(group: GroupContext? = null): ChatMessage =
+        ChatMessage(
+            role = ChatRole.System,
+            content = if (group == null) {
+                SillyTavernDefaults.NEW_CHAT
+            } else {
+                "[Start a new group chat. Group members: ${group.members.joinToString(", ")}]"
+            },
+        )
 
     private fun system(content: String): ChatMessage = ChatMessage(role = ChatRole.System, content = content)
 

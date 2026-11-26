@@ -57,7 +57,7 @@
 
 | ID | 功能 | 状态 | 验收 |
 |---|---|---|---|
-| P2-1 | 群聊（natural / list / manual / pool 激活策略） | ⬜ | **夹具已录**（2026-11-27：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`，**四种激活策略各一份**（四份请求形状一致，只有说话人不同），形状见 original-behavior「群聊」）；**代码未动** —— 数据模型（一条会话多张卡）、历史里的 `名字: ` 前缀、末尾 `[Write the next reply only as X.]` 都还没有 |
+| P2-1 | 群聊（natural / list / manual / pool 激活策略） | ⬜ | **夹具已录**（2026-11-27：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`，**四种激活策略各一份**（四份请求形状一致，只有说话人不同），形状见 original-behavior「群聊」）；**提示词组装已完成**（`PromptBuilder.build(group = GroupContext(members, speaker))`，两份夹具断言）；**其余未动** —— 数据模型（一条会话多张卡）、历史里的 `名字: ` 前缀、末尾 `[Write the next reply only as X.]` 都还没有 |
 | P2-2 | 后台生成 + 通知（前台服务，Android 14 限制） | ⬜ | 手工 |
 | P2-3 | 系统 TTS 朗读 / 语音输入 | 🟨 | 朗读已做：气泡底下动作行第一颗「朗读」（再点一次停），走系统 `TextToSpeech`，不引引擎、不联网、不要权限；离场即 `shutdown()`。**未做**：语音输入（要 `RECORD_AUDIO` + 权限流程，必须真机验）、朗读音色/语速设置 | 手工 |
 | P2-4 | 分享菜单收卡、图片长按保存、桌面小组件 | 🟨 | **收卡已做**：`ACTION_SEND`（image/* + zip）→ `SharedIntake` 一次性交接 → 走正常的导入链路（导完进角色详情）。冷启动与 `onNewIntent` 两条路都接。**未做**：图片长按保存、桌面小组件 | 手工 |
