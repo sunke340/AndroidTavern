@@ -58,8 +58,11 @@
 3. **桌面小组件**（P2-4 最后一项）：要 RemoteViews + 深色适配，且必须真机看。
 4. **作者注顶部/底部（ANTop/ANBottom）**：要先支持 AN 的 `TOP_AN` / `BOTTOM_AN` 两种位置 ——
    现在只做了 `IN_CHAT`（按深度插进聊天历史）。
-5. **`data` 层 JVM 测试**：`ConfigOverride` 编解码目前挂在 `SharedPreferences` 上，
-   要测得先把纯编解码抽出来（小重构），否则本机跑不了。
+5. **`data` 层 JVM 测试**：**已经开了个头**（`data/src/test/.../ConfigOverrideTest.kt`，4 条：
+   `isEmpty` 语义、空集≠null、`session:`/`card:` 作用域键），CI 的 `:data:testDebugUnitTest` 真跑
+   （顺带修了 `check-tests-ran.sh`：Android 模块的报告在 `testDebugUnitTest/`，之前只扫 `test/`）。
+   还差的：`ConfigOverride` 的**编解码**（现在埋在 `SharedPreferences` 实现里，要先抽成纯函数）、
+   DB 迁移、`.meta` 容错。
 6. 许可批已经全部清空（APK 内「开源许可」页 + `core/` 署名都做了）。
 
 ## 已知风险（这一轮新加的）
