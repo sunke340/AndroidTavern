@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * {"name":"User","is_user":true,"is_system":false,"send_date":"…","mes":"…","extra":{…}}
  * ```
  *
- * 三条照抄原版的行为（都能在 `src/endpoints/chats.js` 与 `public/script.js` 里看到）：
+ * 三条与原版一致的行为（SillyTavern 1.19.1，AGPL-3.0；`src/endpoints/chats.js` 与 `public/script.js`）：
  *
  * 1. **首行无条件当表头**，哪怕它长得像消息。原版是 `data.shift()`，不做校验。
  * 2. **解析不了的行直接丢**，不报错——`getChatData` 里 `tryParse(line)).filter(x => x)`。

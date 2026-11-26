@@ -15,7 +15,7 @@ import kotlinx.serialization.json.jsonObject
  * 字段是**已经转换过的**驼峰形态（`key` / `keysecondary` / `order` / `disable` …），
  * 与卡内嵌书那套 V2 字段名（`keys` / `secondary_keys` / `enabled`）不同，别混。
  *
- * 默认值照抄原版 `newWorldInfoEntryTemplate`：`order=100`、`probability=100`、
+ * 默认值与原版 `newWorldInfoEntryTemplate` 一致（SillyTavern 1.19.1，AGPL-3.0）：`order=100`、`probability=100`、
  * `useProbability=true`、`depth=4`、`groupWeight=100`、`selectiveLogic=0`。
  */
 public class WorldBookFile(

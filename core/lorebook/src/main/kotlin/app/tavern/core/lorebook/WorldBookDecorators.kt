@@ -3,7 +3,8 @@ package app.tavern.core.lorebook
 /**
  * 世界书条目正文开头的 `@@` 装饰器。
  *
- * 语义**照抄**原版 `parseDecorators()`（`world-info.js:4652`），包括它的几个怪处：
+ * 语义对齐原版 `parseDecorators()`（SillyTavern 1.19.1，AGPL-3.0，`public/scripts/world-info.js`），
+ * 包括它的几个怪处：
  * - 只看正文**开头**连续以 `@@` 开头的行，遇到第一行不是 `@@` 的就从那一行起算正文；
  * - 已知装饰器只有 `@@activate` / `@@dont_activate`（原版 `KNOWN_DECORATORS`，`:100`）；
  * - **不认识的装饰器行也会被剥掉**（只是不记录）—— 原版就是这么写的，别"顺手保留"；

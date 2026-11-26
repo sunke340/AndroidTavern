@@ -11,8 +11,8 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * 把卡内嵌世界书（V2/V3 的 `character_book.entries`）映射成扫描器认识的条目。
  *
- * 映射规则**逐字段照抄**原版 `convertCharacterBook()`（`public/scripts/world-info.js:5617`），
- * 包括几个反直觉的地方：
+ * 映射规则逐字段对齐原版 `convertCharacterBook()`（SillyTavern 1.19.1，AGPL-3.0，
+ * `public/scripts/world-info.js`），包括几个反直觉的地方：
  *
  * - `disable` 是 `!entry.enabled`，所以卡里**没写** `enabled` 的条目在原版里是**关**的；
  * - `position` 优先取 `extensions.position`（数字），没有才看 `position: "before_char"`；

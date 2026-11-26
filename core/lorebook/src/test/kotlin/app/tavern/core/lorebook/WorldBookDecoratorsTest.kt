@@ -43,7 +43,7 @@ class WorldBookDecoratorsTest {
 
     @Test
     fun `整段都是装饰器时正文保持原样`() {
-        // 原版 newContent 初始化为 content，找不到非 @@ 行就不改 —— 这里也照抄
+        // 原版 newContent 初始化为 content，找不到非 @@ 行就不改 —— 这里也与原版一致
         val (decorators, content) = WorldBookDecorators.parse("@@activate")
         assertEquals(listOf("@@activate"), decorators)
         assertEquals("@@activate", content)

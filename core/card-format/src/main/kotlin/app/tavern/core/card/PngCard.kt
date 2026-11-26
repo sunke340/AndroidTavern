@@ -9,7 +9,7 @@ import java.util.zip.CRC32
 /**
  * 角色卡 ↔ PNG 的编解码：卡片 JSON 存在 PNG 的 `tEXt` 块里，key 为 `chara`（V2）或 `ccv3`（V3）。
  *
- * 两个必须照抄原版的地方（见 `src/character-card-parser.js`）：
+ * 两个必须与原版一致的地方（SillyTavern 1.19.1，AGPL-3.0，`src/character-card-parser.js`）：
  *
  * 1. **读的时候 `ccv3` 优先**，没有再退回 `chara`。
  * 2. **写的时候两个都写**：同一条 JSON 写进 `chara`，再把它标成 `chara_card_v3` / `3.0` 写进 `ccv3`。

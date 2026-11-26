@@ -259,8 +259,10 @@ LICENSE，结果是**当前 APK 里一份许可文本都没有**。补齐只能�
 - [x] **P1 · 项目根加 `LICENSE`**（AGPL-3.0 全文）+ README 许可说明。
 - [ ] **P2 · APK 内"开源许可"页**：设置 → 关于，读 `assets/notices/` 文本；或退一步把 notices 挂 Release 附件。
 - [ ] **P2 · 清掉 `packaging` 里剔 `META-INF` 许可文件的那行**（或明确保留，别再让它静默吞声明）。
-- [ ] **P3 · `core/` 注释改成**署名式**表述**（"移植自 SillyTavern 1.19.1（AGPL-3.0）的 X，
+- [x] **P3 · `core/` 注释改成**署名式**表述**（"移植自 SillyTavern 1.19.1（AGPL-3.0）的 X，
       行为由 fixture P?-? 锁定"）。⚠️ 走 AGPL 之后**不是删掉出处，而是写清出处**（ADR 0009 第 2 条）。
+      → 2026-11-27 已完成：`core/` 里 9 处"照抄 / 逐字照抄"改成"移植自 / 与原版一致 + 上游项目、版本、
+      许可、源文件路径"，一个 `照抄` 都没留。
 - [ ] **P3 · `docs/design/motion.md` 与 `Motion.kt` 的漂移**：文档写橡皮筋 `spring(1.0, 700)`，
       代码是 `380`（[Motion.kt:107](../../app/src/main/kotlin/app/tavern/Motion.kt#L107)）。顺手对齐。
 

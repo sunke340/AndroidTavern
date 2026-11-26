@@ -93,7 +93,7 @@ public class LorebookScanner(private val random: Random = Random.Default) {
                 if (scanState == ScanState.Recursion && settings.recursive && entry.excludeRecursion && !isSticky) continue
 
                 // @@ 装饰器（原版 world-info.js:4875）：@activate 不看关键字、@dont_activate 一律不激活。
-                // 位置照抄原版 —— 在 constant / sticky / 关键字判断**之前**，所以它会盖过 constant。
+                // 位置与原版一致 —— 在 constant / sticky / 关键字判断**之前**，所以它会盖过 constant。
                 if (entry.decorators.contains(WorldBookDecorators.ACTIVATE)) {
                     activatedNow += entry
                     continue

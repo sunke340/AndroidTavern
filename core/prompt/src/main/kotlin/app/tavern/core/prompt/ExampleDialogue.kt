@@ -3,8 +3,9 @@ package app.tavern.core.prompt
 /**
  * 把卡里的 `mes_example` 拆成若干条示例消息。
  *
- * 移植自 `public/scripts/openai.js` 的 `setOpenAIMessageExamples` + `parseExampleIntoIndividual`。
- * 这段逻辑有三个反直觉的地方，都是逐字照抄原版、不是我的设计：
+ * 行为移植自 SillyTavern 1.19.1（AGPL-3.0，<https://github.com/SillyTavern/SillyTavern>）
+ * 的 `public/scripts/openai.js`（`setOpenAIMessageExamples`、`parseExampleIntoIndividual`）。
+ * 这段逻辑有三个反直觉的地方，都是**有意与原版保持一致**（不是本项目的设计）：
  *
  * 1. **第一行永远被丢掉**。原版假设它必然是 `<START>` 之类的开场标题。
  * 2. **`<START>` 先被换成 `{Example Dialogue:}`**，但那个标记本身不会出现在结果里 ——

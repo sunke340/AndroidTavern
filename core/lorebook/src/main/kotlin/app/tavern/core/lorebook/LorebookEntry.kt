@@ -62,7 +62,7 @@ public enum class SelectiveLogic(public val value: Int) {
  * 一条世界书条目。字段名与含义对齐原版 `convertCharacterBook()`（`world-info.js:5617`）：
  * 卡文件用 `character_book.entries[i]` 的名字，这里换成 Kotlin 习惯的驼峰，但**语义一致**。
  *
- * 默认值也照抄原版：`order = 100`、`depth = 4`、`probability = 100`、`useProbability = true`、
+ * 默认值也与原版一致（SillyTavern 1.19.1，AGPL-3.0）：`order = 100`、`depth = 4`、`probability = 100`、`useProbability = true`、
  * `groupWeight = 100`、`selectiveLogic = AndAny`。
  *
  * [world] 是"这本书的名字"（卡内嵌书用卡名，全局书用文件名），和 [uid] 一起构成唯一标识
