@@ -90,6 +90,28 @@
 证据：`P0-5-sysprompt`（没旗标，卡里的顶掉了）vs `P0-5-forbid-overrides`（打旗标后回落到预设正文；
 jailbreak 在默认预设里是空串，于是整条消息消失）；源码 `openai.js:1498/1508`。
 
+### 群聊：一条链里"只写当前说话的那个人"
+
+夹具 `P2-1-group-natural`（nasural）/ `P2-1-group-list`（list）两份，成员都是
+`Synthetic` + `SysPrompt`：
+
+| 位置 | 单聊 | 群聊 |
+|---|---|---|
+| `group_names` | `[]` | 成员名（`["Synthetic","SysPrompt"]`） |
+| `char_name` | 卡名 | **当前该说话的那个**（natural 是 Synthetic，list 那轮是 SysPrompt） |
+| main | `Write {{char}}'s …` | 同模板，但 `{{char}}` = 说话人 |
+| 角色三段（desC/人格/场景） | 这张卡 | **只有说话人那张卡**（list 夹具里是 SysPrompt 的 `DESC-SYS`/`PERS-SYS`/`SCEN-SYS`） |
+| 示例对话 | 名字前缀被剥掉 | **前缀保留**（`User: …` / `Synthetic: …`） |
+| 历史块首 | `[Start a new Chat]` | `[Start a new group chat. Group members: Synthetic, SysPrompt]` |
+| 历史消息 | 原文 | 每条前面加 `名字: `（`Synthetic: FIRST-OMEGA` / `SysPrompt: FIRST-SYS`） |
+| 末尾 | 无 | 一条控制提示 `[Write the next reply only as <说话人>.]` |
+| 卡的 `system_prompt` | 顶替 main | 同样顶替（list 夹具 [0] 是 `SYSPROMPT-OMEGA`，因为那张卡有 system_prompt） |
+
+`allow_self_responses` / `generation_mode` / `activation_strategy` 会改变"这一轮谁说话"，
+但**每一条请求的形状是上面这样**。
+
+证据：`P2-1-group-natural` / `P2-1-group-list`。
+
 ---
 
 ## 角色卡文件

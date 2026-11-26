@@ -64,6 +64,14 @@ const COPY_WORLD = arg('copy-world', null);
 // --prompt-content '{"main":"…{{outlet::OUT}}…"}'：直接改原版预设里某几条提示词的正文，
 // 用来录"提示词里引用了某个宏/出口"这种夹具。
 const PROMPT_CONTENT = arg('prompt-content', null) ? JSON.parse(arg('prompt-content')) : null;
+// --group-name：进一个**已经存在**的群聊（P2-1）。群文件要事先放在
+// `vendor/SillyTavern/data/default-user/groups/<id>.json`（格式照 `/api/groups/create` 产出的那份）。
+// ⚠️ 三条都是踩出来的：
+//   1. `getContext().groups` 在页面刚起来时是空的 —— `getGroups()` 只在 `getCharacters()` 里被 await；
+//   2. 群行在右侧抽屉里，抽屉默认收起 → 要先点 `#rightNavDrawerIcon`；
+//   3. 首次进站有「Welcome」弹窗，会挡住点击 → 直接 `dialog.close()` 掉。
+//   （直接调 `openGroupChat()` / `createNewGroupChat()` 在 headless 里会挂死，所以走 DOM 点击。）
+const GROUP_NAME = arg('group-name', null);
 
 if (COPY_WORLD) {
     const src = path.resolve(ROOT, COPY_WORLD);
@@ -132,7 +140,7 @@ try {
 
     const skipWorldInfo = process.argv.indexOf('--no-wi') !== -1;
 
-    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole, anInterval, anPosition, forbidOverrides, promptContent }) => {
+    const result = await page.evaluate(async ({ character, skipWorldInfo, userTurns, wiSettings, importEmbeddedWorld, selectWorld, promptOrder, swipes, doContinue, personaDesc, personaName, personaPosition, anText, anDepth, anRole, anInterval, anPosition, forbidOverrides, promptContent, groupName }) => {
         const S = await import('./script.js');
         const { getContext } = await import('./scripts/st-context.js');
 
@@ -149,6 +157,21 @@ try {
         const current = chars[Number(getContext().characterId)];
         if (!current || current.name !== character) {
             await S.selectCharacterById(String(idx));
+        }
+
+        // 群聊（P2-1）：刷新角色/群列表 → 展开右侧抽屉 → 关掉欢迎弹窗 → 点那个群
+        if (groupName) {
+            await S.getCharacters(); // 内部 await getGroups()，群才会进内存、进 DOM
+            await new Promise(r => setTimeout(r, 800));
+            document.getElementById('rightNavDrawerIcon')?.click();
+            await new Promise(r => setTimeout(r, 800));
+            document.querySelectorAll('dialog.popup').forEach(d => { try { d.close(); } catch { } });
+            const rows = Array.from(document.querySelectorAll('.group_select'));
+            if (!rows.length) throw new Error('DOM 里没有群行（群文件放对了吗？）');
+            const target = rows.find(el => el.querySelector('.ch_name')?.textContent?.trim() === groupName) ?? rows[0];
+            target.click();
+            await new Promise(r => setTimeout(r, 2500));
+            if (!getContext().groupId) throw new Error('点完群行没进群');
         }
 
         // 世界书全局开关要在第一次 Generate 之前设好（模块级变量，设完即生效）
@@ -315,7 +338,7 @@ try {
                 chatLength: context.chat?.length ?? 0,
             },
         };
-    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE, anInterval: AN_INTERVAL, anPosition: AN_POSITION, forbidOverrides: FORBID_OVERRIDES, promptContent: PROMPT_CONTENT });
+    }, { character: CHARACTER, skipWorldInfo, userTurns: SEEDED_TURNS, wiSettings: WI_SETTINGS, importEmbeddedWorld: IMPORT_EMBEDDED, selectWorld: SELECT_WORLD, promptOrder: PROMPT_ORDER, swipes: SWIPES, doContinue: DO_CONTINUE, personaDesc: PERSONA_DESC, personaName: PERSONA_NAME, personaPosition: PERSONA_POSITION, anText: AN_TEXT, anDepth: AN_DEPTH, anRole: AN_ROLE, anInterval: AN_INTERVAL, anPosition: AN_POSITION, forbidOverrides: FORBID_OVERRIDES, promptContent: PROMPT_CONTENT, groupName: GROUP_NAME });
 
     if (!result.captured.length) {
         throw new Error(`没抓到请求。Generate 的错误：${result.error ?? '（无）'}\n上下文：${JSON.stringify(result.context)}\n期间发生的请求：${JSON.stringify(result.allCalls)}`);

@@ -140,63 +140,30 @@ assertEquals(expected.request.messages, actual.messages)
 | `--seed <文件>` | 像用户一样先发几轮（文件是 `{"userTurns":["…"]}`） | P1-7-an-depth-2 |
 | `--swipes N` / `--continue` / `--dump-chat` | swipe / 继续 / 存下内存里的 chat | P0-6 / P0-8 |
 
-## 4.6 群聊（P2-1）拿夹具：今晚试到哪、卡在哪（2026-11-27 05:30）
+## 4.6 群聊（P2-1）怎么录（**已跑通**，2026-11-27 06:45）
 
-**已确认可行的一步**：群是可以用原版自己的接口建出来的 —— 从页面里发
-`POST /api/groups/create`（必须带 `getRequestHeaders()` 的 CSRF 头，curl 直连会被 403），
-body 用 `group-chats.js` 里 `createGroup()` 那份 `groupCreateModel`：
-
-```json
-{"name":"FIXGROUP","members":["Synthetic.png","SysPrompt.png"],"avatar_url":"",
- "allow_self_responses":false,"hideMutedSprites":false,"activation_strategy":0,
- "generation_mode":0,"disabled_members":[],"fav":false,"chat_id":"","chats":[],"auto_mode_delay":5}
+```bash
+# 1) 群文件放进原版（格式照 /api/groups/create 产出那份；id 就是文件名）
+#    vendor/SillyTavern/data/default-user/groups/<id>.json
+#    activation_strategy: 0 natural / 1 list / 2 manual / 3 pooled
+# 2) 录
+node tools/fixture/capture.mjs --out fixtures/expected/P2-1-group-natural.json \
+  --group-name FIXGROUP --no-wi
 ```
 
-`activation_strategy`：0 natural / 1 list / 2 manual / 3 pooled（`group_activation_strategy`）。
+`capture.mjs` 里那条路是**DOM 点击**，不是调 API —— 三个坑都踩过：
 
-**卡住的一步**：建完必须让页面**重新读一次 `groups`**（`getContext().groups` 是启动时读进内存的
-数组，接口建完不会热更新）。试了两条都不通：
-1. `page.reload()` 之后等 `#preloader` 消失 —— 一直等到 8 分钟超时（多半是群聊/首页状态的问题，
-   或者 reload 被某个未完成的 fetch 卡住）；
-2. 想手动把群塞进内存（`groups.push(model)`）—— `groups` 没有导出 setter，只能拿到同一引用，
-   推完 `openGroupChat()` 仍然走不到（它还要求 `group.chats.includes(chatId)`，新群 `chats` 是空的，
-   得先 `createNewGroupChat(groupId)`）。
+1. `getContext().groups` 在页面刚起来时是空的：`getGroups()` 只在 `getCharacters()` 里被 await
+   → 先进群前 `await S.getCharacters()`；
+2. 群行在右侧抽屉里、抽屉默认收起 → 先点 `#rightNavDrawerIcon`；
+3. 首次进站有「Welcome to SillyTavern!」弹窗挡点击 → `document.querySelectorAll('dialog.popup')`
+   挨个 `close()`；
+4. 然后点 `.group_select`（按 `.ch_name` 文本找）。**别直接调** `openGroupChat()` /
+   `createNewGroupChat()` —— 在 headless 里会挂死（>4 分钟无返回）。
 
-⚠️ 那晚试过 `--group-name`（选一个**已存在**的群）这条加法也没验完：本机 1.7 GiB，
-chromium 一起就 OOM（SIGKILL）。所以 `capture.mjs` 里**没有**留这份代码 —— 先别照着改，
-按下面三条从"能跑起来"开始。
-
-**2026-11-27 06:00 又验了一步（重要）**：把群**文件**直接放进
-`data/default-user/groups/<id>.json`（格式照 `/api/groups/create` 生成的那份）之后，
-在页面里 `POST /api/groups/all`（带 `getRequestHeaders({ omitContentType: true })`）**能列出这些群**
-（成员的 `Synthetic.png` / `SysPrompt.png`、`chats` 都在）。也就是说：
-**文件格式没问题，缺的只是"把这份列表装进 `group-chats.js` 里那个私有 `groups` 数组"** ——
-`getContext().groups` 在页面刚起来时是空的（`getGroups()` 还没跑，而且它没有导出）。
-
-所以下一轮最省事的做法是**让原版自己跑一次 `getGroups()`**，两条路：
-1. 用 playwright 点「群组」齿轮（`#rm_button_group_chats`）→ 等 `#rm_group_list` 出来 → 点群条目
-   （今晚试到这里超时了：齿轮可能要先展开右侧角色面板，选择器要调）；
-2. 或者干脆**录一份"群聊的请求长什么样"用别的办法**：ST 的群聊组装逻辑全在
-   `getWorldInfoPrompt` + `openai.js` 的 group 分支里，读源码 + 一份单聊夹具也能推出七八成 ——
-   但按本项目的规矩（不猜原版行为），这条只能当"实现草案"，最终仍要一份群聊夹具。
-
-**2026-11-27 06:2x 再验两步（关键发现）**：
-- `S.getCharacters()` 内部会 `await getGroups()` —— 调它之后 `getContext().groups` **立刻有内容**
-  （已实测：0 → 3 个群，成员的 `Synthetic.png` / `SysPrompt.png`、`chats` 都在）。**这一环通了。**
-- 但接着 `openGroupChat(id, chatId)` 和 `createNewGroupChat(id)` **在 headless 里都会挂死**
-  （>4 分钟无返回，最后是 node 超时把浏览器关掉 → `Target page… has been closed`）。
-  八成是在等某个 SPA 事件 / `isChatSaving` / SSE，而录制脚本没有驱动那些。
-- 所以群聊夹具还差最后一步：**要么**把 UI 点击路径的选择器调对（`#rightNavHolder` 展开 →
-  `#rm_button_group_chats` → `.group_select`），**要么**干脆不调这些函数、自己把
-  `selected_group` / `chat` 状态摆好再 `Generate`（源码里 `openGroupChat` 干的事就是
-  `clearChat` + `setGroupId` + 读 chat 文件，可以照着抄，但那就成了"猜"，得再验证一遍）。
-
-**下一轮建议的顺序**（都比 reload 稳）：
-1. `createNewGroupChat(groupId)` 之后再 `Generate` —— 它内部会补齐 chats 并切过去（没试完）；
-2. 或者干脆**用两个进程**：先跑一次"建群"的小脚本（页面里 fetch 完就退），再跑一次 capture ——
-   第二次启动时原版自然会读到 groups；
-3. 最差也要留一条：手写 `data/default-user/settings.json` 的 `groups` 数组 + **重启 ST**，
-   再录（settings 是启动时读的，这条路一定能成，只是脏）。
+产物里能看出群聊的请求形状（说话人 = `char_name`、各段只取那一张卡、历史带 `名字: ` 前缀、
+末尾一条 `[Write the next reply only as X.]`）—— 结论抄在
+[original-behavior.md](original-behavior.md) 的「群聊」一节，别再从夹具里反推。
 
 ## 5. 后续（M1 之前要补的）
 
