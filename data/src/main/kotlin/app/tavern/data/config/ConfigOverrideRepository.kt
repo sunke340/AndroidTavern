@@ -55,6 +55,8 @@ data class ConfigOverride(
     /** `System` / `User` / `Assistant`（原版 `note_role`）。 */
     val authorNoteRole: String? = null,
     val authorNoteInterval: Int? = null,
+    /** 作者注放哪：0 = 主提示词之后 / 1 = 聊天历史（默认）/ 2 = 主提示词之前（原版 extension_prompt_types）。 */
+    val authorNotePosition: Int? = null,
     /**
      * 这一层用哪个人设（`Persona.id`）。null = 跟随上级；三级：会话 > 卡 > 全局默认。
      * 生效人设的**名字**就是 `{{user}}`，**描述**按 `prompt_order` 里的 `personaDescription` 进提示词。
@@ -70,7 +72,7 @@ data class ConfigOverride(
     val isEmpty: Boolean
         get() = profileId == null && reasoningEffort == null && presetName == null &&
             personaId == null && authorNote == null && authorNoteDepth == null &&
-            authorNoteRole == null && authorNoteInterval == null &&
+            authorNoteRole == null && authorNoteInterval == null && authorNotePosition == null &&
             worldBookNames == null && regexIds == null && builtinDisabled == null &&
             bubbleFontSize == null &&
             temperature == null && maxTokens == null && topP == null &&

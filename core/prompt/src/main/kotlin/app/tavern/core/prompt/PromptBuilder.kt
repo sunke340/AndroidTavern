@@ -66,6 +66,17 @@ public class PromptBuilder {
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
         val charName = character.name
+        // 作者注：先把"这一轮插不插 / 插的是什么"算好（三种位置共用同一段文本）
+        val noteText = authorNote?.let { note ->
+            val merged = mergeAuthorNote(authorNoteTop, note.text, authorNoteBottom)
+            val turns = history.count { it.role == ChatRole.User }
+            if (note.copy(text = merged).activeAt(turns)) substitute(merged, charName, userName, outlets) else null
+        }
+        val noteRole = authorNote?.role ?: ChatRole.System
+        // BEFORE_PROMPT：主提示词**之前**（原版 `extension_prompt_types.BEFORE_PROMPT`）
+        if (noteText != null && authorNote?.position == AuthorNote.BEFORE_PROMPT) {
+            messages += ChatMessage(role = noteRole, content = noteText)
+        }
 
         for (entry in order) {
             if (!entry.enabled) continue
@@ -85,6 +96,13 @@ public class PromptBuilder {
                     val content = override.ifBlank { prompts[entry.identifier].orEmpty() }
                     if (content.isBlank()) continue
                     messages += system(substitute(content, charName, userName, outlets))
+                    // IN_PROMPT 的作者注紧跟在主提示词后面（夹具 P1-7-an-pos-0）
+                    if (
+                        entry.identifier == Id.MAIN && noteText != null &&
+                        authorNote.position == AuthorNote.IN_PROMPT
+                    ) {
+                        messages += ChatMessage(role = noteRole, content = noteText)
+                    }
                 }
 
                 Id.PERSONA_DESCRIPTION ->
@@ -140,20 +158,15 @@ public class PromptBuilder {
                     // 位置 = 末尾往回 [AuthorNote.depth] 条；最少落在标记之后（夹具里它从不出现在
                     // `[Start a new Chat]` 之前）。
                     val note = authorNote
-                    if (note != null) {
-                        val userTurns = history.count { it.role == ChatRole.User }
-                        // 原版把 ANTop / 作者注 / ANBottom 直接拼成 **一条** 注入文本
-                        // （`world-info.js` 的 `ANWithWI`，只削掉首尾各一个换行），
-                        // 再按 interval 决定插不插。夹具 P1-7-an-with-wi。
-                        val merged = mergeAuthorNote(authorNoteTop, note.text, authorNoteBottom)
-                        if (note.copy(text = merged).activeAt(userTurns)) {
+                    if (note != null && note.position == AuthorNote.IN_CHAT && noteText != null) {
+                        run {
                             val blockLen = messages.size - blockStart
                             val offset = (blockLen - note.depth).coerceIn(1, blockLen)
                             messages.add(
                                 blockStart + offset,
                                 ChatMessage(
                                     role = note.role,
-                                    content = substitute(merged, charName, userName, outlets),
+                                    content = noteText,
                                 ),
                             )
                         }

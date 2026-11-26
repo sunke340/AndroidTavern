@@ -21,7 +21,20 @@ public data class AuthorNote(
     public val depth: Int = 4,
     public val role: ChatRole = ChatRole.System,
     public val interval: Int = 1,
+    /**
+     * 放哪（原版 `extension_prompt_types`）：
+     * `0` = IN_PROMPT（主提示词之后、角色描述之前，夹具 `P1-7-an-pos-0`）、
+     * `1` = IN_CHAT（按 [depth] 插进聊天历史，默认，夹具 `P1-7-an-depth-2`）、
+     * `2` = BEFORE_PROMPT（**主提示词之前**，夹具 `P1-7-an-pos-2`）。
+     */
+    public val position: Int = IN_CHAT,
 ) {
+    public companion object {
+        public const val IN_PROMPT: Int = 0
+        public const val IN_CHAT: Int = 1
+        public const val BEFORE_PROMPT: Int = 2
+    }
+
     /**
      * 这一轮插不插。规则照原版 `setFloatingPrompt()`：
      * `messagesTillInsertion = lastMessageNumber % interval`（用户消息条数），等于 0 才插。

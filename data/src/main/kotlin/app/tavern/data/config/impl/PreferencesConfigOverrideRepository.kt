@@ -38,6 +38,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         var anDepth: Int? = null
         var anRole: String? = null
         var anInterval: Int? = null
+        var anPosition: Int? = null
         raw.lineSequence().forEach { line ->
             val at = line.indexOf('=')
             if (at <= 0) return@forEach
@@ -55,6 +56,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
                 KEY_AN_DEPTH -> anDepth = value.toIntOrNull()
                 KEY_AN_ROLE -> anRole = value.ifBlank { null }
                 KEY_AN_INTERVAL -> anInterval = value.toIntOrNull()
+                KEY_AN_POSITION -> anPosition = value.toIntOrNull()
                 KEY_BUILTIN -> builtin = value.split(SEP).filter { it.isNotEmpty() }.toSet()
                 KEY_TEMPERATURE -> temperature = value.toDoubleOrNull()
                 KEY_MAX_TOKENS -> maxTokens = value.toIntOrNull()
@@ -77,6 +79,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             authorNoteDepth = anDepth,
             authorNoteRole = anRole,
             authorNoteInterval = anInterval,
+            authorNotePosition = anPosition,
             temperature = temperature,
             maxTokens = maxTokens,
             topP = topP,
@@ -111,6 +114,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
             value.authorNoteDepth?.let { append(KEY_AN_DEPTH).append('=').append(it).append('\n') }
             value.authorNoteRole?.let { append(KEY_AN_ROLE).append('=').append(it).append('\n') }
             value.authorNoteInterval?.let { append(KEY_AN_INTERVAL).append('=').append(it).append('\n') }
+            value.authorNotePosition?.let { append(KEY_AN_POSITION).append('=').append(it).append('\n') }
             // 内置正则的开关集合：和世界书/正则一样，空集要写出来（"明确全开"≠跟随）
             value.builtinDisabled?.let {
                 append(KEY_BUILTIN).append('=').append(it.joinToString(SEP)).append('\n')
@@ -146,6 +150,7 @@ class PreferencesConfigOverrideRepository(context: Context) : ConfigOverrideRepo
         const val KEY_AN_DEPTH = "an_depth"
         const val KEY_AN_ROLE = "an_role"
         const val KEY_AN_INTERVAL = "an_interval"
+        const val KEY_AN_POSITION = "an_position"
         const val KEY_GREETING = "greeting"
         const val KEY_BUILTIN = "builtin_disabled"
         const val KEY_TEMPERATURE = "temperature"

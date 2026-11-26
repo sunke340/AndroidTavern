@@ -147,8 +147,11 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
                     6 -> SettingLinkRow(
                         "作者注",
                         if (note == null) "未设置" else {
-                            "${note.text.length} 字 · 深度 ${note.depth} · " +
-                                "每 ${note.interval} 轮 · $noteSrc"
+                            when (note.position) {
+                                AuthorNote.IN_PROMPT -> "主提示词之后"
+                                AuthorNote.BEFORE_PROMPT -> "主提示词之前"
+                                else -> "聊天历史 · 深度 ${note.depth}"
+                            } + " · ${note.text.length} 字 · 每 ${note.interval} 轮 · $noteSrc"
                         },
                     ) { noteEditor = true }
 
@@ -164,8 +167,8 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
             if (noteEditor) {
                 AuthorNoteDialog(
                     initial = note,
-                    onSave = { text, depth, role, interval ->
-                        viewModel.setSessionAuthorNote(text, depth, role, interval)
+                    onSave = { text, depth, role, interval, position ->
+                        viewModel.setSessionAuthorNote(text, depth, role, interval, position)
                         noteEditor = false
                     },
                     onClose = { noteEditor = false },
@@ -184,12 +187,13 @@ fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) 
 @Composable
 private fun AuthorNoteDialog(
     initial: AuthorNote?,
-    onSave: (String, Int, String, Int) -> Unit,
+    onSave: (String, Int, String, Int, Int) -> Unit,
     onClose: () -> Unit,
 ) {
     var text by remember { mutableStateOf(initial?.text.orEmpty()) }
     var depth by remember { mutableStateOf((initial?.depth ?: 4).toString()) }
     var interval by remember { mutableStateOf((initial?.interval ?: 1).toString()) }
+    var position by remember { mutableStateOf(initial?.position ?: AuthorNote.IN_CHAT) }
     var role by remember {
         mutableStateOf(
             when (initial?.role) {
@@ -244,6 +248,23 @@ private fun AuthorNoteDialog(
                     label = { it },
                     onSelect = { role = it },
                 )
+                Text(
+                    "放在哪",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SegmentedRow(
+                    options = listOf(AuthorNote.IN_PROMPT, AuthorNote.IN_CHAT, AuthorNote.BEFORE_PROMPT),
+                    selected = position,
+                    label = {
+                        when (it) {
+                            AuthorNote.IN_PROMPT -> "主提示词之后"
+                            AuthorNote.BEFORE_PROMPT -> "主提示词之前"
+                            else -> "聊天历史"
+                        }
+                    },
+                    onSelect = { position = it },
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
                     Button(
                         onClick = {
@@ -252,6 +273,7 @@ private fun AuthorNoteDialog(
                                 depth.toIntOrNull()?.coerceIn(0, 100) ?: 4,
                                 role,
                                 interval.toIntOrNull()?.coerceIn(1, 100) ?: 1,
+                                position,
                             )
                         },
                     ) { Text("保存") }

@@ -430,7 +430,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val interval = sessionOverride.authorNoteInterval
                     ?: cardOverride.authorNoteInterval
                     ?: 1
-                return AuthorNote(text = text, depth = depth, role = role, interval = interval)
+                val position = sessionOverride.authorNotePosition
+                    ?: cardOverride.authorNotePosition
+                    ?: AuthorNote.IN_CHAT
+                return AuthorNote(text = text, depth = depth, role = role, interval = interval, position = position)
             }
 
         /**
@@ -1764,7 +1767,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 会话级作者注。四项一起写：正文清空 = 这一层没有作者注（回到"跟随上级"）。
      */
-    fun setSessionAuthorNote(text: String?, depth: Int, role: String, interval: Int) {
+    fun setSessionAuthorNote(text: String?, depth: Int, role: String, interval: Int, position: Int) {
         val sessionId = _state.value.sessionId ?: return
         viewModelScope.launch {
             persistSessionConfig(sessionId) {
@@ -1773,6 +1776,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     authorNoteDepth = depth,
                     authorNoteRole = role,
                     authorNoteInterval = interval,
+                    authorNotePosition = position,
                 )
             }
             _state.update {
@@ -1782,10 +1786,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         authorNoteDepth = depth,
                         authorNoteRole = role,
                         authorNoteInterval = interval,
+                        authorNotePosition = position,
                     ),
                 )
             }
-            AppLog.i("config", "会话作者注 depth=$depth role=$role interval=$interval 正文=${text?.length ?: 0}字")
+            AppLog.i(
+                "config",
+                "会话作者注 depth=$depth role=$role interval=$interval position=$position 正文=${text?.length ?: 0}字",
+            )
         }
     }
 
