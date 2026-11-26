@@ -285,6 +285,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     val roundKey = state.inflight?.roundId
     var streamHeight by remember(roundKey) { mutableIntStateOf(0) }
     val smoothHeight = remember(roundKey) { Animatable(0f) }
+    // **基线没建立之前，`smoothHeight` 的 0 不是"上一个高度"，而是"还没有上一个高度"。**
+    // 把 0 当基线，(首次测量 − 0) 就会被算成"这一下长高了这么多"，于是同一帧里冒出两笔假位移：
+    // `graphicsLayer` 的 translationY 把整列往下推；"离开贴底"那条又会把它折成一笔真滚动
+    //（`dispatchRawDelta`）。用户 2026-11-26 报的「点发送后整个列表先往下滑一下，用户气泡才弹出来」
+    // 就是这个：日志里每次发送都留下同一个指纹 ——
+    // `回底…round=true` 紧跟 `模式=A idx=0 off=0 气泡高=140 平滑差=140px`（140px = 占位气泡高度，
+    // 基线还是 0）。下面那次 `snapTo` 只能算"事后对齐"，它要跨一次重组 + effect 派发才落地，
+    // 至少一帧已经把 140px 画出去了 —— 所以这里**同步**判断，不指望 effect 的时序。
+    // 注意返回 **Float**：`translationY` 要的就是亚像素差（取整会让串流跟随一格一格跳）；
+    // 折成滚动量那边沿用原来的 `.toInt()`。
+    fun bridgePendingPx(): Float =
+        if (smoothHeight.value <= 0f) 0f else streamHeight - smoothHeight.value
     LaunchedEffect(streamHeight, state.collapse) {
         // C3：收缩窗口里**不追高度**。这里把平滑高度贴着实测高度走（snap），
         // 窗口一关它就是一个干净起点 —— 下一笔增长照常由"追高度差"那条动画消化。
@@ -294,8 +306,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         }
         val target = streamHeight.toFloat()
         // 气泡刚出现的那一次不产生位移：直接对齐（否则会从半空滑下来）
-        if (smoothHeight.value == 0f) smoothHeight.snapTo(target)
-        else smoothHeight.animateTo(target, tween(Motion.Base, easing = Motion.Decelerate))
+        if (smoothHeight.value == 0f) {
+            if (target > 0f) {
+                AppLog.i("scroll", "首测：对齐 ${target.toInt()}px（基线未建立，不按增长处理）")
+            }
+            smoothHeight.snapTo(target)
+        } else {
+            smoothHeight.animateTo(target, tween(Motion.Base, easing = Motion.Decelerate))
+        }
     }
 
     // ── 阅读锚点保护（场景 C）──
@@ -336,7 +354,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (justEnteredBottom) {
             // 回到贴底：这笔欠账在场景 C 里已经消化过（内容本来就在正确位置），
             // 直接对齐，否则会先向下沉一下再滑上来。
-            val pending = (streamHeight - smoothHeight.value).toInt()
+            val pending = bridgePendingPx().toInt()
             smoothHeight.snapTo(streamHeight.toFloat())
             anchoredHeight = streamHeight
             if (pending != 0) anchorDiag.edge("回到贴底", pending, 0)
@@ -350,7 +368,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         if (leftBottom) {
             // 离开贴底：把当前欠账折成滚动量，画面上就不会"收一下"。
             // 折不完的部分留给 anchoredHeight 当桥接，下一笔补偿接着消化。
-            val pending = (streamHeight - smoothHeight.value).toInt()
+            val pending = bridgePendingPx().toInt()
             if (pending > 0) {
                 val moved = listState.dispatchRawDelta(pending.toFloat()).roundToInt()
                 anchoredHeight = streamHeight - pending + moved
@@ -398,7 +416,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             .collect { mark ->
                 // 平滑差：从贴底切出去时"追高度"的那点欠账。它不是 0 就说明切换那一帧
                 // 内容会往上收一点点（贴底跟随的既有行为，这里先量出来，别和补偿混为一谈）。
-                val pending = (streamHeight - smoothHeight.value).toInt()
+                val pending = bridgePendingPx().toInt()
                 anchorDiag.mode(mark.mode, mark.index, mark.offset, streamHeight, pending, streamProbe.topY)
             }
     }
@@ -642,7 +660,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     translationY = if (!state.isStreaming || state.collapse != null) {
                         0f
                     } else if (atBottom) {
-                        streamHeight - smoothHeight.value
+                        bridgePendingPx()
                     } else if (readingBubble) {
                         (streamHeight - anchoredHeight).toFloat().coerceAtLeast(0f)
                     } else {
