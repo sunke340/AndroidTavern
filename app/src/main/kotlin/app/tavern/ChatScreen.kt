@@ -340,9 +340,16 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 开轮：先把上一轮没打完的补满，再记基线、建游标。
     // 基线 = 开轮那一刻**这一行**的正文（新消息还没有行 → null）。收尾判定靠它：
     // 正文跟基线一样 = 这一轮没写进去 = 没东西可打；变过 = 已提交 = 继续按档位打完。
+    // 进页那一刻**已经在生成**的那一轮，不建游标：用户是中途回来的，屏幕应该直接是全貌
+    // （方案 §3.6：退页 = 立刻补满）。只对"在页面上开始的轮次"建游标。
+    var revealEntrySkip by remember { mutableStateOf(true) }
     LaunchedEffect(state.inflight?.uiKey, state.inflight?.roundId) {
         val inf = state.inflight ?: return@LaunchedEffect
         clearReveal("换轮")
+        if (revealEntrySkip) {
+            revealEntrySkip = false
+            return@LaunchedEffect
+        }
         if (reduceMotion || state.revealSpeed == RevealSpeed.Off) return@LaunchedEffect
         // 重新生成（targetDbId 非空）：那一行**早就在** rows 里，基线 = 它的旧正文。
         // 新消息没有行 → baseline = null（收尾后行必有内容，走"正文变过"那一支）。
