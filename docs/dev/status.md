@@ -11,8 +11,8 @@
 
 | | |
 |---|---|
-| 代码 | `0f7b738`（**P3 就地改写 + 平滑收缩**，v172 宽高一起收 + 入场动画按身份 + 发送两拍）；前几包 `85bccc2`（P2）、`806a0db`（P1）、`2b1c101`（P0） |
-| 最新交付 | **十包**：`app-v159…` → `app-v167-85bccc2.apk`（`apk-m198`）→ `app-v168-e37ded3.apk`（`apk-m199`，收缩不合格作废）→ `app-v169-87e5b56.apk`（`apk-m200`，涨回不合格）→ `app-v170-429e888.apk`（`apk-m201`，跳一行字）→ `app-v171-8d431b2.apk`（`apk-m202`）→ **`app-v172-0f7b738.apk`（`apk-m203`）**；BUILD_ID 与签名都已验 |
+| 代码 | `5854ec5`（**P3 就地改写 + 平滑收缩**，v173 修「收完又滚一次」+ 入场放慢到 320ms）；前几包 `85bccc2`（P2）、`806a0db`（P1）、`2b1c101`（P0） |
+| 最新交付 | **十包**：`app-v159…` → `app-v167-85bccc2.apk`（`apk-m198`）→ `app-v168-e37ded3.apk`（`apk-m199`，收缩不合格作废）→ `app-v169-87e5b56.apk`（`apk-m200`，涨回不合格）→ `app-v170-429e888.apk`（`apk-m201`，跳一行字）→ `app-v171-8d431b2.apk`（`apk-m202`）→ `app-v172-0f7b738.apk`（`apk-m203`）→ **`app-v173-5854ec5.apk`（`apk-m204`）**；BUILD_ID 与签名都已验 |
 | 真机确认到哪 | v157（M15）已确认；v158–v164 已真机跑过。v164 回执：自己发消息跟底已好；AI 气泡跟底 / 重新生成闪 / 发送时历史闪 / 继续长消息闪仍未解决 → 结构性问题，见 [plan-chat-list-flash.md](../plan-chat-list-flash.md)。**v165 M23 全通过；v166 M24 核心两条通过；v167 M25 全通过；v168 待 M26**。主线剩 P3 回执 / P4 |
 | CI | 铁律（含 `check-ui-map.sh` / `check-ui-invariants.sh`）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` 全绿（**10 个模块 129 条**）+ 五个 `check-*` 全过 |
@@ -29,7 +29,7 @@
 | **P0 收尾提交权** | Stop/Finish/生成失败/切会话收敛成一个 `GenerationRound` 提交权（新纯 JVM 模块 `:core:generation`，21 条用例）；`cancel()` 只在拿到权之后；`NonCancellable` 只包「写库→提交界面」；四类失败语义分开；`replaceMessage` 单事务 | ✅ v165（`2b1c101` / `apk-m196`），**M23 全通过**（其中「快速停止」「半秒竞态」两条做不到人工测试，由 T1–T4 的并发用例覆盖） |
 | **P1 行模型** | `ChatRow(uiKey)` + `Inflight` 顶替 `transcript`/`streamingText`/`isStreaming`；渲染收敛成一个 `itemsIndexed(key=uiKey)`；删除/撤回/翻版本按 uiKey 定位、按 dbId 落库（审计 P1-5 的下标耦合解除） | ✅ v166（`806a0db` / `apk-m197`），**M24 核心两条通过** |
 | **P2 占位气泡** | 点发送/继续/重新生成**当帧**出 `生成中`/`重新生成中` + 呼吸点（`PendingLine`/`TypingDots`）；首 token 只改正文 → 顺带修掉「AI 气泡掉到输入框下面」；回底分档（贴底瞬时 / 读历史动画）；测量状态按轮分开；键盘可见性不再每帧重组 | ✅ v167（`85bccc2` / `apk-m198`），**M25 全通过** |
-| **P3 就地替换 + 平滑收缩** | 重新生成**同一行改写**（`inflight.uiKey` 用 `m{dbId}`）；删掉 `ReplaceTarget`/`removedContent`/`Inflight.removed`/`RestoreRemoved`/`streamingRegenerate`；开场 `animateContentSize` 按 r2 §13.1 四条硬约束收缩 260ms | ✅ v172（`0f7b738` / `apk-m203`），**待 M26 真机**（v168 收缩不动画 → v169 涨回瞬跳 → v170 跳一行字 → v171 宽度不收/历史重播，都在这一版修） |
+| ✅ v173（`5854ec5` / `apk-m204`），**待 M26 真机**（v168–v172 五版作废的原因见 [M26](verification/2026-11-26-M26.md) 文末那张表） |
 | **P4 动画收口** | `prevKeys` 入场规则（取代 `justSettled`/`suppressNewestFade`/`suppressItemFade` 三个补丁）、`placementSpec` 只在非串流时挂、落库前 `smoothHeight` snap、删除/撤回的位移动画 | ⬜ **下一批**（P3 之后） |
 
 ## 最近这几轮改了什么
