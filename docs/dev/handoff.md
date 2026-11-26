@@ -1,154 +1,125 @@
-# 接手卡（2026-11-26 09:20）
+# 接手卡（2026-11-26 10:35）
 
 > 给"下一次压缩上下文之后"的自己和任何接手的人。**这一页只讲别漏掉的东西**：
 > 现状 → [status.md](status.md)；规则 → [AGENTS.md](../../AGENTS.md) + [app/AGENTS.md](../../app/AGENTS.md)；
-> 需求批的口径与排期 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)；
-> 词表（怎么称呼界面上每个东西）→ [ui-map.md](../ui-map.md)；
-> 必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
-> 真机验证记录 → [verification/](verification/)（一批一个文件，索引在 README）；M0–M16 归档在 [device-verification.md](device-verification.md)；历史细节 → [pitfalls.md](pitfalls.md)。
+> **聊天列表闪烁的诊断与改造方案（当前主线）→ [plan-chat-list-flash.md](../plan-chat-list-flash.md)**；
+> 需求批口径 → [plan-req-2026-11-25.md](../plan-req-2026-11-25.md) / [plan-req-2026-11-26.md](../plan-req-2026-11-26.md)；
+> 词表 → [ui-map.md](../ui-map.md)；必须成立什么 → [ui-invariants.md](../ui-invariants.md)；
+> 真机验证 → [verification/](verification/)（**一批一个文件**，索引在 README）；
+> M0–M16 归档在 [device-verification.md](device-verification.md)（已冻结）；历史细节 → [pitfalls.md](pitfalls.md)。
 
 ## 30 秒
 
 - **项目**：原生安卓「酒馆」——Kotlin + Compose 重写 SillyTavern 1.19.1，兼容它的文件格式与提示词行为。
-  单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)）。
-- **代码基线**：`8c5c5d9`（新消息回底 + 落库不跳）。六包都已出：
-  v159（`apk-m190`）→ v160（`apk-m191`）→ v161（`apk-m192`）→ v162（`apk-m193`）→
-  v163（`apk-m194`）→ `app-v164-8c5c5d9.apk`（`apk-m195`）。
-- **真机确认到**：`v157`（M15）。v158–v163 均已真机跑过；**M17/M20/M21 暴露的问题已修进 v161–v164**，
-  待 M22 复验（回底、落库不跳、版本条、继续=新气泡）。
-- **在做的活**：2026-11-25 的 16 条需求（A/B/C 已确认、D 待验、E/F 未开工，口径见
-  [plan-req-2026-11-25.md](../plan-req-2026-11-25.md)）+ 2026-11-26 凌晨的七条
-  （[plan-req-2026-11-26.md](../plan-req-2026-11-26.md)，已出 v160）。
-- **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；**能复用先复用**；
+  单 APK、单进程、无 WebView、无后端（[ADR 0002](../adr/0002-single-process.md)；其它决策见 `docs/adr/`）。
+- **代码基线**：`8c5c5d9`（v164：新消息回底 + 落库不跳）。
+- **真机跑到**：v164。用户回执：自己发消息的跟底**已好**，**AI 气泡跟底 / 重新生成闪 / 发送时历史闪 /
+  继续长消息闪**仍未解决 —— 已确认是**结构性**问题，**等拍板后按
+  [plan-chat-list-flash.md](../plan-chat-list-flash.md) 一批做，别再叠补丁**。
+- **在做的活**：2026-11-25 的 16 条需求（A/B/C 确认、D 待验、**E/F 未开工**）+
+  2026-11-26 的七条（已出 v160）+ 聊天列表结构性改造（等拍板）。
+- **铁律**：core 纯 JVM；兼容行为必须带 fixture；不猜原版；本机不构建；能复用先复用；
   **说界面上的东西用 `docs/ui-map.md` 的名字，对不上就先问、不许猜**。
 
-## 一、这个会话（2026-11-25 下午 → 深夜）做了什么
+## 一、当前基线（2026-11-26 一天出了六个包）
 
-按实际交付顺序，**每批都有真机回执才往下走**：
+| 版本 | 提交 | tag | 交付物 | 内容 |
+|---|---|---|---|---|
+| v159 | `c984f71` | `apk-m190` | `artifacts/app-v159-c984f71.apk` | 止血重构：发送路径后台化 / 流式任务所有权 / 双写窗口 |
+| v160 | `dcb0742` | `apk-m191` | `artifacts/app-v160-dcb0742.apk` | 2026-11-26 七条需求 + M16 修复 |
+| v161 | `410a713` | `apk-m192` | `artifacts/app-v161-410a713.apk` | 停止/swipe 底本/列表整屏闪 |
+| v162 | `5d8266e` | `apk-m193` | `artifacts/app-v162-5d8266e.apk` | 「继续」改为落新气泡（与原版的有意差异） |
+| v163 | `9bbf3a6` | `apk-m194` | `artifacts/app-v163-9bbf3a6.apk` | 版本条挂错气泡 + 落库淡入 |
+| v164 | `8c5c5d9` | `apk-m195` | `artifacts/app-v164-8c5c5d9.apk` | 新消息回底 + 落库高度占位 |
 
-| 交付 | 批次 | 内容 | 回执 |
-|---|---|---|---|
-| v150 | 页头结案 | 二级页首项留白还原、世界书列表补回 64dp（`8ee1b72` → `df71772` 这一系列收尾） | M9 / M9.1 全过 |
-| v151 | 回归修复 | 卡配置「对话样式」「关于这张卡」被内嵌世界书顶掉（`6f4dd53` 把分发写成常量） | M10 全过 |
-| v152 | INV-01 第一批 | 页头收口：`DetailHeaderMode { Frosted, Translucent }` + `contentSpacing`，骨架交出最终 top；删 `contentTopInset` / `frostedHeader` / `DetailScrollUnderTop`；12 处调用对齐；脚本 INV-01 三条判据 | M11 全过 |
-| v153 | 不变量第二批 | INV-04（玻璃三铁律）/ INV-06（每个可滚面挂橡皮筋）/ INV-08（页面不许写字面色值）进脚本；补掉 3 处真漏 | M12 全过 |
-| v154→v155 | 需求批 A | 聊天页离场不闪、二级页光标不残留、抽屉期间列表静止、删开场白底部文案 | M13 全过 |
-| v156 | 需求批 B | 世界书/正则选择页三个动作进右上胶囊、开场白走显示正则、斜体改主色 | M14 全过 |
-| v157 | 需求批 C | 条目全文页、会话置顶（DB v4）、两处搜索、会话预览与卡简介走正则 | M15 全过 |
-| v158 | 需求批 D | 采样五项三级、默认正则整行删 + 占位符、内置正则三级；外加三处修正 | **待 M16** |
+**真机验证记录**：`docs/dev/verification/2026-11-26-M17…M22.md`（一批一个文件）。
+M16（v158）的"卡内嵌书条目页保位"已在 v160 修掉；其余 D 批项用户口头确认正常。
 
-## 二、现在的状态
+## 二、现在悬着的（按重要性）
 
-**真机已确认**：`v150`（M9/M9.1）→ `v151`（M10）→ `v152`（M11）→ `v153`（M12）→ `v155`（M13）→
-`v156`（M14）→ `v157`（M15）。
-
-**待真机确认（v158 / M16）** —— 见 [device-verification.md](device-verification.md) 的 M16：
-1. 世界书条目页点进「条目全文」再返回，**列表保持原位置**；
-2. 置顶组填充是描边色、片间是"白线"，行尾**只写时间**；
-3. 默认正则：标签独占一行时**连那一行一起删**（其它空行不动），`<StatusPlaceHolderImpl/>` 也清；
-4. 采样五项三级（会话 → 卡 → 预设 → 全局，留空跟随），全局采样页五项都在；
-5. 内置正则三级开关（卡/会话正则页的「内置」分组 + 胶囊批量动作含内置）。
-
-**已知未做（按优先级）**
-- **E 批**：右上胶囊点开**变形成液态玻璃菜单**（需求 #12）。现在 4 处用 Material3 `DropdownMenu`，
-  它是独立窗口、采不到内容层 → 做不成玻璃；要新写菜单宿主。口径：**先做聊天页 ⋮ 与卡详情 ⋮ 两处原型**，
-  看过观感再铺开。新组件要同步 `ui-map.md` + INV-05 白名单。
-- **F 批**：**用户人设**（需求 #3）。多人设、三级（会话 > 卡 > 全局默认）、`{{user}}` = 生效人设名、
-  描述按原版位置进提示词（原版是当一条 system 消息）。**夹具先行**：`capture.mjs` 要能设人设，
-  没有 fixture 不许开工（AGENTS 铁律 #2/#4）。
-- 计划外的老账：世界书 **outlet**（缺夹具：原版只有预设里出现 `{{outlet::名字}}` 才展开）、
-  卡库**分组**、`forbid_overrides` / "按角色禁用某段"、**角色详情页页头要不要穿**（卡头是常驻海报，
-  要动就是单独一轮）。
-- **明确不做**：MVU / 酒馆助手的**状态栏渲染**（HTML/JS 界面）——无 WebView（ADR 0002）。
-  这轮只把 `<StatusPlaceHolderImpl/>` 清掉。
+1. **聊天列表闪烁（主线，等拍板）**：诊断、证据、两个候选方案、待拍板的两个问题全在
+   [plan-chat-list-flash.md](../plan-chat-list-flash.md)。**拍板前不要改聊天列表渲染**。
+   待拍板：①重新生成期间旧文本"就地替换"还是"保留+遮罩"（推荐就地替换）；
+   ②占位文案"生成中"还是"生成中…"带呼吸动画。
+2. **`‹N/M›` 只能翻最后一条**：原版 `isMessageSwipeable` 就只允许最后一条（v165 之前的既定行为）。
+   用户要的"任意消息都能翻版本"是**扩展**，2026-11-26 说**先待定**。
+3. **E 批**：聊天页 ⋮ 与卡详情 ⋮ 两处的"胶囊变形成液态玻璃菜单"原型（口径见 plan-req-2026-11-25）。
+   新组件要同步 `ui-map.md` + INV-05 白名单。
+4. **F 批**：用户人设（多人设 + 三级 + `{{user}}`）。**夹具先行**：`capture.mjs` 要能设人设，
+   没有 fixture 不许开工（AGENTS 铁律 #2/#4）。
+5. **审计 P0-3**：`data` 层 JVM 测试（三级配置编解码 / `.meta` 容错 / DB 迁移 / JSONL 往返）。
+6. 老账：世界书 outlet（缺夹具）→ 卡库分组 → `forbid_overrides` → 角色详情页页头。
+   **明确不做**：MVU / 酒馆助手的 HTML 状态栏（无 WebView，ADR 0002）。
 
 ## 三、下一步优先级
 
-1. **收 v164 的 M22 回执**（6 项）：新消息自动回底、落库那一帧不跳；
-   同时复验 v163 的 M21（版本条/不闪）与 v162 的 M20（继续=新气泡）。
-   **真机验证从 2026-11-26 起一批一个文件**：[verification/](verification/)，索引在 README。
-2. **审计 P0-3**：`data` 层 JVM 测试（三级配置编解码 / `.meta` 容错 / DB 迁移 / JSONL 往返）。
-3. **E 批**：胶囊→玻璃菜单（先两处原型）。
-4. **F 批**：用户人设（夹具先行）。
-5. 老账：outlet（夹具先行）→ 卡库分组 → 角色详情页头。
-6. 推迟项：`P1-3` 重组成本优化（等真机清单清空再做）。
+1. **拿 [plan-chat-list-flash.md](../plan-chat-list-flash.md) 的两个决策点去问用户**，
+   然后按那份文档的第四~六节**一批做完**（行模型 + 占位气泡 + 重新生成就地替换 + 离散动画），
+   配一条专门验证清单（发送 / 首 token / 停止 / 继续 / 重新生成 / 撤回 / 切会话）。
+2. 收 v164 之后那一批的真机回执；三包（v162/v163/v164）都还有没复验的条目。
+3. E 批 → F 批（F 先补夹具）。
+4. 技术债：data 测试（P0-3）→ 重组成本 P1-3（等真机清单清空再做）。
 
-## 四、这台机器与出包（比上一版更长的教训，每次都看）
+## 四、这台机器与出包（每次都要看）
 
 - **本机编不了 `:app` / `:data`**，只能跑 `tools/test-core.sh` 与 `tools/check-*.sh`。
   提交前至少跑：`check-core-purity` / `check-kotlin-comments` / `check-kotlin-imports` /
   `check-ui-map` / `check-ui-invariants` + `test-core.sh`。
 - **出包循环**：
   1. `git commit`（消息里有引号/反引号就写文件 + `-F`）→ `git push`；
-  2. 等 CI：**优先用 release 页面判断**（`https://github.com/sunke340/AndroidTavern/releases/tag/apk-latest`
-     里 grep 提交 sha），API 只在额度内用（见下）；
+  2. 等 CI：**优先用 release 页面判断**（`releases/tag/apk-latest` 里 grep 提交 sha），
+     API 只在额度内用；
   3. 下载 `releases/download/apk-latest/app-debug.apk`（**加 `?cb=时间戳` 免缓存**）；
-  4. **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`，用 python `zipfile`）——**唯一判据**；
-  5. `tools/verify-apk.sh <apk> 55:E0:…:0B:E7>`（完整指纹见脚本历史/CI 日志）；
+  4. **验 dex 里的 40-hex `BUILD_ID`**（`classes17.dex`，python `zipfile`）——**唯一判据**；
+  5. `tools/verify-apk.sh <apk> 55:E0:C6:E2:…:0B:E7`（完整指纹见 runbook / CI 日志）；
   6. `cp` 成 `artifacts/app-vNNN-<sha7>.apk`，打 tag `apk-mN`，`git push origin <tag>`。
-- ⚠️ **`apk-latest` 的发布步骤可能失败**（同一 release 里覆盖同名资产 `app-debug.apk` 会撞名，
-  2026-11-26 踩过）：现象是「构建 success、测试 success，只有『公开 APK（apk-latest）』这一步红」。
-  **处理：给同一个 commit 打 `apk-mN` tag 再 push**，走 tag release 取包（v158 就是这么出的）。
-- ⚠️ **CI 失败日志**：`ci-log-android` / `ci-log-jvm` 两个 release，**现在按 `build-<sha7>.log` 命名**
-  （固定名 `build.log` 会因为同名资产上传失败——失败日志那一步自己红，等于没日志）。
-  直接下 `releases/download/ci-log-android/build-<sha7>.log` 看 `^e:` 行；
-  CI 也把关键错误行打成 run 页面上的 annotation。
-- ⚠️ **GitHub API 每小时 60 次**：`poll-ci.sh` 一轮两次、连跑就会打满（现象：脚本输出空、exit 3）。
-  限流时**别再用它**，改「release 页面 grep sha」+「下载验 BUILD_ID」；要看 run 状态等重置。
-- ⚠️ **`poll-ci.sh` 会假 READY**：它只看 release body 里的 sha，run 可能还没跑完。
+- ⚠️ `apk-latest` 的发布步骤可能因"同名资产覆盖"失败 → 给同一 commit 打 `apk-mN` tag 走 tag release。
+- ⚠️ CI 失败日志在 `ci-log-android` / `ci-log-jvm` 两个 release，命名 `build-<sha7>.log`。
+- ⚠️ `poll-ci.sh` 会假 READY（只看 release body）；限制流时改用"release 页面 grep sha + 验 BUILD_ID"。
 - **真机日志**：设置 → 关于 → 导出日志（SAF）。AppLog 只写应用内，journald 里没有。
 
 ## 五、日志 tag 速查
 
 | tag | 看什么 |
 |---|---|
-| `nav` | `转场预热 … 新页首帧 Xms`、`转场 … 帧 N，最长帧 Mms`、页面移除间隔 |
-| `scroll` | 串流跟随模式、补偿落地、**`焦点滚动被拦下 …`**（选字不拖列表的判据） |
-| `config` | 三级配置写入：会话/卡级模型、思考强度、预设、**采样五项**、**内置正则** |
-| `chat` | 发送 / 完成 / 失败、换开场白、重新生成、swipe、继续、置顶 |
-| `ui` | 输入区展开、离场收焦点与选区 epoch、**`抽屉打开：冻结列表底部让位 …`** |
-| `wi` | 世界书：开书耗时、条目数、看条目全文 |
+| `nav` | 转场预热首帧、转场帧数/最长帧、页面移除间隔 |
+| `scroll` | **串流跟随模式 A/B/C**（A=贴底 idx0/off0、B=读历史、C=读气泡自身）、补偿、`回到贴底`、`串流结束` |
+| `chat` | 发送 / 完成 / 失败 / 重新生成 / 继续 / 停止 / swipe / 撤回（**排查闪烁先看这些时间点**） |
+| `config` | 三级配置写入（模型/思考强度/预设/采样五项/内置正则/气泡字号） |
+| `ui` | 输入区展开与高度、离场收焦点、抽屉冻结让位、确认框 |
+| `wi` | 世界书：开书耗时、条目数、全文 |
 | `rubber` / `glass` | 橡皮筋回弹；玻璃档参数与逐像素校验 |
 
-## 六、文件地图（这轮动过的）
+> 排查"闪"的固定套路：在 `chat` 的一次状态变更前后各看一行 `scroll` 的模式与 `气泡高/顶Y`；
+> 顶 Y 是负的等价于"这条气泡比屏幕还高"，这种条目任何增删都是整屏级位移。
+
+## 六、文件地图（想改什么去哪）
 
 | 想改什么 | 去哪 |
 |---|---|
-| 页头材质与首项让位 | `DetailPage.kt`（`DetailHeaderMode` / `contentSpacing` / `DetailHeader`） |
-| 离场清理、抽屉期间列表静止 | `ChatScreen.kt`（`suppressItemFade` / `keepExpanded` / `frozenListBottom`） |
-| 选择页（模型/采样/世界书/正则/预设） | `ConfigPickerScreen.kt`（`PickerBulkMenu`、`SamplingPickerBody`、内置分组） |
-| 三级配置的生效值 | `ChatViewModel.UiState.effective*`（采样五项、`effectiveBuiltinDisabled` 等） |
-| 会话列表（置顶/预览） | `SessionsScreen.kt`、`SessionTime.kt`；置顶字段在 `ChatRepository` / `SqliteChatRepository` / `TavernDatabase`（DB v4） |
-| 世界书条目 / 全文 / 搜索 | `WorldBookEntriesScreen.kt`、`WorldBookEntryScreen.kt`、`WorldBookEntryRow.kt`、`CardConfigPageScreen.kt`、`SearchField.kt` |
-| 显示管线（正则 → 样式） | `DisplayText.kt`（`markupText` / `displayPlain`）、`core/regex/BuiltinRegex.kt` |
-| 采样与内置正则的存储 | `data/config/ConfigOverrideRepository.kt`（+ `impl/PreferencesConfigOverrideRepository`）、`data/settings/*` |
-| 点触反馈（行/卡/底栏共用手感） | `Style.kt` 的 `rememberPressTint`（最短 90ms 可视） |
-| 回到底部钮 | `ChatScreen.kt` 的 `JumpToBottomButton` + `bottomOverlay`（不参与输入区测量） |
-| 开场白「设为默认」胶囊 | `CharacterDetailScreen.kt` 的 `DefaultGreetingChip` |
-| 气泡字号三级 | `Screen.kt`（`BubbleFontSizes` / `ConfigKind.FontSize`）、`UiState.effectiveBubbleFontSize`、三处入口（`SettingsPages` / `CardConfigPageScreen` / `SessionConfigScreen` + `ConfigPickerScreen`） |
-| 预设里的「提示词全文」 | `PresetPromptScreen`（新增 `Destination.PresetPrompt` + `UiState.presetPromptDetail`） |
+| **聊天列表渲染 / 闪烁 / 跟随** | `ChatScreen.kt`（`itemsIndexed` 的 key、`itemAnim`、`justSettled`/`suppressNewestFade`、`topOfStream`、`translationY` 补偿）+ `ChatViewModel` 的 `beginCompletion`/`finish`/`stop` |
 | 流式任务所有权 | `ChatViewModel.StreamingTask` / `stop()` / `openSessionInternal()` 的取消逻辑 |
-| 词表 / 不变量 | `docs/ui-map.md`、`docs/ui-invariants.md`、`tools/check-ui-map.sh`、`tools/check-ui-invariants.sh` |
+| 继续 / 重新生成 / swipe | `continueLast` / `regenerateLast` / `selectSwipe`（`ReplaceTarget` 只服务重新生成） |
+| 提交与气泡样式 | `DisplayText.kt`（`markupText` / `displayPlain`）、`core/regex/BuiltinRegex.kt` |
+| 三级配置生效值 | `UiState.effective*`（采样五项、`builtinDisabled`、`bubbleFontSize` …） |
+| 气泡字号三级 | `Screen.kt`（`BubbleFontSizes` / `ConfigKind.FontSize`）+ 三处入口 |
+| 点触反馈 | `Style.kt` 的 `rememberPressTint` |
+| 回到底部钮 | `ChatScreen.kt` 的 `JumpToBottomButton`（不参与输入区测量） |
+| 开场白「设为默认」 | `CharacterDetailScreen.kt` 的 `DefaultGreetingChip` |
+| 预设「提示词全文」 | `PresetPromptScreen` + `Destination.PresetPrompt` |
+| 选择页（模型/采样/世界书/正则/预设/字号） | `ConfigPickerScreen.kt` |
+| 词表 / 不变量 | `docs/ui-map.md`、`docs/ui-invariants.md`、两个 `check-ui-*.sh` |
 
-## 七、这轮踩的坑（一句话一条）
+## 七、这轮踩的坑（一句话一条，细节在 pitfalls.md）
 
-1. **列表底部让位 = IME 让位 + 输入区高度**，两笔都直接进 `contentPadding.bottom`；只冻输入区，
-   抽屉收起时键盘那一下照样让气泡整片往下掉（真机日志 301px→198px→键盘=false 才定位到）。
-2. **宿主实例只能在骨架内部读**：页面顶层读 `LocalSheetController.current` 拿到的是没有宿主的默认实例，
-   `spec` 永远是 null —— 拿它判断"抽屉开没开"会永远为假。
-3. **列表滚动状态要提到 `MainScreen`**：二级页整棵会离开组合树，状态留在页里，从更深的一页返回就回顶部。
-4. **CI 的交付面本身会坏**：失败日志与 `apk-latest` 都栽在"同名资产覆盖"；前者已改成
-   annotation + `build-<sha7>.log`，后者的兜底是打 `apk-mN` tag。
-5. **本机编不了 → 缺 import 只能由 CI 抓**：这轮两次都是 `Unresolved reference`（`dp`、`fillMaxWidth`）。
-   加新 UI 代码后，用脚本把"常见 layout 修饰符 vs import"扫一遍再推（见 status.md 的风险段）。
-6. **判据要按"它约束谁"划范围**：`Modifier.blur` 只在 `Glass.kt` 外违规（自研玻璃内部合法地糊录好的图层）；
-   `.record(` 要数**顶层**逗号（嵌套括号里的逗号会误判成四参数）。
-7. **`if (常量) A else B` 会静默杀死一支**：编译、脚本、回执三套防线都看不见（v149/v150 卡配置两页）。
-8. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；`positionInWindow` 是扩展函数要单独 import；
-   页面里用 `0.dp` 要确认该文件 import 了 `dp`。
-9. **`collectIsPressedAsState()` 会在同一帧按下+抬起时被合并** → 短促点按一次都不播。
-   要给"必须跟手"的反馈，直接吃 `interactions` 流 + 最短可视时长（2026-11-26 修）。
-10. **键盘收起动画不能等 `imeVisible == false`**：那是 IME 退场动画播完的时刻。
-    盯 `snapshotFlow { ime.getBottom(density) }` 的"开始下降"才对（`density` 和 `ime` 要在组合里取好）。
-11. **底部浮动控件不许进被测量的那一层**：列表让位读的是 `ChatInputBar` 的实测高度，
-    把按钮塞进同一个测量里，它出现/消失就会让整屏气泡跳一下。
+1. **动画只对"离散事件"有效**：串流时列表每帧长高，开 `placementSpec` 会每帧重放 → 抖动。
+2. **稳定 key 会改变"跟底"语义**：插到头部时列表锚住旧条目，新气泡落在视口外；要显式回 index 0。
+3. **`translationY` 余量在 `isStreaming=false` 当帧归零**：这是"停止/写完闪一下"的一小笔来源。
+4. **流式条目与落库条目是两个 key**：落库一帧"删+加"，高度差要预留，否则整列跳。
+5. **文本一换高度就突变**：2520px 的气泡换成 80px 的"生成中"，同款整屏位移 —— 必须动画改高度。
+6. **占位气泡不能进 `transcript`**：transcript 下标 ↔ DB 行号强耦合（审计 P1-5）。
+7. **`collectIsPressedAsState()` 会吞掉同帧按下+抬起**：要吃 `interactions` 流 + 最短可视 90ms。
+8. **键盘收起不能等 `imeVisible == false`**：盯 `snapshotFlow { ime.getBottom(density) }` 的"开始下降"。
+9. **底部浮动控件不许进被测量的那一层**（列表让位读输入区实测高度）。
+10. 其它照旧：引号/反引号会撕提交消息（用 `-F`）；本机编不了 → 缺 import 只能 CI 抓；
+    `if (常量) A else B` 会静默杀死一支。
