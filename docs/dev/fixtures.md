@@ -180,6 +180,17 @@ chromium 一起就 OOM（SIGKILL）。所以 `capture.mjs` 里**没有**留这�
    `getWorldInfoPrompt` + `openai.js` 的 group 分支里，读源码 + 一份单聊夹具也能推出七八成 ——
    但按本项目的规矩（不猜原版行为），这条只能当"实现草案"，最终仍要一份群聊夹具。
 
+**2026-11-27 06:2x 再验两步（关键发现）**：
+- `S.getCharacters()` 内部会 `await getGroups()` —— 调它之后 `getContext().groups` **立刻有内容**
+  （已实测：0 → 3 个群，成员的 `Synthetic.png` / `SysPrompt.png`、`chats` 都在）。**这一环通了。**
+- 但接着 `openGroupChat(id, chatId)` 和 `createNewGroupChat(id)` **在 headless 里都会挂死**
+  （>4 分钟无返回，最后是 node 超时把浏览器关掉 → `Target page… has been closed`）。
+  八成是在等某个 SPA 事件 / `isChatSaving` / SSE，而录制脚本没有驱动那些。
+- 所以群聊夹具还差最后一步：**要么**把 UI 点击路径的选择器调对（`#rightNavHolder` 展开 →
+  `#rm_button_group_chats` → `.group_select`），**要么**干脆不调这些函数、自己把
+  `selected_group` / `chat` 状态摆好再 `Generate`（源码里 `openGroupChat` 干的事就是
+  `clearChat` + `setGroupId` + 读 chat 文件，可以照着抄，但那就成了"猜"，得再验证一遍）。
+
 **下一轮建议的顺序**（都比 reload 稳）：
 1. `createNewGroupChat(groupId)` 之后再 `Generate` —— 它内部会补齐 chats 并切过去（没试完）；
 2. 或者干脆**用两个进程**：先跑一次"建群"的小脚本（页面里 fetch 完就退），再跑一次 capture ——
