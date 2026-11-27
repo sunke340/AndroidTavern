@@ -514,8 +514,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             clearReveal("减动效")
         }
     }
-    LaunchedEffect(state.sessionId) { clearReveal("切会话") }
-    LaunchedEffect(pageIsCurrent) { if (!pageIsCurrent) clearReveal("退页") }
+    // ⚠️ 这两个 effect 在**进页**时也会首跑一次：那一跑会把刚建好的"续接"游标立刻清掉，
+    // 于是重进之后又退回桥接老路径（2026-11-27 真机：重进还是实时打印，日志里有 `打印续接`
+    // 却没有后续 `打印帧`）。所以记住上一次的值，首跑不动作，只对"真的变了"反应。
+    val lastSessionId = remember { mutableStateOf(state.sessionId) }
+    LaunchedEffect(state.sessionId) {
+        if (lastSessionId.value == state.sessionId) return@LaunchedEffect
+        lastSessionId.value = state.sessionId
+        clearReveal("切会话")
+    }
+    val lastPageIsCurrent = remember { mutableStateOf(pageIsCurrent) }
+    LaunchedEffect(pageIsCurrent) {
+        if (lastPageIsCurrent.value == pageIsCurrent) return@LaunchedEffect
+        lastPageIsCurrent.value = pageIsCurrent
+        if (!pageIsCurrent) clearReveal("退页")
+    }
 
     // 串流气泡的高度：量出来以后用**一条动画去追它**，追不上差多少就往下平移多少。
     // 于是每换一行是"滑"上去的，而不是"啪"地跳一行（用户 2026-11-24）。

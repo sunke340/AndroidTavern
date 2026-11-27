@@ -190,6 +190,38 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
         val uri = sharedUri ?: return@LaunchedEffect
         SharedIntake.clear()
         pendingShare = uri
+        AppLog.i("card", "分享导入：待确认")
+    }
+    // 分享确认框的宿主放在**最外层**（不在任何页面里）：分享可能在任何页面进来，
+    // 而 `GlassConfirmHost` 要一个该页录的磨砂底片 —— 这里没有录图层，所以 `glass=false`
+    // 走"半透明面 + 描边"那条（同一个 GlassSurface，只是不采背景）。
+    // 2026-11-27 真机第一次分享没弹窗、第二次弹了：宿主挂在 TabsRoot 上时，它是否在组合树里
+    // 取决于当前停在哪一页 —— 挪到这一层就不再有这个前提。
+    val shareConfirm = remember { ConfirmController() }
+    val shareFrost = rememberGraphicsLayer()
+    LaunchedEffect(pendingShare, state.booted) {
+        val uri = pendingShare ?: return@LaunchedEffect
+        // 等启动遮罩退掉再问：遮罩会吃掉触摸，弹在它下面等于"看不见还能点"
+        if (!state.booted) return@LaunchedEffect
+        AppLog.i("card", "分享导入：弹确认框")
+        shareConfirm.ask(
+            ConfirmSpec(
+                title = "导入这张卡？",
+                message = "从其他应用分享进来的图片会按角色卡导入，导入后进入角色详情。",
+                confirmLabel = "导入",
+                // 导入不是破坏性动作：按钮走主色，不用红
+                destructive = false,
+                onConfirm = {
+                    pendingShare = null
+                    AppLog.i("card", "分享导入：已确认")
+                    viewModel.importCard(uri)
+                },
+                onDismiss = {
+                    pendingShare = null
+                    AppLog.i("card", "分享导入：已取消")
+                },
+            ),
+        )
     }
     // 系统「移除动画」：位移类转场统一降级成淡入淡出（见 ReducedMotion.kt）
     val reduceMotion = rememberReduceMotion()
@@ -311,14 +343,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // BackHandler 只给当前页注册，否则离场那页在 280ms 里也能响应返回键。
                     val live = target == destination
                     when (target) {
-                        Destination.Tabs -> TabsRoot(
-                            state = snap,
-                            viewModel = viewModel,
-                            sessionsList = sessionsList,
-                            charactersGrid = charactersGrid,
-                            pendingShare = pendingShare,
-                            onPendingShare = { pendingShare = it },
-                        )
+                        Destination.Tabs -> TabsRoot(snap, viewModel, sessionsList, charactersGrid)
                         Destination.Chat -> {
                             if (live) BackHandler { viewModel.closeChat() }
                             ChatScreen(state = snap, viewModel = viewModel)
@@ -404,6 +429,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 }
 
                 StartupCurtain(booted = state.booted)
+
+                // 分享确认框压在最上面一档（连启动遮罩也盖住：等 booted 才问，这里只是次序）
+                GlassConfirmHost(
+                    controller = shareConfirm,
+                    frost = shareFrost,
+                    contentOrigin = { Offset.Zero },
+                    glass = false,
+                )
             }
         }
     }
@@ -456,9 +489,6 @@ private fun TabsRoot(
     viewModel: ChatViewModel,
     sessionsList: LazyListState,
     charactersGrid: LazyGridState,
-    /** 从别的应用分享进来、**还没决定要不要导入**的卡。确认框在本层（只有这里有玻璃宿主）。 */
-    pendingShare: Uri? = null,
-    onPendingShare: (Uri?) -> Unit = {},
 ) {
     // 提示（notice）由外层 AppShell 统一显示：TabsRoot 会留在组合树里，在这里显示会被
     // 二级页盖住。所以这一层不再持有 SnackbarHost。
@@ -483,30 +513,6 @@ private fun TabsRoot(
     // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
     val confirm = remember { ConfirmController() }
 
-    // 分享进来的卡：先问"要不要导入"（2026-11-27 用户要求）。
-    // 放在这一层是因为**只有这里**有玻璃确认框宿主（`GlassConfirmHost` 要该页录的磨砂底片）；
-    // 用户在二级页分享进来时，这条会一直挂着，回到 Tabs 再问 —— 不丢、不误导入。
-    LaunchedEffect(pendingShare) {
-        val uri = pendingShare ?: return@LaunchedEffect
-        confirm.ask(
-            ConfirmSpec(
-                title = "导入这张卡？",
-                message = "从其他应用分享进来的图片会按角色卡导入，导入后进入角色详情。",
-                confirmLabel = "导入",
-                // 导入不是破坏性动作：按钮走主色，不用红
-                destructive = false,
-                onConfirm = {
-                    onPendingShare(null)
-                    AppLog.i("card", "分享导入：已确认")
-                    viewModel.importCard(uri)
-                },
-                onDismiss = {
-                    onPendingShare(null)
-                    AppLog.i("card", "分享导入：已取消")
-                },
-            ),
-        )
-    }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
