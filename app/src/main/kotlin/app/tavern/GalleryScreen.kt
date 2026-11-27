@@ -191,14 +191,15 @@ private fun MaterialStage(glass: Boolean, spec: LiquidGlassSpec) {
                 }
             }
 
-            // 动作单：真实那张面用 LiquidGlassSpec.Sheet（0.50），这里跟滑杆联动好并排比
+            // 动作单：真实那张面用 LiquidGlassSpec.Sheet（0.66，2026-11-27 起），
+            // 这里跟滑杆联动好并排比 —— 只跟滑杆、跟真实那张面无关
             GlassSurface(
                 backdrop = backdrop,
                 glass = glass,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                 modifier = Modifier.fillMaxWidth().height(92.dp),
                 shadow = false,
-                liquid = spec.copy(faceWhite = 0.50f),
+                liquid = spec.copy(faceWhite = LiquidGlassSpec.Sheet.faceWhite),
             ) {
                 Column(
                     modifier = Modifier.padding(Space.m),

@@ -74,8 +74,9 @@
   （`TabsRoot` / `GlassDetailScaffold`）的 `GlassActionSheetHost` 渲染，两处都在**录图层之外**。
 - **不许 `ModalBottomSheet`**（独立 Dialog 窗口，采不到内容层）；也不许在页面里直接 composed 弹层
   （会画进录图层）。
-- 材质 `LiquidGlassSpec.Sheet`（faceWhite 0.50，单独实例）。**判断它只在彩色内容上看**（白底上
-  0.22 与 0.50 同色）；日志 `tag=glass 液态档 … 着色器=`。
+- 材质 `LiquidGlassSpec.Sheet`（faceWhite **0.66**，单独实例；动作单 / 选卡 / 二次确认共用）。
+  胶囊点开的菜单是另一档 `LiquidGlassSpec.Menu`（0.60，小尺寸压正文）。**判断它只在彩色内容上看**
+  （白底上 0.22 与 0.50 同色）；日志 `tag=glass 液态档 … 着色器=` 只有非 `Default` 的档才打。
 - 一级页：弹层起来前**底栏先滑走**（180ms）；收起时弹层先走、底栏 200ms 后回来。
 - 行内「删除」只关弹层 + 弹确认框，**不直接删**；确认框统一 `ConfirmDeleteDialog`（红色确认钮，
   参数全写名字）。

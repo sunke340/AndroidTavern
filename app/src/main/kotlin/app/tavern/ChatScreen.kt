@@ -327,6 +327,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         reveal.reset()
     }
 
+    /**
+     * 点气泡 = **快进**，不是"清游标"（用户 2026-11-27 真机：清游标之后，后面再来的文本
+     * 走的是桥接老路径 —— "就变成大段更新了"）。
+     *
+     * 快进只做两件事：把"已收到的"在 [RevealCatchUpSeconds] 内刷完（带动画感，不是瞬移）；
+     * 追上之后**继续**按档位打新来的字。游标一直在，所以不存在"退回老路径"。
+     */
+    fun catchUpReveal() {
+        val key = revealKey ?: return
+        val left = (reveal.receivedCount - revealShown).coerceAtLeast(0)
+        if (left <= 0) return
+        reveal.catchUp = true
+        AppLog.i("chat", "打印快进 uiKey=$key 剩余=${left}cp")
+    }
+
     fun startReveal(key: String, roundId: Long, baseline: String?) {
         reveal.reset()
         reveal.startedNanos = System.nanoTime()
@@ -385,7 +400,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 clearReveal("切不限速")
                 break
             }
-            val rate = st.revealSpeed.cps.toFloat()
+            // 点气泡之后走"快进"：速率临时顶到「剩余量 / 0.35 秒」，追上就回档位。
+            // 不做成瞬移 —— 瞬移那一下整块文本是"啪"上去的（用户 2026-11-27：要动画）。
+            val backlog = (reveal.receivedCount - revealShown).coerceAtLeast(0)
+            if (reveal.catchUp && backlog == 0) reveal.catchUp = false
+            val rate = if (reveal.catchUp) {
+                maxOf(st.revealSpeed.cps.toFloat(), backlog / RevealCatchUpSeconds)
+            } else {
+                st.revealSpeed.cps.toFloat()
+            }
             // ① 增量数码点（只数新增后缀；全文重数只发生在"非追加变化"）
             val text = revealSource()
             val count = countCodePointsIncrementally(text, reveal.prevText, reveal.prevCount)
@@ -1141,13 +1164,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     } else {
                         Modifier
                     }
-                    // 点一下正在打印的气泡 = 立刻补满（方案 §3.6 的逃生口）。只在打印期挂，
+                    // 点一下正在打印的气泡 = **快进到"已收到的位置"**（方案 §3.6 的逃生口，
+                    // 2026-11-27 真机后改成快进，见 `catchUpReveal`）。只在打印期挂，
                     // 打印结束后这里没有点击语义（长按选字照旧，点击落不到它）。
                     val flushTap = if (isPrintingRow) {
                         Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                        ) { clearReveal("点气泡") }
+                        ) { catchUpReveal() }
                     } else {
                         Modifier
                     }
@@ -2344,6 +2368,14 @@ private fun JumpToBottomButton(
 /** 停滞看门狗：有欠账、帧在来，却 5 秒没前进 = 有 bug（不是节奏控制）。 */
 private const val RevealStallNanos = 5_000_000_000L
 
+/**
+ * 点气泡"快进"的目标时长（秒）：把**已经收到的**文本在这个时间内刷完。
+ *
+ * 为什么要时长而不是固定速率：剩下的可能是 20 个字、也可能是 800 个字；
+ * 按"剩余 / 时长"算，短尾巴是轻轻一滑、长尾巴是一段快速的连续生长，都不是"啪"一下。
+ */
+private const val RevealCatchUpSeconds = 0.35f
+
 /** 打印帧日志的窗口长度。 */
 private const val RevealLogWindowNanos = 2_000_000_000L
 
@@ -2368,6 +2400,9 @@ private class RevealState {
     /** 建游标的时刻，只用于"打印完成"日志算用时。 */
     var startedNanos: Long = 0L
 
+    /** 点气泡触发的"快进"状态：速率临时顶高，追平即清（见 `catchUpReveal`）。 */
+    var catchUp: Boolean = false
+
     // 打印帧日志的窗口统计
     var windowStartNanos: Long = 0L
     var windowShown: Int = 0
@@ -2381,6 +2416,7 @@ private class RevealState {
         prevCount = 0
         baselineContent = null
         startedNanos = 0L
+        catchUp = false
         windowStartNanos = 0L
         windowShown = 0
         windowTicks = 0

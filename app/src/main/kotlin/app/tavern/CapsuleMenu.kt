@@ -125,6 +125,9 @@ fun GlassCapsuleMenuHost(
                 contentOrigin = contentOrigin,
                 glass = glass,
                 shape = RoundedCornerShape(Radius.card),
+                // 菜单是 208dp 的一块，压在正文上：跟胶囊钮共用 Default(0.22) 会透到读不清
+                // （用户 2026-11-27 真机）。单独一档，见 LiquidGlassSpec.Menu。
+                liquid = LiquidGlassSpec.Menu,
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),

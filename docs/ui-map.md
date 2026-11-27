@@ -132,7 +132,7 @@
 | 能说的名字 | 出现在哪 | 一句话外观 | 代码标识 |
 |---|---|---|---|
 | 玻璃面 | 钮 / 胶囊 / 弹层 | 液态玻璃：白高光 + 1.6dp 细线 | `GlassSurface` |
-| 液态玻璃参数 | `GlassSurface` 内部 | 三档：常规 / 弹层 / 页头横条 | `LiquidGlassSpec`（`Default` / `Sheet` / `HeaderBand`） |
+| 液态玻璃参数 | `GlassSurface` 内部 | 四档：常规 / 菜单 / 弹层 / 页头横条 | `LiquidGlassSpec`（`Default` / `Menu` / `Sheet` / `HeaderBand`） |
 | 主题 | 全 app | 墨紫浅色 / 深色两套 | `TavernTheme` |
 | 调色板 | 全 app | 气泡色、卡边框等语义色 | `LocalTavernPalette` |
 | 动效常量 | 全 app | 曲线与时长只从这里取 | `Motion` |
