@@ -138,6 +138,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.countCodePointsIncrementally
+import app.tavern.core.model.RevealCatchUp
 import app.tavern.core.model.RevealPacer
 import app.tavern.core.model.takeCodePoints
 import app.tavern.core.model.ChatRole
