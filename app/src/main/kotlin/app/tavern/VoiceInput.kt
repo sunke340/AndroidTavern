@@ -36,6 +36,9 @@ internal object VoiceInput {
         context.packageManager.queryIntentActivities(recognizeIntent(), 0).size
     }.getOrDefault(0)
 
+    /** 这台机器到底能不能识别：有服务或能解析到界面，任一条成立即可。 */
+    fun available(context: Context): Boolean = serviceCount(context) > 0 || intentCount(context) > 0
+
     fun recognizeIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
 
@@ -46,7 +49,7 @@ internal object VoiceInput {
     fun check(context: Context): Boolean {
         val service = serviceCount(context)
         val intent = intentCount(context)
-        val ok = service > 0 || intent > 0
+        val ok = available(context)
         AppLog.i("ui", "语音识别 可用=$ok 服务=$service 意图=$intent")
         return ok
     }
