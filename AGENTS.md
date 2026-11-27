@@ -49,6 +49,7 @@ vendor/     原版 ST 只读副本（.gitignore）
 tools/check-core-purity.sh            # 铁律 #1（本机可跑，零依赖）
 tools/check-kotlin-comments.sh        # 块注释不许嵌套（会吞掉整段代码）
 tools/check-kotlin-imports.sh         # 不许重复 import（编译期才报错）
+tools/check-doc-links.sh              # 文档相对链接（CI 跑的是同一个脚本）
 tools/verify-apk.sh <apk> <指纹>       # 无 SDK 也能验签名
 bash tools/fixture/bootstrap.sh       # 重建 vendor/SillyTavern@1.19.1
 tools/test-core.sh                    # 本机：所有 :core:* 单测 + 静默跳过守卫

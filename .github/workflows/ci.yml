@@ -43,24 +43,9 @@ jobs:
       - name: UI 不变量成立
         run: bash tools/check-ui-invariants.sh
 
+      # 判据同时可在本机跑（`bash tools/check-doc-links.sh`）：链接写错不该拿一轮 CI 去换。
       - name: 文档相对链接必须可解析
-        run: |
-          python3 - <<'PY'
-          import re, os, glob, sys
-          bad = []
-          for f in glob.glob('**/*.md', recursive=True):
-              if f.startswith('vendor/'):
-                  continue
-              base = os.path.dirname(f)
-              for m in re.finditer(r'\]\(([^)]+)\)', open(f, encoding='utf-8').read()):
-                  t = m.group(1).split('#')[0]
-                  if not t or t.startswith(('http', 'mailto:')):
-                      continue
-                  if not os.path.exists(os.path.normpath(os.path.join(base, t))):
-                      bad.append(f'{f} -> {t}')
-          print('\n'.join(bad) if bad else 'OK')
-          sys.exit(1 if bad else 0)
-          PY
+        run: bash tools/check-doc-links.sh
 
   jvm-tests:
     name: 纯 JVM 单测（兼容性断言）
