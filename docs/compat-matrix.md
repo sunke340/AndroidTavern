@@ -57,7 +57,7 @@
 
 | ID | 功能 | 状态 | 验收 |
 |---|---|---|---|
-| P2-1 | 群聊（natural / list / manual / pool 激活策略） | ⬜ | **夹具已录**（2026-11-27：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`，**四种激活策略各一份**（四份请求形状一致，只有说话人不同），形状见 original-behavior「群聊」）；**提示词组装已完成**（`PromptBuilder.build(group = GroupContext(members, speaker))`，两份夹具断言）；**其余未动** —— 数据模型（一条会话多张卡）、历史里的 `名字: ` 前缀、末尾 `[Write the next reply only as X.]` 都还没有 |
+| P2-1 | 群聊（natural / list / manual / pool 激活策略） | ⬜ | **夹具已录**（2026-11-27：`P2-1-group-natural` / `-list` / `-manual` / `-pooled`，**四种激活策略各一份**（四份请求形状一致，只有说话人不同），形状见 original-behavior「群聊」）；**提示词组装已完成**（`PromptBuilder.build(group = GroupContext(members, speaker))`，两份夹具断言）；夹具共 **7 份**（上四份 + 继续 `-continue` + 两种 swipe `-swipe` / `-manual-swipe`）；组装里历史已带 `名字: ` 前缀、组标记与末尾 `[Write the next reply only as X.]`。**其余未动** —— 数据模型（一条会话多张卡 / 消息 `speaker` / DB v5）、应用接线、群聊界面、验收 7 条；swipe 的 `char_name` 指向"下一位"，语义待分清，别照抄（[plan-group-chat.md §6.2](plan-group-chat.md)）|
 | P2-2 | 后台生成 + 通知（前台服务，Android 14 限制） | ⬜ | 手工 |
 | P2-3 | 系统 TTS 朗读 / 语音输入 | 🟨 | 朗读已做：气泡底下动作行第一颗「朗读」（再点一次停），走系统 `TextToSpeech`，不引引擎、不联网、不要权限；离场即 `shutdown()`。语音输入也做了：聊天页 ⋮ →「语音输入」，走系统识别器（`RecognizerIntent`），**不要麦克风权限、不动输入区版式**。**未做**：朗读音色/语速设置 | 手工 |
 | P2-4 | 分享菜单收卡、图片长按保存、桌面小组件 | 🟨 | **收卡已做**：`ACTION_SEND`（image/* + zip）→ `SharedIntake` 一次性交接 → 走正常的导入链路（导完进角色详情）。冷启动与 `onNewIntent` 两条路都接。保存卡图也做了：卡详情 ⋮ →「保存卡图」（MediaStore；29+ 不要权限，26–28 按需申请）。**未做**：桌面小组件 | 手工 |
