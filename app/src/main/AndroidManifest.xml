@@ -45,9 +45,17 @@
           键盘弹出时只让 insets 变化（由 Compose 的 imePadding 做动画），
           而不是系统缩放窗口 + Compose 动画同时发生——那会看到画面先抽一下再落回。
         -->
+        <!--
+          launchMode=singleTask：**分享进来的 Intent 必须送到"正在看的那个实例"**。
+          默认（standard）时，从别的应用分享一次就新建一个 MainActivity 实例叠在旧实例上
+          （2026-11-27 真机日志：一个进程里 `tabs init` 出现了 3 次）—— 确认框弹在新实例里，
+          用户看到的是旧实例，于是"分享进来没有弹窗"。改成 singleTask 后走 `onNewIntent`，
+          确认框和界面在同一个窗口里。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"

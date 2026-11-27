@@ -3218,6 +3218,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             .append(snapshot.effectiveFrequencyPenalty ?: "不指定")
                         append("  presence_penalty=")
                             .append(snapshot.effectivePresencePenalty ?: "不指定")
+                        // 人设：名字不会单独出现在请求里（它只用于展开 {{user}}），
+                        // 但"有没有选中 / 描述多长"必须能在这里看出来（2026-11-27 用户验人设时问过）
+                        append("  人设=")
+                            .append(snapshot.effectivePersona?.name?.ifBlank { "(无名)" } ?: "无")
+                            .append("(描述=")
+                            .append(snapshot.effectivePersona?.description?.length ?: 0)
+                            .append("字)")
                         messages.forEach { message ->
                             append("\n\n[${message.role.wire}] ").append(message.content)
                         }

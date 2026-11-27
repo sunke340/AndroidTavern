@@ -1400,13 +1400,18 @@ private fun ChatInputBar(
     // 观感就是"键盘先滑下去，滑完了输入框才慢半拍缩回一行"。
     var imeHiding by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        var last = imeBottomPx
+        // **只看"掉到峰值的一半以下"**，不看"比上一帧小"。
+        // 2026-11-27 真机：英文切中文时输入法的候选栏让键盘高度变一点，微小的下降被判成"开始收键盘"，
+        // 于是输入区缩回一行（左下模型钮跟着淡出）—— 用户看到的是"切个输入法输入框就收了"。
+        // 真的收键盘会一路掉到 0；切输入法/切语言只是高度换一档。
+        var peak = imeBottomPx
         snapshotFlow { ime.getBottom(density) }.collect { now ->
-            when {
-                now < last -> imeHiding = true
-                now > last -> imeHiding = false
+            if (now > peak) peak = now
+            val hiding = peak > 0 && now < peak * 0.55f
+            if (hiding != imeHiding) {
+                imeHiding = hiding
+                AppLog.i("ui", "键盘${if (hiding) "开始收起" else "回来了"} 高=${now}px 峰值=${peak}px")
             }
-            last = now
         }
     }
     val expanded = keepExpanded ||
