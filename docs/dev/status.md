@@ -12,8 +12,8 @@
 | | |
 |---|---|
 | 代码 | HEAD 见 `git log -1`；最后一个**功能**提交是 `ccc6f1c`（群聊提示词组装），最后几个 `data`/`tools` 提交是 `b267635`（`data` 层测试开个头）|
-| 最新交付 | `apk-m221`（修 v181 报的三条）；再往前 `apk-m212` … `apk-m220` 九个回退点 |
-| 真机确认到哪 | **v179 通过 / v180 驳回 / v181 报 3 条**（⋮ 点不动、首条回复退回旧动画、版本条提前出现）→ 已在 `apk-m221` 修，**待 M30 复验**。M29 其余 26 条仍未验 |
+| 最新交付 | `apk-m222`（修 v182 报的两处：玻璃更实、点气泡快进）；回退点 `apk-m212` … `apk-m222` |
+| 真机确认到哪 | **v181 报 3 条**（⋮ 点不动 / 首条回复退回旧动画 / 版本条提前出现）→ `apk-m221` 修 → **v182 复验：菜单能弹、打字机正常**；v182 新报 2 条（玻璃太透 / 点气泡变整块且没动画）→ `apk-m222` 修，**待 M31**。M29 其余 26 条仍未验 |
 | CI | 铁律（含文档相对链接、UI 词表）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` **10 模块 161 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 的 `:data:testDebugUnitTest` 跑 |
 | 规模 | `app` 50 个 kt / 17.3k 行；`data` 23 个 kt / 2.5k 行；`core` 73 个 kt / 7.0k 行；`feature/` 仍是空目录；DB **v4** |
@@ -44,6 +44,7 @@
 | `data` 层 JVM 测试 | 🔶 开了个头（`ConfigOverrideTest` 4 条）；顺带修了 `check-tests-ran.sh`（Android 报告在 `testDebugUnitTest/`）|
 | 结构守卫 | ✅ INV-11（胶囊菜单只能由骨架画 + **INV-11b：页头 actions 的 provider 必须提供 `LocalCapsuleMenu`**）、INV-12（揭示节奏两条结构约束），都自测会红 |
 | **真机 v181 三条回执的修正**（`apk-m221`） | ✅ ① ⋮ 点不动 = 页头 provider 漏了 `LocalCapsuleMenu`；② 首条回复退回旧动画 = 看门狗把"等首字"算成停滞（`RevealPacer` 追平态洗计时器）；③ 版本条提前出现 = 打印期动作行/版本条只占位不显示。口径 [plan-reveal-pacing.md §F](../plan-reveal-pacing.md)，清单 [M30](verification/2026-11-27-M30.md) |
+| **真机 v182 两条回执的修正**（`apk-m222`） | ✅ ① 玻璃太透 = 菜单一直用 `Default`(0.22)；新增 `LiquidGlassSpec.Menu`(0.60)，`Sheet` 0.50→0.66（动作单/选卡/确认框）；② 点气泡变整块 = 清游标后走桥接 → 改成"快进"（游标不清，剩余量 / 0.35s 刷完，之后继续按档位打）。口径 §F.4，清单 [M31](verification/2026-11-27-M31.md) |
 
 ## 还没做（按下一轮优先级）
 
