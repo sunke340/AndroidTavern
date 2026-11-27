@@ -3221,7 +3221,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 "chat",
                 "发送 model=${snapshot.model} messages=${messages.size} " +
                     "repeat=${history.count { it.role == ChatRole.User }} " +
-                    "wi=${worldInfo.activated.size}(before=${worldInfo.beforeChar.length}字 after=${worldInfo.afterChar.length}字)",
+                    "wi=${worldInfo.activated.size}(before=${worldInfo.beforeChar.length}字 after=${worldInfo.afterChar.length}字) " +
+                    // 人设有没有生效、描述是不是空 —— 2026-11-27 真机"本次请求里没有人设项"，
+                    // 光看请求面板分不清"没选人设"和"选了但描述空"（描述空时原版也不发这一段）
+                    "人设=${snapshot.effectivePersona?.name?.ifBlank { "(无名)" } ?: "无"}" +
+                    "(描述=${snapshot.effectivePersona?.description?.length ?: 0}字)",
             )
             // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
             val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }

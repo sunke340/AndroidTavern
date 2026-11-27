@@ -12,6 +12,21 @@
         android:maxSdkVersion="28" />
 
     <!--
+      包可见性（Android 11+）：查"这台设备有没有语音识别服务"必须声明，否则
+      `queryIntentActivities` / `SpeechRecognizer.isRecognitionAvailable` 一律返回"没有"，
+      我们会把一台其实有识别器的机器误判成不支持（2026-11-27 真机排查语音输入时发现）。
+      注意 `startActivity` 不受这条限制 —— 它只是让我们能**判断**有没有。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
+    <!--
       usesCleartextTraffic：只是为了能连局域网里的 Ollama / LM Studio（http://192.168.x.x）。
       正式版应该改成只对 debug 生效，或者干脆要求 https。
     -->

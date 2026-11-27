@@ -350,12 +350,22 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         AppLog.i("chat", "打印快进 uiKey=$key 剩余=${left}cp 速率=${reveal.catchUpRate.toInt()}cp/s")
     }
 
-    fun startReveal(key: String, roundId: Long, baseline: String?) {
+    /**
+     * 建游标。
+     *
+     * @param initialShown 已经显示了多少码点（**中途回来时**用它接着打，见下面的"续接"）。
+     *   默认 0 = 从头打。
+     */
+    fun startReveal(key: String, roundId: Long, baseline: String?, initialShown: Int = 0, text: String = "") {
         reveal.reset()
         reveal.startedNanos = System.nanoTime()
         reveal.baselineContent = baseline
         revealRoundId = roundId
-        revealShown = 0
+        revealShown = initialShown
+        // 增量数码点的起点也要对上：否则第一帧会把整段前缀当成"新增"（虽然显示量没变，日志会乱）
+        reveal.prevText = if (initialShown > 0) text else null
+        reveal.prevCount = initialShown
+        reveal.receivedCount = initialShown
         revealDone = false
         revealKey = key
     }
@@ -366,11 +376,15 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 进页那一刻**已经在生成**的那一轮不建游标：用户是中途回来的，屏幕应该直接是全貌
     // （方案 §3.6「退页＝补满」的反面）。只认"这一轮"——用进页时的 roundId 比，
     // 不能用一个"第一次跳过"的布尔：那样进页后**第一条**回复会被误跳过（bug）。
+    //
+    // 2026-11-27 真机改：中途回来**仍然建游标**，只是从"当前已收到的长度"接着打。
+    // 之前是直接不建 —— 屏幕上是全貌（对的），但之后新来的字走桥接老路径，变成实时打印
+    // （用户报"退出聊天页重进会变成实时打印"）。现在：已有的不重打，新来的按档位打。
     val revealPreexistingRound = remember { state.inflight?.roundId }
     LaunchedEffect(state.inflight?.uiKey, state.inflight?.roundId) {
         val inf = state.inflight ?: return@LaunchedEffect
         clearReveal("换轮")
-        if (inf.roundId == revealPreexistingRound) return@LaunchedEffect
+        val resuming = inf.roundId == revealPreexistingRound
         if (reduceMotion || state.revealSpeed == RevealSpeed.Off) return@LaunchedEffect
         // 重新生成（targetDbId 非空）：那一行**早就在** rows 里，基线 = 它的旧正文。
         // 新消息没有行 → baseline = null（收尾后行必有内容，走"正文变过"那一支）。
@@ -379,11 +393,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
         } else {
             null
         }
-        startReveal(inf.uiKey, inf.roundId, baseline)
-        AppLog.i(
-            "chat",
-            "打印开始 uiKey=${inf.uiKey} roundId=${inf.roundId} 速率=${state.revealSpeed.cps}cp/s",
-        )
+        // 中途回来：从"已经收到的长度"接着打（不重打已有正文）。
+        val resumeAt = if (resuming) inf.text.codePointCount(0, inf.text.length) else 0
+        startReveal(inf.uiKey, inf.roundId, baseline, initialShown = resumeAt, text = inf.text)
+        if (resuming) {
+            AppLog.i(
+                "chat",
+                "打印续接 uiKey=${inf.uiKey} roundId=${inf.roundId} 已显示=${resumeAt}cp " +
+                    "速率=${state.revealSpeed.cps}cp/s",
+            )
+        } else {
+            AppLog.i(
+                "chat",
+                "打印开始 uiKey=${inf.uiKey} roundId=${inf.roundId} 速率=${state.revealSpeed.cps}cp/s",
+            )
+        }
     }
 
     // 推进循环：单个 `withFrameNanos` 循环。速率**每 tick 从最新状态读**，
@@ -770,8 +794,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     glass = glassOn,
                     backdrop = backdrop,
                     onHeightChanged = { inputBarHeightPx = it },
-                    // 停止之前先把揭示游标清掉：屏幕上的正文与落库的正文才是同一份
-                    onBeforeStop = { clearReveal("停止") },
+                    // 停止时**不**清游标：让"已经收到但还没打出来"的那截用快进刷完
+                    // （用户 2026-11-27：点停止，剩余消息是突然出现的，没有气泡变形动画）。
+                    // 停止之后这一轮就收尾了，游标会在"续打完成"那一刻自己清掉。
+                    onBeforeStop = { catchUpReveal() },
                 )
             }
         },
@@ -788,7 +814,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             // 语音输入（P2-3 的另一半）：走系统识别器（`RecognizerIntent`），
             // 不碰麦克风权限、也不改输入区版式 —— 从菜单进去，识别到的文字接在输入框后面。
+            //
+            // 先问一次"这台机器到底有没有识别服务"并留一行日志（2026-11-27 真机：
+            // 只有一句"设备不支持"分不清是系统没有、还是被包可见性挡住）。没有就不显示这一项，
+            // 别给一个点下去只会报错的入口。
             val context = LocalContext.current
+            val voiceSupported = remember { VoiceInput.check(context) }
             val voiceLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
             ) { result ->
@@ -803,31 +834,34 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
             }
             fun startVoiceInput() {
-                val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                    .putExtra(
-                        android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                        android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                    )
+                val intent = VoiceInput.recognizeIntent()
                     .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…")
-                val ok = runCatching { voiceLauncher.launch(intent) }.isSuccess
-                if (!ok) {
-                    android.widget.Toast.makeText(context, "这台设备没有语音识别", android.widget.Toast.LENGTH_SHORT).show()
+                runCatching { voiceLauncher.launch(intent) }.onFailure { error ->
+                    // 到这一步说明"判出来有、真起不来"：把原因写进日志，别再只给用户一句结论
+                    AppLog.w(
+                        "ui",
+                        "语音识提起启动失败：${error::class.simpleName} ${error.message.orEmpty()}",
+                    )
+                    android.widget.Toast.makeText(context, "语音识别启动失败", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
             Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
                 CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
                     capsuleMenu.show(
                         anchor = anchor,
-                        items = listOf(
+                        items = buildList {
                             // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
-                            CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() },
-                            CapsuleMenuItem("语音输入") { startVoiceInput() },
-                            CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() },
-                            CapsuleMenuItem("导出聊天记录") {
-                                // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
-                                exportLauncher.launch("${state.cardName.ifBlank { "chat" }}.jsonl")
-                            },
-                        ),
+                            add(CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() })
+                            // 没有识别服务就不放这一项（否则是个点了只会报错的入口）
+                            if (voiceSupported) add(CapsuleMenuItem("语音输入") { startVoiceInput() })
+                            add(CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() })
+                            add(
+                                CapsuleMenuItem("导出聊天记录") {
+                                    // 文件名给个默认值：卡名 + 后缀，用户可以在选择器里改
+                                    exportLauncher.launch("${state.cardName.ifBlank { "chat" }}.jsonl")
+                                },
+                            )
+                        },
                     )
                 }
             }

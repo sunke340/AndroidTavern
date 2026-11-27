@@ -1,6 +1,7 @@
 package app.tavern
 
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -181,10 +182,13 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     // 分享进来都按"导入这张卡"处理，导完会自己进角色详情。
     // 用 flow 而不是一次性 take()：app 已在前台时再分享一次也要接住（`onNewIntent`）。
     val sharedUri by SharedIntake.pending.collectAsState()
+    // 分享进来的先**挂在手上**，不直接导入：2026-11-27 用户要求"分享导入前先确认"。
+    // 真正的确认框在下面（要等骨架里的 GlassConfirmHost 起来之后才有宿主）。
+    var pendingShare by remember { mutableStateOf<Uri?>(null) }
     LaunchedEffect(sharedUri) {
         val uri = sharedUri ?: return@LaunchedEffect
         SharedIntake.clear()
-        viewModel.importCard(uri)
+        pendingShare = uri
     }
     // 系统「移除动画」：位移类转场统一降级成淡入淡出（见 ReducedMotion.kt）
     val reduceMotion = rememberReduceMotion()
@@ -467,6 +471,28 @@ private fun TabsRoot(
     SideEffect { capsuleMenu.attached = true }
     // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
     val confirm = remember { ConfirmController() }
+    // 分享进来的卡：先问"要不要导入"。确认前不碰仓储 —— 取消就是什么都没发生。
+    LaunchedEffect(pendingShare) {
+        val uri = pendingShare ?: return@LaunchedEffect
+        confirm.ask(
+            ConfirmSpec(
+                title = "导入这张卡？",
+                message = "从其他应用分享进来的图片会按角色卡导入，导入后进入角色详情。",
+                confirmLabel = "导入",
+                // 导入不是破坏性动作：按钮走主色，不用红
+                destructive = false,
+                onConfirm = {
+                    pendingShare = null
+                    AppLog.i("card", "分享导入：已确认")
+                    viewModel.importCard(uri)
+                },
+                onDismiss = {
+                    pendingShare = null
+                    AppLog.i("card", "分享导入：已取消")
+                },
+            ),
+        )
+    }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
