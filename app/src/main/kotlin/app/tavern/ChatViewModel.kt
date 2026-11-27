@@ -1040,7 +1040,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 is ImportResult.Ok -> {
                     AppLog.i("card", "导入成功 id=${result.card.id} book=${result.card.bookEntryCount}")
                     val cards = withContext(Dispatchers.IO) { cardRepository.list() }
-                    _state.update { it.copy(cards = cards, detailCardId = result.card.id) }
+                    _state.update { it.copy(cards = cards) }
+                    // 走**正规的打开详情**这条路：它会先把 `detail` 清空再异步读回来。
+                    // 以前只写 `detailCardId`，于是详情页拿的是**上一次的 detail**（或者 null）——
+                    // 观感就是"刚导入的卡没有开场白、没有内嵌世界书"，退出重进又好了
+                    // （2026-11-27 真机，日志里导入后那次 push 没有 `读详情`）。
+                    openDetail(result.card.id)
                     notify("已导入：${result.card.name}")
                 }
 

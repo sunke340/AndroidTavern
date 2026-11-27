@@ -319,9 +319,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 }
             }
 
+            // 顶层浮层要采"底下那一页"的磨砂底片：由页面骨架登记进来（见 PageGlass.kt）
+            val pageGlass = remember { PageGlass() }
+            // 这一层没有自己的 glassOn（那在 TabsRoot 里）：顶层确认框要单独算一次
+            val glassTop = state.visualEffects.effective() == VisualEffects.Glass
             // 启动遮罩盖在最上层：首屏列表与头像准备好之前什么都不画（见 StartupCurtain）
             Box(Modifier.fillMaxSize()) {
                 // 页面栈转场：自己管叠放次序（不用 AnimatedContent，理由见 PageStack.kt 顶部注释）
+                CompositionLocalProvider(LocalPageGlass provides pageGlass) {
                 PageStack(
                     target = destination,
                     state = state,
@@ -418,6 +423,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                         }
                     }
                 }
+                }   // CompositionLocalProvider(LocalPageGlass)
 
                 // 让开底栏与聊天输入区：两者都在 56–140dp 这一带
                 Box(
@@ -430,12 +436,15 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
 
                 StartupCurtain(booted = state.booted)
 
-                // 分享确认框压在最上面一档（连启动遮罩也盖住：等 booted 才问，这里只是次序）
+                // 分享确认框压在最上面一档（连启动遮罩也盖住：等 booted 才问，这里只是次序）。
+                // 底片由**当前那一页**登记进来（PageGlass）：这一层自己没有录图层，
+                // 用空底片 + glass=false 就是纯色板 —— 用户 2026-11-27 报"没有复用液态玻璃"。
+                // 还没登记到（极早期）时退回 shareFrost 且关玻璃，至少不会画成透明的。
                 GlassConfirmHost(
                     controller = shareConfirm,
-                    frost = shareFrost,
-                    contentOrigin = { Offset.Zero },
-                    glass = false,
+                    frost = pageGlass.frost ?: shareFrost,
+                    contentOrigin = { pageGlass.origin },
+                    glass = glassTop && pageGlass.frost != null,
                 )
             }
         }
@@ -501,6 +510,8 @@ private fun TabsRoot(
     // 这台机器上 Modifier.blur / Haze 两套都没出过模糊，不再押 GPU 效果（ADR 0006）。
     val frostLayer = rememberGraphicsLayer()
     val contentOrigin = remember { mutableStateOf(Offset.Zero) }
+    // 顶层浮层（分享确认框）要采这一页的底片
+    RegisterPageGlass(frostLayer) { contentOrigin.value }
     val contentSize = remember { mutableStateOf(IntSize.Zero) }
     // API 31 以下没有 RenderEffect：那时玻璃档按「轻量」画，连图层都不录（省一遍全屏绘制）。
     // 玻璃档要 API 33+（AGSL 液态玻璃）；低于它只开放轻量

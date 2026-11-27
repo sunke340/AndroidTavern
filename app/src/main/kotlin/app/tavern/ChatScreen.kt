@@ -2,6 +2,7 @@ package app.tavern
 
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -99,6 +100,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -825,14 +827,27 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ) { uri ->
                 if (uri != null) viewModel.exportChat(uri)
             }
-            // 语音输入（P2-3 的另一半）：走系统识别器（`RecognizerIntent`），
-            // 不碰麦克风权限、也不改输入区版式 —— 从菜单进去，识别到的文字接在输入框后面。
-            //
-            // 先问一次"这台机器到底有没有识别服务"并留一行日志（2026-11-27 真机：
-            // 只有一句"设备不支持"分不清是系统没有、还是被包可见性挡住）。没有就不显示这一项，
-            // 别给一个点下去只会报错的入口。
+            // 语音输入（P2-3 的另一半）。两条路，按机器能力自动选：
+            // 1. 系统有识别**界面**（`ACTION_RECOGNIZE_SPEECH` 能解析到 Activity）→ 走它，体验最好，
+            //    我们也不用麦克风权限；
+            // 2. 只有识别**服务**、没有界面（国行常见；真机日志 `服务=1 意图=0`）→ App 内直连
+            //    `SpeechRecognizer`，代价是要 `RECORD_AUDIO`。
+            // 进入页面先判一次并留日志（`语音识别 可用=… 服务=… 意图=…`）。
+            // 入口**常驻**：权限被拒也留着，下次点会再申请一次（用户 2026-11-27 定的）。
             val context = LocalContext.current
             val voiceSupported = remember { VoiceInput.check(context) }
+            val voiceHasUi = remember { VoiceInput.intentCount(context) > 0 }
+            var recognizer by remember { mutableStateOf<android.speech.SpeechRecognizer?>(null) }
+            var voiceBase by remember { mutableStateOf("") }
+            var voiceLive by remember { mutableStateOf("") }
+            fun stopListening() {
+                recognizer?.let { runCatching { it.destroy() } }
+                recognizer = null
+            }
+            DisposableEffect(Unit) { onDispose { stopListening() } }
+            fun toast(text: String) {
+                android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            }
             val voiceLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
             ) { result ->
@@ -843,19 +858,82 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     .orEmpty()
                 if (spoken.isNotBlank()) {
                     viewModel.onInputChange(state.input + spoken)
-                    AppLog.i("chat", "语音输入 ${spoken.length} 字")
+                    AppLog.i("chat", "语音输入 ${spoken.length} 字（系统界面）")
+                }
+            }
+            fun beginInAppVoice() {
+                stopListening()
+                voiceBase = state.input
+                voiceLive = ""
+                val started = VoiceListen.start(
+                    context = context,
+                    onPartial = { text ->
+                        voiceLive = text
+                        viewModel.onInputChange(voiceBase + text)
+                    },
+                    onFinal = { text ->
+                        val final = if (text.isBlank()) voiceLive else text
+                        viewModel.onInputChange(voiceBase + final)
+                        AppLog.i("chat", "语音输入 ${final.length} 字（App 内）")
+                        stopListening()
+                    },
+                    onError = { reason ->
+                        AppLog.w("ui", "语音识别出错：$reason")
+                        toast(if (reason == "没听清" || reason == "没听到声音") "没听清，再说一次" else "语音识别失败：$reason")
+                        stopListening()
+                    },
+                )
+                recognizer = started
+                if (started == null) {
+                    AppLog.w("ui", "语音识别启动失败：没有可用的识别服务")
+                    toast("这台设备没有可用的语音识别服务")
+                } else {
+                    toast("正在听…")
+                }
+            }
+            /** 真正开始：有系统界面就用界面，没有就自己听。 */
+            fun beginVoice() {
+                if (voiceHasUi) {
+                    val intent = VoiceInput.recognizeIntent()
+                        .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…")
+                    runCatching { voiceLauncher.launch(intent) }.onFailure { error ->
+                        AppLog.w("ui", "语音识别界面启动失败：${error::class.simpleName}")
+                        beginInAppVoice()
+                    }
+                    return
+                }
+                beginInAppVoice()
+            }
+            val recordPermission = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                if (granted) {
+                    AppLog.i("ui", "麦克风权限：已允许")
+                    beginVoice()
+                } else {
+                    // 入口不隐藏：下次点还会再申请（用户 2026-11-27 定的）
+                    AppLog.i("ui", "麦克风权限：被拒绝")
+                    toast("需要麦克风权限才能语音输入")
                 }
             }
             fun startVoiceInput() {
-                val intent = VoiceInput.recognizeIntent()
-                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…")
-                runCatching { voiceLauncher.launch(intent) }.onFailure { error ->
-                    // 到这一步说明"判出来有、真起不来"：把原因写进日志，别再只给用户一句结论
-                    AppLog.w(
-                        "ui",
-                        "语音识提起启动失败：${error::class.simpleName} ${error.message.orEmpty()}",
-                    )
-                    android.widget.Toast.makeText(context, "语音识别启动失败", android.widget.Toast.LENGTH_SHORT).show()
+                if (!voiceSupported) {
+                    // 探测过：这台机器没有识别服务，也没有识别界面
+                    AppLog.w("ui", "语音识别：这台设备没有可用服务")
+                    toast("这台设备没有可用的语音识别服务")
+                    return
+                }
+                // 有系统识别界面时不需要我们的麦克风权限（是对方 App 在收音）
+                if (voiceHasUi) {
+                    beginVoice()
+                    return
+                }
+                val granted = ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    beginVoice()
+                } else {
+                    recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                 }
             }
             Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
@@ -865,8 +943,9 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         items = buildList {
                             // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
                             add(CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() })
-                            // 没有识别服务就不放这一项（否则是个点了只会报错的入口）
-                            if (voiceSupported) add(CapsuleMenuItem("语音输入") { startVoiceInput() })
+                            // 入口常驻（用户 2026-11-27 定）：权限被拒、或这台机器暂时没服务，
+                            // 都留着 —— 点了会再申请/再试一次，而不是把一个出口藏起来。
+                            add(CapsuleMenuItem("语音输入") { startVoiceInput() })
                             add(CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() })
                             add(
                                 CapsuleMenuItem("导出聊天记录") {

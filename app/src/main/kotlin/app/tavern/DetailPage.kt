@@ -150,6 +150,8 @@ fun GlassDetailScaffold(
     SideEffect { capsuleMenu.attached = true }
     val frost = rememberGraphicsLayer()
     val origin = remember { mutableStateOf(Offset.Zero) }
+    // 顶层浮层（分享确认框）要采这一页的底片：二级页各有各的一份
+    RegisterPageGlass(frost) { origin.value }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // 键盘高度也要让位：不然列表被键盘盖住、又滚不出来（用户 2026-11-23 报）。
     // 注意是**并集**不是相加：键盘弹出时导航栏区域本来就被键盘盖住了，两个数相加会多抬一个导航栏高度。
