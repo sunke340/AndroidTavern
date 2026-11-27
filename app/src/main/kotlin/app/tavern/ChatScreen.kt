@@ -840,6 +840,8 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             var recognizer by remember { mutableStateOf<android.speech.SpeechRecognizer?>(null) }
             var voiceBase by remember { mutableStateOf("") }
             var voiceLive by remember { mutableStateOf("") }
+            // 服务端断开这种错，自动再试一次就够 —— 别无限重试（每次都要十几秒）
+            var voiceRetried by remember { mutableStateOf(false) }
             fun stopListening() {
                 recognizer?.let { runCatching { it.destroy() } }
                 recognizer = null
@@ -879,8 +881,23 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     },
                     onError = { reason ->
                         AppLog.w("ui", "语音识别出错：$reason")
-                        toast(if (reason == "没听清" || reason == "没听到声音") "没听清，再说一次" else "语音识别失败：$reason")
                         stopListening()
+                        when {
+                            // 服断/网络这类可能是瞬时故障：自动重试一次
+                            !voiceRetried && (reason == "识别服务断开" || reason.startsWith("网络")) -> {
+                                voiceRetried = true
+                                toast("识别服务断开，再试一次…")
+                                beginInAppVoice()
+                            }
+
+                            reason == "没听清" || reason == "没听到声音" ->
+                                toast("没听清，再说一次")
+
+                            reason == "识别服务断开" ->
+                                toast("识别服务断开：系统语音服务或网络不可用")
+
+                            else -> toast("语音识别失败：$reason")
+                        }
                     },
                 )
                 recognizer = started
@@ -917,6 +934,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
             }
             fun startVoiceInput() {
+                voiceRetried = false
                 if (!voiceSupported) {
                     // 探测过：这台机器没有识别服务，也没有识别界面
                     AppLog.w("ui", "语音识别：这台设备没有可用服务")

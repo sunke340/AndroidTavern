@@ -39,6 +39,25 @@ internal object VoiceInput {
     /** 这台机器到底能不能识别：有服务或能解析到界面，任一条成立即可。 */
     fun available(context: Context): Boolean = serviceCount(context) > 0 || intentCount(context) > 0
 
+    /**
+     * 背后到底是哪个识别服务（包名）。
+     *
+     * 2026-11-27 真机 `ERROR_SERVER_DISCONNECTED`：不写包名就分不清是"系统的哪个引擎"在报错，
+     * 也就判断不了"是引擎要求联网/登录"还是"我们用法不对"。
+     */
+    fun servicePackages(context: Context): List<String> = runCatching {
+        context.packageManager
+            .queryIntentServices(Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0)
+            .mapNotNull { it.serviceInfo?.packageName }
+            .distinct()
+    }.getOrDefault(emptyList())
+
+    /** 有没有**机内**（离线）识别。API 31+ 才有；有它就不用连服务端。 */
+    fun onDeviceAvailable(context: Context): Boolean =
+        android.os.Build.VERSION.SDK_INT >= 31 && runCatching {
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+        }.getOrDefault(false)
+
     fun recognizeIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
 
@@ -50,7 +69,11 @@ internal object VoiceInput {
         val service = serviceCount(context)
         val intent = intentCount(context)
         val ok = available(context)
-        AppLog.i("ui", "语音识别 可用=$ok 服务=$service 意图=$intent")
+        AppLog.i(
+            "ui",
+            "语音识别 可用=$ok 服务=$service 意图=$intent 机内=${onDeviceAvailable(context)} " +
+                "引擎=${servicePackages(context).joinToString(",").ifEmpty { "无" }}",
+        )
         return ok
     }
 }
@@ -79,8 +102,18 @@ internal object VoiceListen {
         onError: (String) -> Unit,
     ): SpeechRecognizer? {
         if (!VoiceInput.available(context)) return null
-        val recognizer = runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
-            ?: return null
+        // 有机内（离线）识别就优先用它：不用连服务端，也就不会 `ERROR_SERVER_DISCONNECTED`
+        //（2026-11-27 真机就是这条：允许权限后引擎在听，15 秒后服务端连接断开）
+        val onDevice = VoiceInput.onDeviceAvailable(context)
+        val recognizer = runCatching {
+            if (onDevice && android.os.Build.VERSION.SDK_INT >= 31) {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            } else {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            }
+        }.getOrNull() ?: return null
+        AppLog.i("ui", "语音识别：开始听（${if (onDevice) "机内" else "服务端"}）")
+        var partialLogged = false
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) = Unit
             override fun onBeginningOfSpeech() = Unit
@@ -91,7 +124,13 @@ internal object VoiceListen {
 
             override fun onPartialResults(partialResults: Bundle?) {
                 val text = partialResults?.text() ?: return
-                if (text.isNotEmpty()) onPartial(text)
+                if (text.isEmpty()) return
+                // 第一条中间结果说明"麦克风真的收到了声音" —— 排障时这句最值钱
+                if (!partialLogged) {
+                    partialLogged = true
+                    AppLog.i("ui", "语音识别：首个中间结果 ${text.length} 字")
+                }
+                onPartial(text)
             }
 
             override fun onResults(results: Bundle?) {
@@ -105,6 +144,9 @@ internal object VoiceListen {
         val intent = VoiceInput.recognizeIntent()
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PROMPT, "说话…")
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            // 机内识别时明确要离线，别又去连服务端
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, onDevice)
         val ok = runCatching { recognizer.startListening(intent) }.isSuccess
         if (!ok) {
             runCatching { recognizer.destroy() }
@@ -127,6 +169,11 @@ internal object VoiceListen {
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "识别器忙"
         SpeechRecognizer.ERROR_SERVER -> "识别服务出错"
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听到声音"
+        // 11+ 的：服务端断开 / 语言不支持 / 语言不可用 / 不能检查支持
+        11 -> "识别服务断开"
+        12 -> "不支持这种语言"
+        13 -> "语言包没装"
+        14 -> "无法检查语言支持"
         else -> "未知错误 $error"
     }
 }
