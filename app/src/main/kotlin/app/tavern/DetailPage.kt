@@ -228,10 +228,14 @@ fun GlassDetailScaffold(
                 }
             }
 
-            // 页头的动作（⋮ 菜单）同样要点得开抽屉/确认框
+            // 页头的动作（⋮ 菜单）同样要点得开抽屉/确认框**和胶囊菜单**。
+            // 少了 `LocalCapsuleMenu` 这一行，页面在 actions 里读到的就是"没有宿主"的默认实例：
+            // `show()` 只留一行 `ui 胶囊菜单请求没有宿主` 日志，屏幕上什么都不弹
+            // —— 2026-11-27 真机 v181 的"聊天页右上角点不动"就是这一条（INV-11 现在查它）。
             CompositionLocalProvider(
                 LocalSheetController provides sheet,
                 LocalConfirmController provides confirm,
+                LocalCapsuleMenu provides capsuleMenu,
             ) {
                 DetailHeader(
                     title = title,

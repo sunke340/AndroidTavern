@@ -1069,12 +1069,18 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     val settledChrome =
                         if (state.lastSwipes.size > 1) ActionRowHeight + SwipeBarBlockHeight else ActionRowHeight
                     val reserveChrome = ActionRowHeight + SwipeBarBlockHeight
+                    // 打印没打完（已落库、游标还在）时，"画不画"和"占不占"要分开：
+                    // - 不画：字还在一个一个出来，底下就冒出一排按钮、右下角还挂着 ‹ 2/3 ›，
+                    //   会让人以为打完了（用户 2026-11-27 真机报的就是这条）；
+                    // - 照占：打完那一刻真身登场，高度一模一样，整列不跳（方案验收项 8）。
+                    val chromeDeferred = isPrintingRow && !collapseOpen
                     val chromeHeight = when {
                         clamped -> settledChrome + (reserveChrome - settledChrome) * (1f - collapseProgress)
                         // 窗口开着但还没量到起点高度（极端情况）：按预留量占着，别忽隐忽现
                         collapseOpen -> reserveChrome
                         isInflightRow ->
                             if (inflightNow?.targetDbId != null) reserveChrome else ActionRowHeight
+                        chromeDeferred -> settledChrome
                         else -> 0.dp
                     }
                     // 窗口期（收缩或涨回）都只画"预占"，不画动作行/版本条：
@@ -1178,10 +1184,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         // 生成中/收缩期：先把落库后会多出来的高度占住
                         //（动作行 +34dp；重新生成还会多出「版本条」+40dp），
                         // 否则定稿那一帧整条列表会往上跳一截（用户 2026-11-26）。
-                        if (chromeHidden) {
+                        if (chromeHidden || chromeDeferred) {
                             Spacer(Modifier.height(chromeHeight))
                         }
-                        if (!chromeHidden && showSwipeBar) {
+                        if (!chromeHidden && !chromeDeferred && showSwipeBar) {
                             Spacer(Modifier.height(Space.xs))
                             GreetingSwitchBar(
                                 current = state.lastSwipeId.coerceIn(
@@ -1210,7 +1216,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         }
                         // 开场白不是"一条回复"，底下不挂动作（用户 2026-11-25 第 7 条）；
                         // 判据用 isGreetingMessage，和"有几条开场白"无关。
-                        if (!chromeHidden && !isGreetingMessage) {
+                        if (!chromeHidden && !chromeDeferred && !isGreetingMessage) {
                             MessageActionRow(
                                 isUser = !isAssistant,
                                 canRegenerate = isAssistant && isLast,

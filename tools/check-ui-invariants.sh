@@ -167,6 +167,36 @@ for p in APP.glob('*.kt'):
     if p.name in {'ChatScreen.kt', 'CharacterDetailScreen.kt'} and 'DropdownMenu(' in text:
         problems.append(f'INV-11: {p.name} 又用了 DropdownMenu（应改走胶囊菜单）')
 
+# INV-11b：骨架里喂给页头 `actions` 的那个 CompositionLocalProvider，必须也提供胶囊菜单。
+# 为什么：聊天页 / 卡详情的 ⋮ 就在 actions 里读 `LocalCapsuleMenu.current` —— 少了这一行，
+# 读到的就是"没有宿主"的默认实例，`show()` 只留一行日志、屏幕上什么都不弹。
+# 2026-11-27 真机 v181「右上角菜单点不动」就是这条（当时只有内容区与输入区两个 provider 有它）。
+detail_page = (APP / 'DetailPage.kt')
+if detail_page.exists():
+    text = blank_comments(detail_page.read_text(encoding='utf-8'))
+    # 找"紧贴在 DetailHeader( 前面"的那个 provider：从 DetailHeader 往前找最近的
+    # CompositionLocalProvider(，再按括号配平取出它的实参。**不能**用正则一把梭：
+    # `[\s\S]*?` 会从文件里第一个 provider 一路吞到 DetailHeader，中间的输入区 provider
+    # 也带着这一行，于是"删掉了也判绿"（自测时抓到过）。
+    anchor = text.find('DetailHeader(')
+    open_at = text.rfind('CompositionLocalProvider(', 0, anchor) if anchor > 0 else -1
+    if open_at >= 0:
+        depth = 0
+        close_at = -1
+        for k in range(open_at + len('CompositionLocalProvider'), len(text)):
+            if text[k] == '(':
+                depth += 1
+            elif text[k] == ')':
+                depth -= 1
+                if depth == 0:
+                    close_at = k
+                    break
+        if close_at > 0 and 'LocalCapsuleMenu provides' not in text[open_at:close_at]:
+            problems.append(
+                'INV-11: GlassDetailScaffold 的页头 actions provider 没提供 LocalCapsuleMenu'
+                '（⋮ 会静默点不动）',
+            )
+
 # ---- INV-12：揭示节奏的两个结构性约束（改回去就等于把"抽搐"放回来）----
 chat = (APP / 'ChatScreen.kt')
 if chat.exists():

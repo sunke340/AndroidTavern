@@ -94,4 +94,24 @@ class RevealPacerTest {
         assertTrue(shown > 0)
         assertEquals(0, pacer.stalledFor(5_100 * ms))
     }
+
+    @Test
+    fun `等首个 token 的几秒不算停滞（否则首字一到就整轮补齐）`() {
+        val pacer = RevealPacer()
+        pacer.markBaseline(0)
+        // 发出去 6 秒一个字都没到：每帧都在"追平态"（revealed == received == 0）
+        var t = 0L
+        repeat(375) {
+            t += 16
+            pacer.step(t * ms, ratePerSec = 15f, revealed = 0, received = 0)
+        }
+        assertEquals(0L, pacer.stalledFor(t * ms), "没有账可还的时间不该记进停滞")
+        // 首字到达：停滞计时从这一刻重新起算，不该马上判超时（真机 v181 就是 5.6s 时被补齐的）
+        val shown = pacer.step((t + 16) * ms, 15f, revealed = 0, received = 1)
+        assertTrue(shown - 0 in 0..1, "首字不该被看门狗一次吞掉：$shown")
+        assertTrue(
+            pacer.stalledFor((t + 16) * ms) <= 16 * ms,
+            "首字刚到就被判停滞：${pacer.stalledFor((t + 16) * ms) / 1e9}s",
+        )
+    }
 }

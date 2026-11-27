@@ -56,6 +56,11 @@ public class RevealPacer {
         lastTickNanos = nowNanos
         if (revealed >= received) {
             // 追平：不累计时间、不写状态、保留小数余量（否则下一秒来字就整段冒出来）
+            //
+            // 同时把**停滞计时器洗到此刻**：没有账可还的那段时间不算停滞。否则"等模型首个
+            // token 的几秒"会被看门狗算成停滞，首字一到就整轮补齐 —— 2026-11-27 真机 v181：
+            // 首条回复就是这么被一次补齐、退回旧动画的（日志 `打印停滞，补齐 剩余=1cp 已等=5.6s`）。
+            lastAdvanceNanos = nowNanos
             return revealed
         }
         if (rawDt > PAUSE_GAP_NANOS) {

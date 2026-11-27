@@ -1264,3 +1264,33 @@ P0/P1 那套是：开场把原来那条从 `rows` 里 `dropLast` 掉、`inflight
 不是"磨砂没盖严"。截图放 README 时被当成排版坏掉过一次 —— 别为它加不透明底、也别把列表
 `contentPadding` 加到把正文全挡住。底部让位那条规则（`max(导航栏, 键盘)` + 输入区实测高度）
 管的是"最后一条能不能滚出来"，跟这里说的"露出来"是两件事。
+
+## 看门狗把「等首字」算成停滞（2026-11-27 真机 v181，`apk-m221` 修）
+
+现象：新会话第一条回复不走打字机，整轮退回旧动画 + 抽动；之后几条又正常。
+差异只在**首个 token 来得快不快**。
+
+日志：`打印开始` 之后连着两条 `打印帧 … 收到=0cp 供给足=否`，然后
+`打印停滞，补齐 uiKey=p2 剩余=1cp 已等=5.6s` —— 剩 1 个码点、却"等了 5.6 秒"，说明**等首字那几秒被算进了停滞**。
+
+病根：`RevealPacer.stalledFor()` 量的是"距上次真正前进"，而追平态（`revealed >= received`，
+没有账可还）不刷新它。等 5 秒首字一到，`shown(0) < received(1)` 成立 → 看门狗立刻判超时 → 清游标 →
+整轮退回桥接老路径。
+
+正解：**追平态每帧把停滞计时器洗到此刻**。停滞的定义是"有账可还却没前进"，不是"没前进"。
+单测 `RevealPacerTest.等首个 token 的几秒不算停滞`（先红后绿）。别改阈值 —— 换个模型思考 20 秒又复发，
+还会钝化真正的异常检测。
+
+## 页头 `actions` 的 provider 漏了 `LocalCapsuleMenu`（2026-11-27 真机 v181，`apk-m221` 修）
+
+现象：聊天页右上 ⋮ 点不动，什么也不弹，也不闪。日志里只有一行
+`W ui 胶囊菜单请求没有宿主` —— 点击事件是到了的，`show()` 也调了，只是画不出来。
+
+病根：`GlassDetailScaffold` 有**三个** `CompositionLocalProvider`（内容区 / 输入区 / 页头 actions），
+前两个提供了 `LocalCapsuleMenu`，页头那个漏了。`ChatScreen` 的 ⋮ 恰好写在 `actions` 里，
+`LocalCapsuleMenu.current` 拿到 `staticCompositionLocalOf` 的默认实例（孤儿）→ `show()` 什么都不画。
+
+正解：三个都提供；并加结构守卫 **INV-11b**（按括号配平取出紧贴 `DetailHeader(` 的那个 provider 的实参，
+检查里面有 `LocalCapsuleMenu provides`）。
+⚠️ 判据不能写成"文件里有没有这一行"：输入区那个 provider 也有，删掉页头那行照样判绿
+（自测时第一版就栽在这：正则 `[\s\S]*?` 一路从文件第一个 provider 吞到 `DetailHeader(`）。
