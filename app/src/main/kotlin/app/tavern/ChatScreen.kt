@@ -331,15 +331,22 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
      * 点气泡 = **快进**，不是"清游标"（用户 2026-11-27 真机：清游标之后，后面再来的文本
      * 走的是桥接老路径 —— "就变成大段更新了"）。
      *
-     * 快进只做两件事：把"已收到的"在 [RevealCatchUpSeconds] 内刷完（带动画感，不是瞬移）；
-     * 追上之后**继续**按档位打新来的字。游标一直在，所以不存在"退回老路径"。
+     * 快进只做两件事：把**点下去那一刻已经收到的**在约 [RevealCatchUp.Seconds] 秒内刷完
+     * （带动画感，不是瞬移）；追上之后**继续**按档位打新来的字。游标一直在，所以不存在"退回老路径"。
+     *
+     * ⚠️ 速率与目标都在这一刻**冻结**。第一版是每帧现算"当前欠账 / 时长"，模型还在吐字时
+     * 欠账永远清不到 0 → 快进退不出去，观感变成实时打印（真机 v183 报的就是这个）。
      */
     fun catchUpReveal() {
         val key = revealKey ?: return
         val left = (reveal.receivedCount - revealShown).coerceAtLeast(0)
         if (left <= 0) return
+        // **冻结**这一刻的欠账与速率。每帧拿"当前欠账"重算是反馈环：模型还在吐字时欠账
+        // 永远清不到 0，速率停在"刚好追上供给"的水平 —— 观感就是实时打印（v183 真机）。
         reveal.catchUp = true
-        AppLog.i("chat", "打印快进 uiKey=$key 剩余=${left}cp")
+        reveal.catchUpTarget = reveal.receivedCount
+        reveal.catchUpRate = RevealCatchUp.rateFor(left)
+        AppLog.i("chat", "打印快进 uiKey=$key 剩余=${left}cp 速率=${reveal.catchUpRate.toInt()}cp/s")
     }
 
     fun startReveal(key: String, roundId: Long, baseline: String?) {
@@ -400,15 +407,12 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 clearReveal("切不限速")
                 break
             }
-            // 点气泡之后走"快进"：速率临时顶到「剩余量 / 0.35 秒」，追上就回档位。
-            // 不做成瞬移 —— 瞬移那一下整块文本是"啪"上去的（用户 2026-11-27：要动画）。
-            val backlog = (reveal.receivedCount - revealShown).coerceAtLeast(0)
-            if (reveal.catchUp && backlog == 0) reveal.catchUp = false
-            val rate = if (reveal.catchUp) {
-                maxOf(st.revealSpeed.cps.toFloat(), backlog / RevealCatchUpSeconds)
-            } else {
-                st.revealSpeed.cps.toFloat()
-            }
+            // 点气泡之后走"快进"：速率是**点下去那一刻**算好的固定值（`RevealCatchUp`）。
+            // 判结束也只看那一刻的目标 —— 不看"当前欠账"，否则模型一边吐字，欠账永远不为 0，
+            // 快进就永远退不出来（v183 真机：刷完之后变成实时打印）。
+            if (reveal.catchUp && revealShown >= reveal.catchUpTarget) reveal.catchUp = false
+            val baseRate = st.revealSpeed.cps.toFloat()
+            val rate = if (reveal.catchUp) maxOf(baseRate, reveal.catchUpRate) else baseRate
             // ① 增量数码点（只数新增后缀；全文重数只发生在"非追加变化"）
             val text = revealSource()
             val count = countCodePointsIncrementally(text, reveal.prevText, reveal.prevCount)
@@ -2368,14 +2372,6 @@ private fun JumpToBottomButton(
 /** 停滞看门狗：有欠账、帧在来，却 5 秒没前进 = 有 bug（不是节奏控制）。 */
 private const val RevealStallNanos = 5_000_000_000L
 
-/**
- * 点气泡"快进"的目标时长（秒）：把**已经收到的**文本在这个时间内刷完。
- *
- * 为什么要时长而不是固定速率：剩下的可能是 20 个字、也可能是 800 个字；
- * 按"剩余 / 时长"算，短尾巴是轻轻一滑、长尾巴是一段快速的连续生长，都不是"啪"一下。
- */
-private const val RevealCatchUpSeconds = 0.35f
-
 /** 打印帧日志的窗口长度。 */
 private const val RevealLogWindowNanos = 2_000_000_000L
 
@@ -2403,6 +2399,12 @@ private class RevealState {
     /** 点气泡触发的"快进"状态：速率临时顶高，追平即清（见 `catchUpReveal`）。 */
     var catchUp: Boolean = false
 
+    /** 快进的目标码点数 = 点下去那一刻已收到的量。到它就回档位。 */
+    var catchUpTarget: Int = 0
+
+    /** 快进的固定速率：点下去那一刻按欠账算好，之后**不重算**（重算会变成反馈环）。 */
+    var catchUpRate: Float = 0f
+
     // 打印帧日志的窗口统计
     var windowStartNanos: Long = 0L
     var windowShown: Int = 0
@@ -2417,6 +2419,8 @@ private class RevealState {
         baselineContent = null
         startedNanos = 0L
         catchUp = false
+        catchUpTarget = 0
+        catchUpRate = 0f
         windowStartNanos = 0L
         windowShown = 0
         windowTicks = 0

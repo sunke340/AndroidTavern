@@ -259,6 +259,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // ---- 界面结构（导航） ----
         val screen: Screen = Screen.Sessions,
         val chatOpen: Boolean = false,
+        /**
+         * 这一次聊天是"从卡详情页新建会话"进来的：关掉它时**直接落回会话栏**。
+         *
+         * 为什么不在开聊天那一刻就把详情页关掉（2026-11-27 真机）：页面栈转场期间，退场页渲染的是
+         * "它还是当前页时"的状态快照，而快照每帧跟着当前页写 —— 详情页的数据一被清空，
+         * 那 280ms 的退场页就成了空壳/别的页，观感是"翻页动画还没跑，背后的详情页已经变成会话页"。
+         * 所以改成：进聊天时什么都不动，**关聊天时**再连详情页一起退掉。
+         */
+        val returnToSessionsOnClose: Boolean = false,
         /** 设置里的二级页面；null = 一级列表。 */
         val settingsPage: SettingsPage? = null,
         /** 新建会话前先选卡：true 时显示角色卡选择弹层。 */
@@ -944,8 +953,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 用某张卡开一个新会话并进聊天。
      *
-     * @param leaveDetail 从卡详情页点「新建会话」时传 true：顺手把详情页关掉并切到会话栏，
-     * 这样返回时落在主页的会话页，而不是又回到那张卡的详情（用户 2026-11-24 报）。
+     * @param leaveDetail 从卡详情页点「新建会话」时传 true：**关聊天时**连详情页一起退掉、
+     * 落回主页的会话栏，而不是又回到那张卡的详情（用户 2026-11-24 报）。
+     * 注意不是"开聊天的那一刻就清详情"：那会让转场里的退场页变成空壳（2026-11-27 报）。
      */
     fun startSessionForCard(cardId: String, leaveDetail: Boolean = false) {
         viewModelScope.launch {
@@ -962,11 +972,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     bookDisabled = bookOverride.off,
                     bookForced = bookOverride.forcedOn,
-                    // 从详情页新建会话：返回目标是主页「会话」，不是这张卡的详情
-                    detailCardId = if (leaveDetail) null else it.detailCardId,
-                    detail = if (leaveDetail) null else it.detail,
-                    cardConfigPage = if (leaveDetail) null else it.cardConfigPage,
-                    screen = if (leaveDetail) Screen.Sessions else it.screen,
                 )
             }
             val displayName = _state.value.cards.firstOrNull { it.id == cardId }?.name
@@ -984,6 +989,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 cardName = displayName,
                 firstMessage = firstMessage,
                 navigate = true,
+                // 返回目标是主页「会话」，不是这张卡的详情 —— 但**不在这一刻**清详情页，
+                // 见 UiState.returnToSessionsOnClose 的注释（转场快照）。
+                returnToSessions = leaveDetail,
             )
         }
     }
@@ -1119,6 +1127,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         cardName: String,
         firstMessage: String,
         navigate: Boolean = true,
+        returnToSessions: Boolean = false,
     ) {
         val title = "$cardName ${stamp()}"
         val session = withContext(Dispatchers.IO) {
@@ -1131,10 +1140,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         refreshSessions()
-        openSessionInternal(session.id, navigate = navigate)
+        openSessionInternal(session.id, navigate = navigate, returnToSessions = returnToSessions)
     }
 
-    private suspend fun openSessionInternal(id: String, navigate: Boolean = true) {
+    private suspend fun openSessionInternal(
+        id: String,
+        navigate: Boolean = true,
+        /** 从卡详情页新建会话时传 true：关聊天时连详情页一起退掉（见 `returnToSessionsOnClose`）。 */
+        returnToSessions: Boolean = false,
+    ) {
         // 切到另一条会话时把上一轮的流停掉：否则它会继续往**旧会话**落库，而这边又能再发一条，
         // 两路并发（审计 P1-1）。切回**同一条**会话则保留生成态（下面 isStreaming 会按归属算）。
         currentRound?.let { active ->
@@ -1216,6 +1230,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // （以前一律清掉 → 用户能再发一条，旧流永远停不掉）
                 inflight = if (currentRound?.sessionId == id) it.inflight else null,
                 chatOpen = navigate,
+                // 每次开会话都重写这个标记：只有"从详情页新建"这一次是 true，其余一律清掉，
+                // 免得下一次从别处打开的聊天被上一次的标记带偏。
+                returnToSessionsOnClose = returnToSessions,
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
                 bookForced = bookOverride.forcedOn,
@@ -2173,7 +2190,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun closeChat() {
         // 离开聊天页时流**照常跑完**（用户可能只是回去看一眼列表），但它归 [streaming] 管：
         // 回到同一会话能看到"生成中"，切到别的会话会被取消（审计 P1-1）。
-        _state.update { it.copy(chatOpen = false, sessionConfigOpen = false, configPicker = null) }
+        _state.update {
+            val backToSessions = it.returnToSessionsOnClose
+            it.copy(
+                chatOpen = false,
+                sessionConfigOpen = false,
+                configPicker = null,
+                // 从详情页「新建会话」进来的这一次：关聊天时连详情页一起退掉，落回会话栏。
+                // 放在**这一刻**做，是因为退场页读的是快照 —— 提前清会把它渲染成空壳。
+                detailCardId = if (backToSessions) null else it.detailCardId,
+                detail = if (backToSessions) null else it.detail,
+                cardConfigPage = if (backToSessions) null else it.cardConfigPage,
+                screen = if (backToSessions) Screen.Sessions else it.screen,
+                returnToSessionsOnClose = false,
+            )
+        }
         currentRound?.let { AppLog.i("chat", "离开聊天页：流仍在跑 round=${it.roundId} session=${it.sessionId.take(8)}") }
     }
 
