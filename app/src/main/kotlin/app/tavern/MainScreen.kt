@@ -178,12 +178,13 @@ private fun labelOf(destination: Destination): String = when (destination) {
 fun MainScreen(viewModel: ChatViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    // 从别的应用「分享」进来的卡（见 SharedIntake）。放在最外层：不管当前停在哪一页，
-    // 分享进来都按"导入这张卡"处理，导完会自己进角色详情。
+    // 从别的应用「分享」进来的卡（见 SharedIntake）。放在最外层：不管当前停在哪一页都接住。
     // 用 flow 而不是一次性 take()：app 已在前台时再分享一次也要接住（`onNewIntent`）。
+    //
+    // 2026-11-27 用户要求"分享导入前先确认"：这里只**挂住**，不导入。
+    // 确认框放在 `TabsRoot`（只有那层有玻璃宿主），所以用户在二级页分享进来时，
+    // 这条会一直挂着，回到 Tabs 再问 —— 不丢、也不误导入。
     val sharedUri by SharedIntake.pending.collectAsState()
-    // 分享进来的先**挂在手上**，不直接导入：2026-11-27 用户要求"分享导入前先确认"。
-    // 真正的确认框在下面（要等骨架里的 GlassConfirmHost 起来之后才有宿主）。
     var pendingShare by remember { mutableStateOf<Uri?>(null) }
     LaunchedEffect(sharedUri) {
         val uri = sharedUri ?: return@LaunchedEffect
@@ -310,7 +311,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                     // BackHandler 只给当前页注册，否则离场那页在 280ms 里也能响应返回键。
                     val live = target == destination
                     when (target) {
-                        Destination.Tabs -> TabsRoot(snap, viewModel, sessionsList, charactersGrid)
+                        Destination.Tabs -> TabsRoot(
+                            state = snap,
+                            viewModel = viewModel,
+                            sessionsList = sessionsList,
+                            charactersGrid = charactersGrid,
+                            pendingShare = pendingShare,
+                            onPendingShare = { pendingShare = it },
+                        )
                         Destination.Chat -> {
                             if (live) BackHandler { viewModel.closeChat() }
                             ChatScreen(state = snap, viewModel = viewModel)
@@ -448,6 +456,9 @@ private fun TabsRoot(
     viewModel: ChatViewModel,
     sessionsList: LazyListState,
     charactersGrid: LazyGridState,
+    /** 从别的应用分享进来、**还没决定要不要导入**的卡。确认框在本层（只有这里有玻璃宿主）。 */
+    pendingShare: Uri? = null,
+    onPendingShare: (Uri?) -> Unit = {},
 ) {
     // 提示（notice）由外层 AppShell 统一显示：TabsRoot 会留在组合树里，在这里显示会被
     // 二级页盖住。所以这一层不再持有 SnackbarHost。
@@ -469,9 +480,10 @@ private fun TabsRoot(
     val capsuleMenu = remember { CapsuleMenuController() }
     // 标记"有宿主"：页面在骨架之前拿到的是孤儿实例，那时 show() 只会留一行日志
     SideEffect { capsuleMenu.attached = true }
-    // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
-    val confirm = remember { ConfirmController() }
-    // 分享进来的卡：先问"要不要导入"。确认前不碰仓储 —— 取消就是什么都没发生。
+
+    // 分享进来的卡：先问"要不要导入"（2026-11-27 用户要求）。
+    // 放在这一层是因为**只有这里**有玻璃确认框宿主（`GlassConfirmHost` 要该页录的磨砂底片）；
+    // 用户在二级页分享进来时，这条会一直挂着，回到 Tabs 再问 —— 不丢、不误导入。
     LaunchedEffect(pendingShare) {
         val uri = pendingShare ?: return@LaunchedEffect
         confirm.ask(
@@ -482,17 +494,19 @@ private fun TabsRoot(
                 // 导入不是破坏性动作：按钮走主色，不用红
                 destructive = false,
                 onConfirm = {
-                    pendingShare = null
+                    onPendingShare(null)
                     AppLog.i("card", "分享导入：已确认")
                     viewModel.importCard(uri)
                 },
                 onDismiss = {
-                    pendingShare = null
+                    onPendingShare(null)
                     AppLog.i("card", "分享导入：已取消")
                 },
             ),
         )
     }
+    // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
+    val confirm = remember { ConfirmController() }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
