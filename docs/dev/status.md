@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | 代码 | HEAD 见 `git log -1`；最后一个**功能**提交是 `ccc6f1c`（群聊提示词组装），最后几个 `data`/`tools` 提交是 `b267635`（`data` 层测试开个头）|
-| 最新交付 | `apk-m227`（v185：导入后详情立即完整、分享确认框改用真玻璃、语音输入接 App 内识别 + 麦克风权限）；回退点 `apk-m212` … `apk-m227` |
+| 最新交付 | `apk-m228`（v187：语音改机内识别优先 + 服断自动重试一次 + 错误码补名）；回退点 `apk-m212` … `apk-m228` |
 | 真机确认到哪 | v181 报 3 条 → `apk-m221` 修；v182 复验"菜单能弹、打字机正常"，又报 2 条 → `apk-m222` 修；**v183：玻璃更实过、动画过**，新报 2 条（快进之后变实时打印 / 详情页退场变成会话页）→ `apk-m223` 修，**待 M32**。M29 其余 26 条仍未验 |
 | CI | 铁律（含文档相对链接、UI 词表）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` **10 模块 165 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 的 `:data:testDebugUnitTest` 跑 |
@@ -44,6 +44,7 @@
 | `data` 层 JVM 测试 | 🔶 开了个头（`ConfigOverrideTest` 4 条）；顺带修了 `check-tests-ran.sh`（Android 报告在 `testDebugUnitTest/`）|
 | 结构守卫 | ✅ INV-11（胶囊菜单只能由骨架画 + **INV-11b：页头 actions 的 provider 必须提供 `LocalCapsuleMenu`**）、INV-12（揭示节奏两条结构约束），都自测会红 |
 | **真机 v181 三条回执的修正**（`apk-m221`） | ✅ ① ⋮ 点不动 = 页头 provider 漏了 `LocalCapsuleMenu`；② 首条回复退回旧动画 = 看门狗把"等首字"算成停滞（`RevealPacer` 追平态洗计时器）；③ 版本条提前出现 = 打印期动作行/版本条只占位不显示。口径 [plan-reveal-pacing.md §F](../plan-reveal-pacing.md)，清单 [M30](verification/2026-11-27-M30.md) |
+| **v187 语音修正**（`apk-m228`） | ✅ 权限通过后 15.7s 报 `ERROR_SERVER_DISCONNECTED(11)`：改机内识别优先（API31+）+ `EXTRA_PREFER_OFFLINE`，服断/网络类自动重试一次；错误码 11–14 补名；日志加 `机内=… 引擎=<包名>`、`开始听（机内/服务端）`、`首个中间结果 N 字` |
 | **v186 三条/一项**（`apk-m227`） | ✅ ① 分享导入后详情没有开场白/内嵌书 = `importCard` 只写了 `detailCardId`、没走 `openDetail`（日志里那次 push 没有 `读详情`）→ 改调 `openDetail`。② 分享确认框是纯色板 = 顶层没有底片；新增 `PageGlass`，页面骨架登记 frost + 原点。③ 语音输入：真机 `服务=1 意图=0`，接入 App 内 `SpeechRecognizer` + `RECORD_AUDIO`；拒绝权限保留入口、下次再申请 |
 | **v185 三条修正**（`apk-m226`） | ✅ ① 英文切中文时输入区收回（模型钮消失）= `imeHiding` 判"比上一帧小"，候选栏的高度变化被当成收键盘；改成"掉到峰值一半以下"才算。② 分享确认框"没弹"第三修 = 一个进程里 `tabs init` 出现 3 次（standard 模式每次分享新建实例，框弹在新实例里）；`launchMode=singleTask` 走 onNewIntent。③ 人设位置**本来就是对的**（`[system] 一个神秘的人` 就是 6 字描述，在 worldInfoBefore 之后），名字按原版只展开 `{{user}}`；只在请求面板加了 `人设=…(描述=N字)` |
 | **v184 三条修正**（`apk-m225`） | ✅ ① 重进仍实时打印 = `LaunchedEffect(sessionId/pageIsCurrent)` 首跑把续接游标清掉（日志有 `打印续接`、无后续 `打印帧`）；改成首跑不动作。② 分享确认框第一次没弹 = 宿主挂在 `TabsRoot`（是否在组合树里取决于当前页）；挪到 `MainScreen` 最外层 + 三行日志。③ 人设没进请求 = 当前预设的 `prompt_order` 缺 `personaDescription` 格；`PromptOrderCompat.ensurePersonaSlot` 自动补（有但被关掉的尊重），这是**故意偏离原版**，已记 original-behavior |
