@@ -39,6 +39,7 @@ import app.tavern.core.lorebook.LorebookScanState
 import app.tavern.core.lorebook.LorebookScanStateCodec
 import app.tavern.core.lorebook.LorebookTokenCounter
 import app.tavern.core.preset.PresetDefaults
+import app.tavern.core.preset.PromptOrderCompat
 import app.tavern.core.preset.PromptOrderEntry
 import app.tavern.core.preset.SamplingPreset
 import app.tavern.core.prompt.AuthorNote
@@ -2674,7 +2675,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     presets = presets,
                     activePreset = activeName,
-                    promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                    // 旧预设/旧顺序覆盖里可能没有「人设描述」那一格：补上，否则人设会被静默丢弃
+                    promptOrder = PromptOrderCompat.ensurePersonaSlot(
+                        order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                    ),
                     presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
                     presetForbidOverrides = loaded?.forbidOverrideIds ?: emptySet(),
                     presetSampling = loaded?.sampling,
@@ -2697,7 +2701,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             ?: loaded?.order
         _state.update {
             it.copy(
-                promptOrder = order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                // 同上：旧预设里可能缺「人设描述」那一格
+                promptOrder = PromptOrderCompat.ensurePersonaSlot(
+                    order.orEmpty().ifEmpty { PresetDefaults.ORDER },
+                ),
                 presetPrompts = loaded?.prompts ?: PresetDefaults.PROMPTS,
                 presetForbidOverrides = loaded?.forbidOverrideIds ?: emptySet(),
                 presetSampling = loaded?.sampling,
@@ -3225,7 +3232,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     // 人设有没有生效、描述是不是空 —— 2026-11-27 真机"本次请求里没有人设项"，
                     // 光看请求面板分不清"没选人设"和"选了但描述空"（描述空时原版也不发这一段）
                     "人设=${snapshot.effectivePersona?.name?.ifBlank { "(无名)" } ?: "无"}" +
-                    "(描述=${snapshot.effectivePersona?.description?.length ?: 0}字)",
+                    "(描述=${snapshot.effectivePersona?.description?.length ?: 0}字) " +
+                    "预设=${snapshot.activePreset ?: "内置"} 顺序=${snapshot.promptOrder.size}格 " +
+                    "人设格=" +
+                    if (snapshot.promptOrder.any { it.identifier == PromptOrderCompat.PERSONA_DESCRIPTION }) {
+                        "有"
+                    } else {
+                        "无"
+                    },
             )
             // 自定义请求头与思考强度跟着当前档案走（中转站的 X-Title、推理模型的 reasoning_effort）
             val activeProfile = snapshot.profiles.firstOrNull { it.id == snapshot.activeProfileId }

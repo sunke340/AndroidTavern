@@ -205,3 +205,21 @@ server `/api/tokenizers/openai/count` 按 OpenAI 消息规则算 **3 + 内容 + 
 （`world-info.js:428`）→ 上一轮已激活则整组让位 → 否则 `groupWeight` 加权随机。
 证据：`P1-3-groups`（`alpha`+`beta` 命中 2 个键的条目把只命中 1 个的挤掉）。
 
+
+## 我们**主动偏离**原版的地方（每条都要写理由）
+
+### 1. 旧预设缺 `personaDescription` 那一格时自动补上（2026-11-27）
+
+原版：`prepareOpenAIMessages` 按 `prompt_order` 逐条走，**表里没有 `personaDescription` 就不发人设**。
+所以一个 2024 年导出的预设，配上 2026 年新做的"人设"功能 = 人设静默丢失。
+
+真机证据（`tavern-log-20261127-122346`）：`发送 … 人设=卡尔(描述=6字)`，而 `messages` 条数与
+"没选人设"时完全一样 —— 人设被丢了，界面上却看不出任何异常。
+
+我们的做法（`core/preset/PromptOrderCompat.ensurePersonaSlot`）：
+- 表里**没有**这一格 → 插在 `worldInfoBefore` 之后（就是内置默认表的位置）；
+- 表里**有但被关掉**（`enabled = false`）→ **尊重**，不强行打开（那是用户显式关的）；
+- 顺序为空（还没加载到）→ 不补，免得凭空造表。
+
+为什么值得偏离：这不是"猜原版行为"，而是"旧文件 + 新功能"的向前兼容；不补的结果是功能静默失效，
+而原版那条判据的本意是"按用户的顺序表发"，不是"把人设藏起来"。
