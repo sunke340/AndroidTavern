@@ -480,6 +480,8 @@ private fun TabsRoot(
     val capsuleMenu = remember { CapsuleMenuController() }
     // 标记"有宿主"：页面在骨架之前拿到的是孤儿实例，那时 show() 只会留一行日志
     SideEffect { capsuleMenu.attached = true }
+    // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
+    val confirm = remember { ConfirmController() }
 
     // 分享进来的卡：先问"要不要导入"（2026-11-27 用户要求）。
     // 放在这一层是因为**只有这里**有玻璃确认框宿主（`GlassConfirmHost` 要该页录的磨砂底片）；
@@ -505,8 +507,6 @@ private fun TabsRoot(
             ),
         )
     }
-    // 确认框宿主（同一类浮层）：删除确认也要液态玻璃，AlertDialog 是独立窗口做不到
-    val confirm = remember { ConfirmController() }
     val view = LocalView.current
     // 页头是浮层，动作也跟着在这一层：导入的 launcher 只能在这里建。
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
