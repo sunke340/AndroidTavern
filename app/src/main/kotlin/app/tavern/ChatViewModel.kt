@@ -29,15 +29,15 @@ import app.tavern.core.model.ChatMessage
 import app.tavern.core.model.ChatRole
 import app.tavern.core.model.ModelProfile
 import app.tavern.core.model.ModelProfiles
+import app.tavern.core.lorebook.GlobalBook
 import app.tavern.core.lorebook.LorebookEntry
-import app.tavern.core.lorebook.withDisabled
-import app.tavern.core.lorebook.LorebookGlobalScanData
 import app.tavern.core.lorebook.LorebookScanResult
-import app.tavern.core.lorebook.LorebookScanner
-import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.lorebook.LorebookScanState
 import app.tavern.core.lorebook.LorebookScanStateCodec
 import app.tavern.core.lorebook.LorebookTokenCounter
+import app.tavern.core.lorebook.WorldInfoInputs
+import app.tavern.core.lorebook.WorldInfoMessage
+import app.tavern.core.lorebook.withDisabled
 import app.tavern.core.preset.EffectiveConfig
 import app.tavern.core.preset.GlobalDefaults
 import app.tavern.core.preset.PresetDefaults
@@ -2915,52 +2915,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * [worldInfoStates] / [globalBookEntries] 这两张 HashMap，也不写偏好 ——
      * 这样它可以安全地在后台线程跑，调用方回到主线程再落状态、在 IO 里落盘。
      */
+    /**
+     * 组出世界书扫描的输入，交给 `core/lorebook` 的纯函数（B2，2026-11-28）。
+     *
+     * 以前这整套（过滤/选择/预算/前缀/扫描）写在本地，而且形参是**整个 `UiState`** ——
+     * 一个纯计算却依赖整个界面状态，既测不了也看不出它到底依赖什么。现在规则与测试都在 core，
+     * 这里只负责"从状态里取那几样东西"。
+     *
+     * 未接的一项：原版从预设的 `openai_max_context` 取预算，我们暂用 core 里的固定值（3795）。
+     */
     private fun scanWorldInfo(
         card: CharacterCard,
         snapshot: UiState,
         history: List<ChatMessage>,
         state: LorebookScanState,
         globalEntriesByBook: Map<String, List<LorebookEntry>>,
-    ): LorebookScanResult {
-        val cardEntries = card.lorebookEntries()
-            .filter { it.uid !in snapshot.bookDisabled }
-            // 强制开启的条目在解析时被标成 disabled（卡里没写 enabled 的那些），这里翻回来
-            .map { if (it.uid in snapshot.bookForced) it.withDisabled(false) else it }
-        // 全局书排在内嵌书之后（原版 character_first 策略：卡的书先，全局书后）
-        // 三级继承：会话/卡指定了"这场对话带哪些全局书"就按它来，否则按书自己的启用开关
-        val only = snapshot.effectiveWorldBookNames
-        val globalEntries = snapshot.worldBooks
-            .filter { if (only != null) it.name in only else it.enabled }
-            .flatMap { globalEntriesByBook[it.name].orEmpty() }
-        val entries = cardEntries + globalEntries
-        if (entries.isEmpty()) return LorebookScanResult()
-
-        val userName = snapshot.effectiveUserName
-        val settings = LorebookScanSettings(
+    ): LorebookScanResult = app.tavern.core.lorebook.scanWorldInfo(
+        WorldInfoInputs(
+            cardEntries = card.lorebookEntries(),
+            disabledUids = snapshot.bookDisabled,
+            forcedUids = snapshot.bookForced,
+            globalBooks = snapshot.worldBooks.map { GlobalBook(it.name, it.enabled) },
+            onlyBookNames = snapshot.effectiveWorldBookNames,
+            globalEntriesByBook = globalEntriesByBook,
             charName = card.name,
-            userName = userName,
-            // 预算按"提示词能用的上下文"算，与 Max tokens 无关的那部分；先跟原版默认预设一致
-            maxContext = 3795,
-            tokenCounter = LorebookTokenCounter { text -> Tokens.countAsMessage(snapshot.model, text) },
-        )
-        val chat = history.map { message ->
-            val name = if (message.role == ChatRole.User) userName else card.name
-            "$name: ${message.content}"
-        }
-        val global = LorebookGlobalScanData(
+            userName = snapshot.effectiveUserName,
             characterDescription = card.description,
             characterPersonality = card.personality,
             scenario = card.scenario,
-        )
-
-        return LorebookScanner().scan(
-            entries = entries,
-            chat = chat,
-            settings = settings,
-            state = state,
-            global = global,
-        )
-    }
+            history = history.map { WorldInfoMessage(it.role == ChatRole.User, it.content) },
+            scanState = state,
+            tokenCounter = LorebookTokenCounter { text -> Tokens.countAsMessage(snapshot.model, text) },
+        ),
+    )
 
     fun send() {
         val snapshot = _state.value

@@ -4,12 +4,13 @@
 # 口径：非空行（无歧义）/ public fun（无可见性修饰符的类内顶层 fun）/ _state.update 出现次数。
 # 注释行、空行、文件总行只打印作信息，不参与判定。
 
-nonblank=3510
+nonblank=3499
 public_fun=121
 state_update=146
 
 # ---- 已移出到其它文件的量（防止用"搬文件"刷指标）----
 # 每完成一批，在这里记一笔：批次、移出多少、去了哪里。
+# B2（2026-11-28）：世界书激活 → core/lorebook/WorldInfoPass.kt（`scanWorldInfo` 的过滤/选择/预算/前缀）。
 # B1（2026-11-28）：生效值解析规则 → core/preset/EffectiveConfig.kt（14 个 getter 的 `?:` 链）。
 #   注意：**文件行数只降 24 行**（非空行 −13）—— getter 的 `?:` 链换成了"lazy 装配块 + 13 行转发"，
 #   真正搬走的是**规则与它的测试**，不是行数。别用行数衡量这一批的价值。

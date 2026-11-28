@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | 代码 | HEAD 见 `git log -1`；回退点 `apk-m212` … **`apk-m232`**（`39f1d50` / `e651303` 是文档收尾） |
-| 最新交付 | `apk-m234`：`ChatViewModel` 拆分 **B0（尺寸棘轮进 CI）+ B1（生效值解析搬进 core，测试 168→179）**；行为不变，待真机冒烟 |
+| 最新交付 | `apk-m235`：拆分 **B2** —— 世界书激活搬进 `core/lorebook/WorldInfoPass.kt`（`WorldInfoInputs` 只列真正用到的字段，随机源显式化），lorebook 测试 16→24 |
 | 真机确认到哪 | v181 → v188 共八轮回执，除**语音**外全部修完并确认（见下表） |
 | CI | 铁律（含文档相对链接、UI 词表）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` **10 模块 168 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 跑 |
@@ -43,7 +43,7 @@
    `RECORD_AUDIO` 与两条 speech `<queries>`；决策与代价记在 [pitfalls](pitfalls.md)「五个包」一节，
    历史方案留在 [plan-voice-offline.md](../plan-voice-offline.md)（已标作废）。
 
-2. **`ChatViewModel` 拆分**（**已开工**：B0 + B1 已交付 `apk-m234`，B2 起未做）：
+2. **`ChatViewModel` 拆分**（**已开工**：B0 / B1 / B2 已交付 `apk-m235`，B4 起未做）：
    [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)。审查推翻了三条旧结论：P0-2 主线程重活
    **已修**（`c984f71`）、消息操作**早已按 `uiKey`/`dbId`**（不是下标耦合）、行数目标 ≤2,600 **不成立**
    （现实 ≈−400）。现行顺序：B0 棘轮 → B1 抽解析链+SAF 小工具 → B2 `scanWorldInfo` 落 core →
