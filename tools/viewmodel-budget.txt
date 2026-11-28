@@ -8,9 +8,12 @@
 # 只盯 ChatViewModel 的话，"搬到 State 文件里继续长"就能绕过门禁。
 
 app/src/main/kotlin/app/tavern/ChatViewModel.kt nonblank=3107 public_fun=121 state_update=146
-app/src/main/kotlin/app/tavern/ChatState.kt nonblank=409 public_fun=0 state_update=0
+app/src/main/kotlin/app/tavern/ChatState.kt nonblank=420 public_fun=0 state_update=0
 
 # ---- 已移出到其它文件的量（防止用"搬文件"刷指标）----
+# B5-1（2026-11-28）：EditState 分组。**分组本身会有 10 行左右的声明脚手架**
+#   （一个 data class + 一句注释 + UiState 里多一个 edit 字段），这不是回归；
+#   ChatState.kt 的预算因此从 409 上调到 420。B5-4 全做完后再重新定一次基线。
 # B2（2026-11-28）：世界书激活 → core/lorebook/WorldInfoPass.kt。
 # B1（2026-11-28）：生效值解析规则 → core/preset/EffectiveConfig.kt（14 个 getter 的 `?:` 链）。
 #   B1 只让 VM 少 24 行（非空行 −13）——真正搬走的是规则与测试，别用行数衡量这一批的价值。

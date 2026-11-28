@@ -356,7 +356,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 detailCardId = null,
                 detail = null,
                 cardConfigPage = null,
-                cardEditOpen = false,
+                edit = it.edit.copy(cardEditOpen = false),
                 configPicker = null,
             )
         }
@@ -1493,11 +1493,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openCardEditor() {
         if (_state.value.detailCardId == null) return
-        _state.update { it.copy(cardEditOpen = true) }
+        _state.update { it.copy(edit = it.edit.copy(cardEditOpen = true)) }
         AppLog.i("card", "打开卡编辑")
     }
 
-    fun closeCardEditor() = _state.update { it.copy(cardEditOpen = false) }
+    fun closeCardEditor() = _state.update { it.copy(edit = it.edit.copy(cardEditOpen = false)) }
 
     /**
      * 把编辑后的字段写回卡文件（原子替换；2026-11-26 起不再留 `.bak.png` 备份）。
@@ -1564,7 +1564,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 detailRaw = updated
                 detailRawId = newId
                 // 先关编辑页，再按"打开一张新卡"走（卡级覆盖、详情、标签页都按新卡重来）
-                _state.update { it.copy(cardEditOpen = false) }
+                _state.update { it.copy(edit = it.edit.copy(cardEditOpen = false)) }
                 val cards = withContext(Dispatchers.IO) { cardRepository.list() }
                 _state.update { it.copy(cards = cards) }
                 refreshSessions()
@@ -1585,7 +1585,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             detailRawId = cardId
             // 改的就是当前会话那张卡：会话侧的原始 JSON 也要跟着换，否则下一句还用旧设定
             if (_state.value.cardId == cardId) card = updated
-            _state.update { it.copy(cardEditOpen = false) }
+            _state.update { it.copy(edit = it.edit.copy(cardEditOpen = false)) }
             val cards = withContext(Dispatchers.IO) { cardRepository.list() }
             // 会话列表显示的是会话行里冗余的 card_name：卡改名后一并刷新，否则列表还挂着旧名
             withContext(Dispatchers.IO) {
@@ -1634,7 +1634,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 .orEmpty()
             _state.update {
                 it.copy(
-                    profileDraft = ProfileDraft(
+                    edit = it.edit.copy(profileDraft = ProfileDraft(
                         id = existing?.id,
                         name = existing?.name.orEmpty(),
                         baseUrl = existing?.baseUrl ?: ModelProfiles.FALLBACK_BASE_URL,
@@ -1645,23 +1645,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             .orEmpty(),
                         // 新建时默认打开"保存后设为默认"：建一条档案通常就是马上要用它
                         isDefault = existing?.isDefault ?: true,
-                    ),
+                    )),
                 )
             }
         }
     }
 
-    fun closeProfileEditor() = _state.update { it.copy(profileDraft = null) }
+    fun closeProfileEditor() = _state.update { it.copy(edit = it.edit.copy(profileDraft = null)) }
 
     /** 库里存的原始值 → 界面上的预设；认不出来的（`max` 等）落到「自定义」。 */
 
     /** 改草稿里的某个字段（界面上每个输入框都调这一条，不再各开一个 setter）。 */
     fun editProfileDraft(transform: (ProfileDraft) -> ProfileDraft) = _state.update { current ->
-        current.copy(profileDraft = current.profileDraft?.let(transform))
+        current.copy(edit = current.edit.copy(profileDraft = current.edit.profileDraft?.let(transform)))
     }
 
     fun saveProfileDraft() {
-        val draft = _state.value.profileDraft ?: return
+        val draft = _state.value.edit.profileDraft ?: return
         if (!draft.canSave) {
             notify("名称 / Base URL / 模型 ID 不能为空")
             return
@@ -1693,7 +1693,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     "头=${profile.headers.size}",
             )
             refreshProfiles()
-            _state.update { it.copy(profileDraft = null) }
+            _state.update { it.copy(edit = it.edit.copy(profileDraft = null)) }
             notify("已保存「${profile.name}」")
         }
     }
@@ -1705,8 +1705,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             AppLog.i("profile", "切换默认 id=$id")
             refreshProfiles()
             _state.update { current ->
-                val draft = current.profileDraft
-                current.copy(profileDraft = draft?.copy(isDefault = draft.id == id))
+                val draft = current.edit.profileDraft
+                current.copy(edit = current.edit.copy(profileDraft = draft?.copy(isDefault = draft.id == id)))
             }
         }
     }
@@ -1720,7 +1720,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             AppLog.i("profile", "删除 id=$id ok=$removed")
             refreshProfiles()
-            _state.update { it.copy(profileDraft = null) }
+            _state.update { it.copy(edit = it.edit.copy(profileDraft = null)) }
             notify(if (removed) "已删除「$name」" else "删除失败")
         }
     }
@@ -2326,21 +2326,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun openPresetEditor(name: String) {
         selectPreset(name)
-        _state.update { it.copy(presetEditName = name) }
+        _state.update { it.copy(edit = it.edit.copy(presetEditName = name)) }
         AppLog.i("preset", "打开预设编辑 $name")
     }
 
     fun closePresetEditor() = _state.update {
-        it.copy(presetEditName = null, presetPromptDetail = null)
+        it.copy(edit = it.edit.copy(presetEditName = null, presetPromptDetail = null))
     }
 
     /** 预设编辑页点某一段 → 看这一段的全文（只读）。 */
     fun openPresetPrompt(identifier: String) {
-        _state.update { it.copy(presetPromptDetail = identifier) }
+        _state.update { it.copy(edit = it.edit.copy(presetPromptDetail = identifier)) }
         AppLog.i("preset", "看提示词全文 $identifier")
     }
 
-    fun closePresetPrompt() = _state.update { it.copy(presetPromptDetail = null) }
+    fun closePresetPrompt() = _state.update { it.copy(edit = it.edit.copy(presetPromptDetail = null)) }
 
     fun deletePreset(name: String) {
         viewModelScope.launch {

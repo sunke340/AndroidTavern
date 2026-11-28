@@ -150,6 +150,24 @@ data class Collapse(
     val growBack: Boolean = false,
 )
 
+/**
+ * 编辑中的临时状态：草稿，以及"哪一页编辑器开着"。
+ *
+ * 为什么单独一组（B5-1，2026-11-28）：这些字段的生命周期是"打开编辑器 → 改 → 保存/取消"，
+ * 和聊天、配置那些常驻状态不是一回事；混在 72 个字段里最容易被误改。
+ * 本轮只做归属调整：字段名、默认值、语义一律不动。
+ */
+data class EditState(
+    /** 非 null 时显示「档案编辑」页（三级）；null = 不在编辑。 */
+    val profileDraft: ProfileDraft? = null,
+    /** 编辑角色卡（从详情页 ⋮ 进）。 */
+    val cardEditOpen: Boolean = false,
+    /** 非 null 时打开"编辑预设"二级页（顺序开关与拖动都在那一页里）。 */
+    val presetEditName: String? = null,
+    /** 非 null 时显示「提示词全文」（从预设编辑页点进来）：值是 prompt identifier。 */
+    val presetPromptDetail: String? = null,
+)
+
 data class UiState(
     val baseUrl: String = "https://api.deepseek.com/v1",
     val apiKey: String = "",
@@ -234,10 +252,6 @@ data class UiState(
     val presetForbidOverrides: Set<String> = emptySet(),
     /** 选中的预设带来的 top_p / 两个 penalty（温度与 max_tokens 仍走采样页那两个输入框）。 */
     val presetSampling: SamplingPreset? = null,
-    /** 非 null 时打开"编辑预设"二级页（顺序开关与拖动都在那一页里）。 */
-    val presetEditName: String? = null,
-    /** 非 null 时显示「提示词全文」（从预设编辑页点进来）：值是 prompt identifier。 */
-    val presetPromptDetail: String? = null,
     /** 正则脚本（导入自 ST 的脚本数组）。 */
     val regexScripts: List<RegexScript> = emptyList(),
     /**
@@ -280,12 +294,10 @@ data class UiState(
     val sessionOverride: ConfigOverride = ConfigOverride(),
     /** 角色卡级覆盖（中间层）。字段为 null = 跟随全局。 */
     val cardOverride: ConfigOverride = ConfigOverride(),
-    /** 非 null 时显示「档案编辑」页（三级）；null = 不在编辑。 */
-    val profileDraft: ProfileDraft? = null,
+    /** 编辑中的临时状态（草稿 / 哪个编辑器开着）：见 [EditState]。 */
+    val edit: EditState = EditState(),
     /** 会话配置二级页（从聊天页 ⋮ 进）。 */
     val sessionConfigOpen: Boolean = false,
-    /** 编辑角色卡（从详情页 ⋮ 进）。 */
-    val cardEditOpen: Boolean = false,
     /**
      * 三级配置的"选一项"页（模型 / 世界书 / 正则 / 预设）。
      *

@@ -236,8 +236,8 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             val cardConfig = state.cardConfigPage
             val settingsPage = state.settingsPage
             val worldBook = state.worldBookView
-            val editingProfile = state.profileDraft != null
-            val presetEdit = state.presetEditName
+            val editingProfile = state.edit.profileDraft != null
+            val presetEdit = state.edit.presetEditName
             val configPicker = state.configPicker
 
             val destination: Destination = when {
@@ -248,7 +248,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 // 会话配置叠在聊天页之上：返回落回聊天（chatOpen 保持 true）
                 state.sessionConfigOpen -> Destination.SessionConfig
                 state.chatOpen -> Destination.Chat
-                detailId != null && state.cardEditOpen -> Destination.CardEdit(detailId)
+                detailId != null && state.edit.cardEditOpen -> Destination.CardEdit(detailId)
                 detailId != null && cardConfig != null -> Destination.CardConfig(detailId, cardConfig)
                 detailId != null -> Destination.Detail(detailId)
                 // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
@@ -256,7 +256,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
                 state.galleryOpen -> Destination.Gallery
                 // 预设的「提示词全文」叠在预设编辑之上：返回落回编辑页
-                state.presetPromptDetail != null -> Destination.PresetPrompt
+                state.edit.presetPromptDetail != null -> Destination.PresetPrompt
                 // 预设编辑叠在"设置→预设"之上：返回落在预设列表，所以 settingsPage 不清
                 presetEdit != null -> Destination.PresetEdit(presetEdit)
                 // 世界书条目页叠在"设置→世界书"之上：返回落在书单

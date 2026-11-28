@@ -34,13 +34,13 @@ import androidx.compose.ui.unit.dp
 /**
  * 模型档案编辑页（三级页：设置 → 模型 → 某条档案）。
  *
- * 编辑的是一份**草稿**（`UiState.profileDraft`）：点「保存」才写库、才写 Key。
+ * 编辑的是一份**草稿**（`UiState.edit.profileDraft`）：点「保存」才写库、才写 Key。
  * 这样"打了一半的 Key"不会把能用的 Key 顶掉。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileEditScreen(state: UiState, viewModel: ChatViewModel) {
-    val draft = state.profileDraft ?: return
+    val draft = state.edit.profileDraft ?: return
     var confirmDelete by remember { mutableStateOf(false) }
     // 删除确认在页面这一层发起（骨架之前），控制器要自己建再传进去
     val confirm = remember { ConfirmController() }

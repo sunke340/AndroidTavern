@@ -68,7 +68,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  */
 @Composable
 fun PresetEditScreen(state: UiState, viewModel: ChatViewModel) {
-    val name = state.presetEditName ?: return
+    val name = state.edit.presetEditName ?: return
     val listState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
         viewModel.movePrompt(from.index, to.index)
@@ -243,12 +243,12 @@ internal fun promptLabel(identifier: String): String = when (identifier) {
  */
 @Composable
 fun PresetPromptScreen(state: UiState, viewModel: ChatViewModel) {
-    val identifier = state.presetPromptDetail ?: return
+    val identifier = state.edit.presetPromptDetail ?: return
     val content = state.presetPrompts[identifier].orEmpty()
 
     GlassDetailScaffold(
         title = promptLabel(identifier),
-        subtitle = state.presetEditName ?: "预设",
+        subtitle = state.edit.presetEditName ?: "预设",
         onBack = viewModel::closePresetPrompt,
         glass = state.visualEffects.effective() == VisualEffects.Glass,
         headerMode = DetailHeaderMode.Translucent,
