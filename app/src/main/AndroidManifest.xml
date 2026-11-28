@@ -4,35 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-      语音输入（P2-3）：**App 内直连**识别服务要自己收音，所以必须声明麦克风。
-      走系统识别界面（`ACTION_RECOGNIZE_SPEECH`）那条路时靠的是对方 App 的权限，我们不用声明；
-      但国行不少 ROM 只有识别服务、没有识别界面（2026-11-27 真机日志：`服务=1 意图=0`），
-      那种机器上只能自己收 —— 于是这条权限是必需的。
-    -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!--
       保存卡图到相册（P2-4）。API 29+ 走 MediaStore，不需要任何权限；
       26–28 仍然要写外部存储，所以只给老系统声明，避免在新系统上白白多一个权限条目。
     -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-
-    <!--
-      包可见性（Android 11+）：查"这台设备有没有语音识别服务"必须声明，否则
-      `queryIntentActivities` / `SpeechRecognizer.isRecognitionAvailable` 一律返回"没有"，
-      我们会把一台其实有识别器的机器误判成不支持（2026-11-27 真机排查语音输入时发现）。
-      注意 `startActivity` 不受这条限制 —— 它只是让我们能**判断**有没有。
-    -->
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-        <intent>
-            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
-        </intent>
-    </queries>
 
     <!--
       usesCleartextTraffic：只是为了能连局域网里的 Ollama / LM Studio（http://192.168.x.x）。

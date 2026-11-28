@@ -2,7 +2,6 @@ package app.tavern
 
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -100,7 +99,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -191,7 +189,7 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
     // 消息操作（用户 2026-11-25 第 11 条）：不再用长按出抽屉 —— 回复底下常驻一排小按钮，
     // 长按交给文字选择（正文在外面包了 SelectionContainer）。
     val clipboard = LocalClipboardManager.current
-    // 系统 TTS 朗读（P2-3 的第一半；语音输入要麦克风权限，留给真机那一轮）
+    // 系统 TTS 朗读（P2-3）。语音输入已删（2026-11-28）：输入法自带语音转文字，不必自己接识别引擎。
     val tts = rememberTtsSpeaker(LocalContext.current)
     // 删除确认：记的是**行身份**（`uiKey`），不是下标 —— 下标会随增删漂
     var deletingKey by remember { mutableStateOf<String?>(null) }
@@ -827,135 +825,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             ) { uri ->
                 if (uri != null) viewModel.exportChat(uri)
             }
-            // 语音输入（P2-3 的另一半）。两条路，按机器能力自动选：
-            // 1. 系统有识别**界面**（`ACTION_RECOGNIZE_SPEECH` 能解析到 Activity）→ 走它，体验最好，
-            //    我们也不用麦克风权限；
-            // 2. 只有识别**服务**、没有界面（国行常见；真机日志 `服务=1 意图=0`）→ App 内直连
-            //    `SpeechRecognizer`，代价是要 `RECORD_AUDIO`。
-            // 进入页面先判一次并留日志（`语音识别 可用=… 服务=… 意图=…`）。
-            // 入口**常驻**：权限被拒也留着，下次点会再申请一次（用户 2026-11-27 定的）。
-            val context = LocalContext.current
-            val voiceSupported = remember { VoiceInput.check(context) }
-            val voiceHasUi = remember { VoiceInput.intentCount(context) > 0 }
-            var voiceSession by remember { mutableStateOf<VoiceSession?>(null) }
-            var voiceBase by remember { mutableStateOf("") }
-            var voiceLive by remember { mutableStateOf("") }
-            fun stopListening() {
-                voiceSession?.stop()
-                voiceSession = null
-            }
-            DisposableEffect(Unit) { onDispose { stopListening() } }
-            fun toast(text: String) {
-                android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
-            }
-            val voiceLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.StartActivityForResult(),
-            ) { result ->
-                if (result.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
-                val spoken = result.data
-                    ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
-                    ?.firstOrNull()
-                    .orEmpty()
-                if (spoken.isNotBlank()) {
-                    viewModel.onInputChange(state.input + spoken)
-                    AppLog.i("chat", "语音输入 ${spoken.length} 字（系统界面）")
-                }
-            }
-            fun beginInAppVoice() {
-                stopListening()
-                voiceBase = state.input
-                voiceLive = ""
-                val started = VoiceListen.start(
-                    context = context,
-                    onPartial = { text ->
-                        voiceLive = text
-                        viewModel.onInputChange(voiceBase + text)
-                    },
-                    onFinal = { text ->
-                        val final = if (text.isBlank()) voiceLive else text
-                        viewModel.onInputChange(voiceBase + final)
-                        AppLog.i("chat", "语音输入 ${final.length} 字（App 内）")
-                        stopListening()
-                    },
-                    onError = { reason ->
-                        AppLog.w("ui", "语音识别出错：$reason")
-                        stopListening()
-                        // 2026-11-28（apk-m230）**这一轮故意不自动重试**：上一版一失败就重试，
-                        // 两次 4 秒窗口叠在一起，反而看不出引擎到底是"不说话"还是"等握手"。
-                        // 等 25 秒的窗口把结局问清楚，再决定要不要把重试加回来。
-                        when {
-                            reason == "没听清" || reason == "没听到声音" ->
-                                toast("没听清，再说一次")
-
-                            reason == "识别服务断开" ->
-                                toast("识别服务断开：系统语音服务连不上它的服务器")
-
-                            reason == "识别服务没响应" ->
-                                toast("语音服务一直没响应（25 秒零回调）")
-
-                            reason == "客户端错误" ->
-                                toast("引擎收下了请求但没出声（客户端状态冲突）")
-
-                            reason == "识别器启动失败" ->
-                                toast("语音识别没能启动")
-
-                            else -> toast("语音识别失败：$reason")
-                        }
-                    },
-                )
-                voiceSession = started
-                if (started == null) {
-                    AppLog.w("ui", "语音识别启动失败：没有可用的识别服务")
-                    toast("这台设备没有可用的语音识别服务")
-                } else {
-                    toast("正在听…")
-                }
-            }
-            /** 真正开始：有系统界面就用界面，没有就自己听。 */
-            fun beginVoice() {
-                if (voiceHasUi) {
-                    val intent = VoiceInput.recognizeIntent()
-                        .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…")
-                    runCatching { voiceLauncher.launch(intent) }.onFailure { error ->
-                        AppLog.w("ui", "语音识别界面启动失败：${error::class.simpleName}")
-                        beginInAppVoice()
-                    }
-                    return
-                }
-                beginInAppVoice()
-            }
-            val recordPermission = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission(),
-            ) { granted ->
-                if (granted) {
-                    AppLog.i("ui", "麦克风权限：已允许")
-                    beginVoice()
-                } else {
-                    // 入口不隐藏：下次点还会再申请（用户 2026-11-27 定的）
-                    AppLog.i("ui", "麦克风权限：被拒绝")
-                    toast("需要麦克风权限才能语音输入")
-                }
-            }
-            fun startVoiceInput() {
-                if (!voiceSupported) {
-                    // 探测过：这台机器没有识别服务，也没有识别界面
-                    AppLog.w("ui", "语音识别：这台设备没有可用服务")
-                    toast("这台设备没有可用的语音识别服务")
-                    return
-                }
-                // 有系统识别界面时不需要我们的麦克风权限（是对方 App 在收音）
-                if (voiceHasUi) {
-                    beginVoice()
-                    return
-                }
-                val granted = ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-                if (granted) {
-                    beginVoice()
-                } else {
-                    recordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
-                }
-            }
             Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
                 CapsuleIcon(icon = Icons.Filled.MoreVert, contentDescription = "更多") {
                     capsuleMenu.show(
@@ -963,9 +832,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                         items = buildList {
                             // 只写入口名，不带模型名（用户 2026-11-25 第 5 条：太长且每会话都在变）
                             add(CapsuleMenuItem("会话配置") { viewModel.openSessionConfig() })
-                            // 入口常驻（用户 2026-11-27 定）：权限被拒、或这台机器暂时没服务，
-                            // 都留着 —— 点了会再申请/再试一次，而不是把一个出口藏起来。
-                            add(CapsuleMenuItem("语音输入") { startVoiceInput() })
                             add(CapsuleMenuItem("查看本次请求") { viewModel.toggleRequest() })
                             add(
                                 CapsuleMenuItem("导出聊天记录") {
