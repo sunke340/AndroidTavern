@@ -840,8 +840,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             var voiceSession by remember { mutableStateOf<VoiceSession?>(null) }
             var voiceBase by remember { mutableStateOf("") }
             var voiceLive by remember { mutableStateOf("") }
-            // 服务端断开这种错，自动再试一次就够 —— 别无限重试（每次都要十几秒）
-            var voiceRetried by remember { mutableStateOf(false) }
             fun stopListening() {
                 voiceSession?.stop()
                 voiceSession = null
@@ -882,24 +880,21 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                     onError = { reason ->
                         AppLog.w("ui", "语音识别出错：$reason")
                         stopListening()
-                        // 服断/网络/一声不响这类：可能只是服务刚冷启动没绑上，自动再试一次
-                        val retriable = reason == "识别服务断开" || reason.startsWith("网络") ||
-                            reason == "识别服务没响应" || reason == "识别器启动失败"
+                        // 2026-11-28（apk-m230）**这一轮故意不自动重试**：上一版一失败就重试，
+                        // 两次 4 秒窗口叠在一起，反而看不出引擎到底是"不说话"还是"等握手"。
+                        // 等 25 秒的窗口把结局问清楚，再决定要不要把重试加回来。
                         when {
-                            !voiceRetried && retriable -> {
-                                voiceRetried = true
-                                toast("语音服务没响应，再试一次…")
-                                beginInAppVoice()
-                            }
-
                             reason == "没听清" || reason == "没听到声音" ->
                                 toast("没听清，再说一次")
 
                             reason == "识别服务断开" ->
-                                toast("识别服务断开：系统语音服务或网络不可用")
+                                toast("识别服务断开：系统语音服务连不上它的服务器")
 
                             reason == "识别服务没响应" ->
-                                toast("语音服务没响应，这台机器的识别引擎用不了")
+                                toast("语音服务一直没响应（25 秒零回调）")
+
+                            reason == "识别器启动失败" ->
+                                toast("语音识别没能启动")
 
                             else -> toast("语音识别失败：$reason")
                         }
@@ -939,7 +934,6 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                 }
             }
             fun startVoiceInput() {
-                voiceRetried = false
                 if (!voiceSupported) {
                     // 探测过：这台机器没有识别服务，也没有识别界面
                     AppLog.w("ui", "语音识别：这台设备没有可用服务")

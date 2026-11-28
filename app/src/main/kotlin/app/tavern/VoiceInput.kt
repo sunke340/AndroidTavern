@@ -55,6 +55,18 @@ internal object VoiceInput {
             .distinct()
     }.getOrDefault(emptyList())
 
+    /**
+     * 系统配置里"默认语音识别服务"是哪个组件（读不到就返回空串）。
+     *
+     * 为什么要它：`引擎=com.vivo.ai.copilot` 只说明"这个包里有识别服务"，不说明
+     * **框架实际会去找哪一个**。两者不一致时现象就是"点了没反应"—— 把默认组件写进日志，
+     * 才能判断是不是找错了对象（2026-11-28 判读"点了没有任何回调"时缺的就是这一格）。
+     */
+    fun defaultService(context: Context): String = runCatching {
+        android.provider.Settings.Secure
+            .getString(context.contentResolver, "voice_recognition_service")
+    }.getOrNull().orEmpty()
+
     /** 有没有**机内**（离线）识别。API 31+ 才有；有它就不用连服务端。 */
     fun onDeviceAvailable(context: Context): Boolean =
         android.os.Build.VERSION.SDK_INT >= 31 && runCatching {
@@ -75,7 +87,8 @@ internal object VoiceInput {
         AppLog.i(
             "ui",
             "语音识别 可用=$ok 服务=$service 意图=$intent 机内=${onDeviceAvailable(context)} " +
-                "引擎=${servicePackages(context).joinToString(",").ifEmpty { "无" }}",
+                "引擎=${servicePackages(context).joinToString(",").ifEmpty { "无" }} " +
+                "默认=${defaultService(context).ifEmpty { "读不到" }}",
         )
         return ok
     }
@@ -110,12 +123,15 @@ internal object VoiceListen {
     private const val START_DELAY_MS = 150L
 
     /**
-     * 这么久**一个回调都没有**就当作服务没响应，放弃。
+     * 这么久**一个回调都没有**才放弃。
      *
-     * 为什么不是干等：引擎自己的失败要 15 秒（v186 真机：15.7s 才报 11），对着空气等 15 秒
-     * 比报错还难受。4 秒足够任何健康的绑定 + `onReadyForSpeech`。
+     * 为什么是 25 秒而不是 4 秒：4 秒那次（`apk-m229`）把窗口卡在了引擎开口**之前**，
+     * 等于自己把它掐了 —— 判不出"它不说话"还是"它在等握手"。v186 真机里那个
+     * `ERROR_SERVER_DISCONNECTED` 是**开始听 15.7 秒后**才到的，所以窗口必须比它长，
+     * 才能看到这个 25 秒里到底发生了哪一种：中间结果 / 没听到声音 / 识别服务断开 / 仍然零回调。
+     * 四种结局各自指向不同结论，见 docs/dev/verification/2026-11-27-M35.md 的 v190 一节。
      */
-    private const val SILENT_TIMEOUT_MS = 4000L
+    private const val SILENT_TIMEOUT_MS = 25_000L
 
     /**
      * 开始听。返回会话（调用方存着，结束/离开时 [VoiceSession.stop]）；这台机器没有识别服务时返回 null。
@@ -155,7 +171,7 @@ internal object VoiceListen {
         val watchdog = Runnable {
             if (!closed) {
                 closed = true
-                AppLog.w("ui", "语音识别：${SILENT_TIMEOUT_MS}ms 没有任何回调，放弃")
+                AppLog.w("ui", "语音识别：${SILENT_TIMEOUT_MS / 1000} 秒没有任何回调（连 onReadyForSpeech 都没来），放弃")
                 runCatching { recognizer.cancel() }
                 runCatching { recognizer.destroy() }
                 onError("识别服务没响应")
