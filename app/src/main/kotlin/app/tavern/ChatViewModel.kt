@@ -416,10 +416,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val effectiveMessageStyle: MessageStyle
             get() = cardMessageStyle ?: messageStyle
 
-        /** 生效人设 id：会话 > 卡 > 全局默认（三级）。 */
-        val effectivePersonaId: String?
-            get() = sessionOverride.personaId ?: cardOverride.personaId ?: personaDefaultId
-
         /** 生效人设；null = 一个都没选（或选的那个被删了）。 */
         val effectivePersona: Persona?
             get() = effectivePersonaId?.let { id -> personas.firstOrNull { it.id == id } }
@@ -457,13 +453,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          */
         val effectiveUserName: String
             get() = effectivePersona?.name?.takeIf { it.isNotBlank() } ?: "User"
-
-        /**
-         * 实际生效的气泡字号：会话 > 卡 > 全局（用户 2026-11-26 第 6 条）。
-         * 只给聊天页气泡正文用；开场白、输入框、其它页面都保持各自字号。
-         */
-        val effectiveBubbleFontSize: Float
-            get() = sessionOverride.bubbleFontSize ?: cardOverride.bubbleFontSize ?: bubbleFontSize
 
         // ---- 生效值（三级继承）：规则在 core/preset/EffectiveConfig.kt，这里只取用 ----
         // lazy(NONE)：copy() 会跑构造，两种写法语义都对；lazy 只对"真读过它"的实例算一次。
