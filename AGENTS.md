@@ -98,7 +98,7 @@ node tools/fixture/capture.mjs --out fixtures/expected/<ID>.json
 | **架构审计（2026-11-26，只读）**：实际架构模式、职责边界、God Class/并发/安全/技术债清单 | [docs/dev/architecture-audit.md](docs/dev/architecture-audit.md) |
 | **第三方依赖与许可审计（2026-11-26，只读）**：用了哪些库、许可义务、缺 LICENSE/NOTICE、内置卡来源 | [docs/dev/third-party-audit.md](docs/dev/third-party-audit.md) |
 | **群聊（P2-1）方案草稿**（夹具已录、代码未动） | [docs/plan-group-chat.md](docs/plan-group-chat.md) |
-| **`ChatViewModel` 拆分方案**（3,792 行上帝类；B0–B6 批次，未动代码） | [docs/plan-chatviewmodel-split.md](docs/plan-chatviewmodel-split.md) |
+| **`ChatViewModel` 拆分方案**（3,792 行；已过二次审查，B0–B6，未动代码） | [docs/plan-chatviewmodel-split.md](docs/plan-chatviewmodel-split.md) |
 | ~~语音输入改内置离线识别~~（**已作废**：功能已删，输入法自带语音转文字） | [docs/plan-voice-offline.md](docs/plan-voice-offline.md) |
 | **聊天列表动画/消息生命周期：代码级审查 + 重构方案（2026-11-26，等拍板）** | [docs/plan-chat-list-flash.md](docs/plan-chat-list-flash.md) |
 | **聊天列表重构：第二轮技术审查（5 处修订，以此为准）** | [docs/plan-chat-list-flash-r2.md](docs/plan-chat-list-flash-r2.md) |

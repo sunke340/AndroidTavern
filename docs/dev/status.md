@@ -43,9 +43,11 @@
    `RECORD_AUDIO` 与两条 speech `<queries>`；决策与代价记在 [pitfalls](pitfalls.md)「五个包」一节，
    历史方案留在 [plan-voice-offline.md](../plan-voice-offline.md)（已标作废）。
 
-2. **`ChatViewModel` 拆分**：3,792 行 / 121 个 public 的上帝类，方案见
-   [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)（B0 设尺寸棘轮 → B1 抽生效值纯函数 →
-   B2 发送前准备挪出主线程 → B3 SAF 去重 → B4 写串行化 → B5 `UiState` 分四刀 → B6 消息分页）。**未开工**。
+2. **`ChatViewModel` 拆分**：3,792 行 / 159 个 fun（public 121）的上帝类，方案（**已过二次审查**）：
+   [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)。审查推翻了三条旧结论：P0-2 主线程重活
+   **已修**（`c984f71`）、消息操作**早已按 `uiKey`/`dbId`**（不是下标耦合）、行数目标 ≤2,600 **不成立**
+   （现实 ≈−400）。现行顺序：B0 棘轮 → B1 抽解析链+SAF 小工具 → B2 `scanWorldInfo` 落 core →
+   B4a 测量写频率/B4b 串行化 → B5-0 搬 `UiState` 出文件 → B5-1~4 分组 → B6 分页。**未开工**。
 3. **B 组没看过的**：作者注（深度/间隔/位置三档）、世界书 outlet、示例顶底 `EMTop/EMBottom`、
    `forbid_overrides`、打印中换档 / 不限速 / 系统「移除动画」/ emoji / 打印中切会话。
 4. **群聊（P2-1）**：夹具 7 份 + 提示词组装完成；数据模型 / DB v5 / 接线 / 界面**未做**，要用户点头。
