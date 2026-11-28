@@ -43,11 +43,14 @@
    `RECORD_AUDIO` 与两条 speech `<queries>`；决策与代价记在 [pitfalls](pitfalls.md)「五个包」一节，
    历史方案留在 [plan-voice-offline.md](../plan-voice-offline.md)（已标作废）。
 
-2. **B 组没看过的**：作者注（深度/间隔/位置三档）、世界书 outlet、示例顶底 `EMTop/EMBottom`、
+2. **`ChatViewModel` 拆分**：3,792 行 / 121 个 public 的上帝类，方案见
+   [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)（B0 设尺寸棘轮 → B1 抽生效值纯函数 →
+   B2 发送前准备挪出主线程 → B3 SAF 去重 → B4 写串行化 → B5 `UiState` 分四刀 → B6 消息分页）。**未开工**。
+3. **B 组没看过的**：作者注（深度/间隔/位置三档）、世界书 outlet、示例顶底 `EMTop/EMBottom`、
    `forbid_overrides`、打印中换档 / 不限速 / 系统「移除动画」/ emoji / 打印中切会话。
-3. **群聊（P2-1）**：夹具 7 份 + 提示词组装完成；数据模型 / DB v5 / 接线 / 界面**未做**，要用户点头。
-4. **后台生成 + 通知、桌面小组件**：要真机在线才做（权限/`foregroundServiceType` 配错就是启动崩）。
-5. 不依赖真机也不动 DB 的活：人设描述 `TOP_AN`/`BOTTOM_AN`、作者注 `allowWIScan`、
+4. **群聊（P2-1）**：夹具 7 份 + 提示词组装完成；数据模型 / DB v5 / 接线 / 界面**未做**，要用户点头。
+5. **后台生成 + 通知、桌面小组件**：要真机在线才做（权限/`foregroundServiceType` 配错就是启动崩）。
+6. 不依赖真机也不动 DB 的活：人设描述 `TOP_AN`/`BOTTOM_AN`、作者注 `allowWIScan`、
    按角色锁定人设、`data` 层 `ConfigOverride` 编解码抽成纯函数。
 
 ## 已知风险

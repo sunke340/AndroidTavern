@@ -1,5 +1,8 @@
 # 架构审计（2026-11-26，只读）
 
+> 数字是 **2026-11-26 快照**。当前规模与拆分方案见
+> [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)（`ChatViewModel` 现为 3,792 行 / 121 个 public）。
+
 > 一次性审计，不随代码更新；**判定以代码为准**，与其它文档冲突时以代码和
 > [AGENTS.md](../../AGENTS.md) 为准。这里记录的是「当时是什么样 + 为什么」，不是规范。
 >
