@@ -2,6 +2,9 @@ package app.tavern
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +13,8 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import app.tavern.data.log.AppLog
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * 这台设备到底有没有可用的语音识别（P2-3 的语音输入）。
@@ -112,15 +117,15 @@ internal class VoiceSession internal constructor(private val stopAction: () -> U
 
 internal object VoiceListen {
     /**
-     * 建完识别器**延后一拍**再 `startListening`。
+     * `startListening` 最多发几次、每隔多久补发一次。
      *
-     * 为什么（2026-11-28 真机）：`createSpeechRecognizer` 只保证"对象建好了"，服务绑定是异步的；
-     * AOSP 里 `startListening()` 在没连上时走 `checkOpenConnection()` 失败 —— **只写 logcat，
-     * 不抛异常、不回调一句**。于是同一帧里 create + start 就等于什么都没发生：不报错、不出字。
-     * 那两次真机日志正是这个形态（`开始听` 之后 5.9s / 11.5s 内零回调）。150ms 用户感觉不到，
-     * 但足够服务绑上。
+     * 为什么（2026-11-28 真机两次 25 秒零回调）：`createSpeechRecognizer` 只保证"对象建好了"，
+     * 服务绑定是异步的；AOSP 里 `startListening()` 在没连上时走 `checkOpenConnection()` 失败 ——
+     * **只写 logcat，不抛异常、不回调一句**。所以"发一次然后干等"分不清两种死法：
+     * 是没发出去，还是引擎不说话。补发能把它们分开（发到了通常会回 `识别器忙`）。
      */
-    private const val START_DELAY_MS = 150L
+    private const val START_ATTEMPTS = 3
+    private const val START_RETRY_MS = 1_200L
 
     /**
      * 这么久**一个回调都没有**才放弃。
@@ -137,7 +142,7 @@ internal object VoiceListen {
      * 开始听。返回会话（调用方存着，结束/离开时 [VoiceSession.stop]）；这台机器没有识别服务时返回 null。
      *
      * 启动阶段失败（`startListening` 抛错）走 `onError("识别器启动失败")`，不返回 null ——
-     * 因为真正的 start 发生在 [START_DELAY_MS] 之后，那时已经没法改返回值了。
+     * 因为真正的 start 发生在麦克风自检之后（工作线程上），那时已经没法改返回值了。
      *
      * @param onPartial 中间结果（`EXTRA_PARTIAL_RESULTS`），用来边听边把字填进输入框
      * @param onFinal 最终结果（可能是空串：识别器没听清）
@@ -262,25 +267,99 @@ internal object VoiceListen {
 
         AppLog.i(
             "ui",
-            "语音识别：开始听（${if (onDevice) "机内" else "服务端"}，延后 ${START_DELAY_MS}ms 等绑定）",
+            "语音识别：开始听（${if (onDevice) "机内" else "服务端"}；先自检麦克风，再最多补发 " +
+                "$START_ATTEMPTS 次 startListening）",
         )
-        handler.postDelayed(
-            {
+
+        // **重发**是这一轮的重点：AOSP 在服务还没连上时 `startListening` 只写 logcat —— 不抛异常、
+        // 不回调。发一次就干等，等于把"没发出去"和"引擎不说话"混成同一个现象（真机 11-28 15:46
+        // 两次 25 秒零回调就是这个形态）。所以每隔 START_RETRY_MS 重发一次，**拿到任何回调就停**。
+        // 若引擎其实已经受理，重发通常会回一个 `识别器忙` —— 那本身也是"第一发到了"的铁证。
+        var attempt = 0
+        fun attemptStart() {
+            if (closed || anyCallback) return
+            attempt++
+            val sent = runCatching { recognizer.startListening(intent) }.isSuccess
+            AppLog.i(
+                "ui",
+                "语音识别：第 $attempt/$START_ATTEMPTS 次 startListening（${since()}ms）" +
+                    if (sent) "" else "，抛错",
+            )
+            if (!sent) {
+                closed = true
+                handler.removeCallbacks(watchdog)
+                runCatching { recognizer.destroy() }
+                onError("识别器启动失败")
+                return
+            }
+            if (attempt < START_ATTEMPTS) handler.postDelayed({ attemptStart() }, START_RETRY_MS)
+        }
+
+        // 先自己录一小段（证"我们这条线能收音"），录完再开始听 —— 免得两边抢麦克风。
+        // 为什么要有它：万一引擎死活不说话，得先排除"我们连录音都录不到"这一层，
+        // 否则后面选方案（比如内置离线引擎）会押在错误的假设上。
+        val probe = Thread({
+            AppLog.i("ui", "麦克风自检 ${selfMicProbe()}")
+            handler.post {
                 if (!closed) {
-                    val ok = runCatching { recognizer.startListening(intent) }.isSuccess
-                    if (!ok) {
-                        closed = true
-                        handler.removeCallbacks(watchdog)
-                        AppLog.w("ui", "语音识别：startListening 抛错（服务没绑上？）")
-                        runCatching { recognizer.destroy() }
-                        onError("识别器启动失败")
-                    }
+                    handler.postDelayed(watchdog, SILENT_TIMEOUT_MS)
+                    attemptStart()
                 }
-            },
-            START_DELAY_MS,
-        )
-        handler.postDelayed(watchdog, START_DELAY_MS + SILENT_TIMEOUT_MS)
+            }
+        }, "mic-probe")
+        probe.isDaemon = true
+        probe.start()
         return session
+    }
+
+    /**
+     * 自己录一小段，量峰值与均方根，用来把"引擎不说话"和"我们录不到"分开。
+     *
+     * 只读 1.2 秒就释放；**必须在工作线程调**（会阻塞）。
+     * 返回值直接当日志正文用（不含正文内容，只有数字）。
+     */
+    private fun selfMicProbe(): String {
+        val rate = 16_000
+        val min = runCatching {
+            AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        }.getOrDefault(-1)
+        if (min <= 0) return "不可用（getMinBufferSize=$min）"
+        val recorder = runCatching {
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                rate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                min * 2,
+            )
+        }.getOrNull() ?: return "不可用（AudioRecord 构造失败）"
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            runCatching { recorder.release() }
+            return "不可用（未初始化）"
+        }
+        var peak = 0
+        var sumSq = 0.0
+        var count = 0
+        val started = SystemClock.elapsedRealtime()
+        runCatching {
+            recorder.startRecording()
+            val buffer = ShortArray(min)
+            val until = started + 1_200
+            while (SystemClock.elapsedRealtime() < until) {
+                val read = recorder.read(buffer, 0, buffer.size)
+                if (read <= 0) continue
+                for (i in 0 until read) {
+                    val v = abs(buffer[i].toInt())
+                    if (v > peak) peak = v
+                    sumSq += v.toDouble() * v
+                }
+                count += read
+            }
+            recorder.stop()
+        }.onFailure { return "读取失败（${it::class.simpleName}）" }
+        runCatching { recorder.release() }
+        val rms = if (count > 0) sqrt(sumSq / count).toInt() else 0
+        return "可以录：${count} 采样/${SystemClock.elapsedRealtime() - started}ms 峰值=$peak 均方根=$rms"
     }
 
     private fun Bundle.text(): String =
