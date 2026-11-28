@@ -1,88 +1,61 @@
-# 项目状态快照（2026-11-27 上午，凌晨批量之后、待真机回执）
+# 项目状态快照（2026-11-28 中午 · v187 之后）
 
 > **这一页只写"现在是什么状态"**。每次更新**整篇重写**，不堆历史 ——
 > 历史看 git 提交与 [pitfalls.md](pitfalls.md)，规则看 [AGENTS.md](../../AGENTS.md) 与
 > [app/AGENTS.md](../../app/AGENTS.md)，进度看 [compat-matrix.md](../compat-matrix.md)，
 > 决策看 [docs/adr/](../adr/)，界面叫什么看 [ui-map.md](../ui-map.md)，
-> 必须成立什么看 [ui-invariants.md](../ui-invariants.md)。
+> 必须成立什么看 [ui-invariants.md](../ui-invariants.md)，**接手先读接手卡**。
 > 与 AGENTS.md 冲突时**以 AGENTS.md 为准**；这里不是规范，别当硬性要求引用。
 
 ## 当前基线
 
 | | |
 |---|---|
-| 代码 | HEAD 见 `git log -1`；最后一个**功能**提交是 `ccc6f1c`（群聊提示词组装），最后几个 `data`/`tools` 提交是 `b267635`（`data` 层测试开个头）|
-| 最新交付 | `apk-m228`（v187：语音改机内识别优先 + 服断自动重试一次 + 错误码补名）；回退点 `apk-m212` … `apk-m228` |
-| 真机确认到哪 | v181 报 3 条 → `apk-m221` 修；v182 复验"菜单能弹、打字机正常"，又报 2 条 → `apk-m222` 修；**v183：玻璃更实过、动画过**，新报 2 条（快进之后变实时打印 / 详情页退场变成会话页）→ `apk-m223` 修，**待 M32**。M29 其余 26 条仍未验 |
+| 代码 | HEAD 见 `git log -1`；回退点 `apk-m212` … **`apk-m228`**（最后一版功能提交是 `b46bd3c`，`39f1d50` 起是文档） |
+| 最新交付 | `apk-m228`：语音改"机内识别优先 + 服断自动重试一次 + 错误码补名"，**待复验** |
+| 真机确认到哪 | v181 → v187 共七轮回执，除**语音**外全部修完并确认（见下表） |
 | CI | 铁律（含文档相对链接、UI 词表）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
-| 本机测试 | `tools/test-core.sh` **10 模块 165 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 的 `:data:testDebugUnitTest` 跑 |
-| 规模 | `app` 50 个 kt / 17.3k 行；`data` 23 个 kt / 2.5k 行；`core` 73 个 kt / 7.0k 行；`feature/` 仍是空目录；DB **v4** |
-| 夹具 | `fixtures/expected/` **36 份**，其中群聊 7 份（四种激活策略 + 继续 + 两种 swipe）|
+| 本机测试 | `tools/test-core.sh` **10 模块 168 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 跑 |
+| 规模 | `app` 约 52 个 kt；`data` 23 个 kt；`core` 74 个 kt；`feature/` 仍是空目录；DB **v4** |
+| 夹具 | `fixtures/expected/` **36 份**（群聊 7 份：四种激活策略 + 继续 + 两种 swipe） |
 | 工具链 | Kotlin 2.1.20 / AGP 8.7.3 / Compose BOM 2024.12.01（=1.7.6）/ minSdk 26 / targetSdk 35 |
 
-## 这一批（2026-11-27）做到哪
+## 真机回执这条线（2026-11-27 一天跑了七轮）
 
-> 真机怎么验：照 [M29 验证清单](verification/2026-11-27-M29.md) 走（24 条 + m216–m220 后补的 25–29，
-> 共 29 条；前 10 条风险最高，末尾有"不过关先 grep 哪行日志"对照表）。
+| 版本 | 回执 | 修在哪 |
+|---|---|---|
+| v181 | ⋮ 点不动 / 首条回复仍旧动画 / 版本条提前出现 | `m221`（provider 漏 local、看门狗算错、打印期 chrome 延后） |
+| v182 | 玻璃太透 / 点气泡变大段更新 | `m222`（Menu 0.60、Sheet 0.66；点气泡改快进） |
+| v183 | 快进后退化成实时打印 / 详情页退场变会话页 | `m223`（快进速率冻结）、`m225`（`returnToSessionsOnClose`） |
+| v184 | 切输入法输入框收回 / 分享没弹窗 / 人设不在请求里 | `m226`（`imeHiding` 阈值、`singleTask`、旧预设补 `personaDescription` 格） |
+| v185 | 导入后详情没有开场白/内嵌书 / 确认框不是玻璃 | `m227`（`importCard` 走 `openDetail`；新增 `PageGlass`） |
+| v186 | 语音权限通过但报 `未知错误 11` | `m228`（11=`ERROR_SERVER_DISCONNECTED`；机内优先 + 重试一次 + 诊断），**待复验** |
+| 已过 | TTS、开场白切换、开源许可、存卡图、分享导入、人设位置、重进续打、点气泡/停止动画、切输入法 | — |
 
-| 事项 | 状态 |
-|---|---|
-| **流式回复揭示节奏**（用户第 3 条「整屏抽搐」的定稿方案） | ✅ 实施完（[plan-reveal-pacing.md](../plan-reveal-pacing.md) 含 §E 实施记录）；推进数学抽成 `core/model/RevealPacer` + 7 条单测；**待真机观感** |
-| **人设 / 用户名 / 名称宏**（P1-8，需求批 F） | 🟨 多人设 + 三级（会话 > 卡 > 全局）+ `{{user}}` + personaDescription 独立 system 消息；夹具 `P1-8-persona-prompt` |
-| **作者注**（P1-7） | 🟨 深度/角色/间隔 + **位置三档**（`IN_PROMPT` / `IN_CHAT` / `BEFORE_PROMPT`）；夹具 `P1-7-an-*` 5 份 |
-| **作者注顶部/底部条目**（世界书 `ANTop`/`ANBottom`） | ✅ 拼进作者注那一条，只削首尾各一个换行；夹具 `P1-7-an-with-wi` |
-| **`forbid_overrides`** | ✅ 逐条提示词的旗标，卡里的 system_prompt / post_history 顶不掉；夹具 `P0-5-forbid-overrides` |
-| **世界书 outlet** | ✅ `{{outlet::名字}}` 宏取走 `position = outlet` 的条目，未激活替空串；夹具 `P1-3-outlet` |
-| **示例对话顶部/底部**（EMTop/EMBottom） | ✅ 并进示例块，**每块自带 `[Example Chat]`**；夹具 `P1-3-example-injection` |
-| **胶囊 → 液态玻璃菜单**（需求批 E 两处原型） | ✅ 聊天页 ⋮ 与卡详情 ⋮；宿主在骨架里、采真磨砂；INV-11 结构守卫；**待真机看落点与观感** |
-| TTS 朗读 + 语音输入（P2-3） | ✅ 朗读在动作行（再点停、离场 shutdown）；语音输入在聊天页 ⋮（系统识别器，不要权限）；**待真机听** |
-| 分享收卡 + 保存卡图（P2-4 一半） | ✅ `SharedIntake`（`StateFlow`）接正常导入链路；`CardImageSaver` 走 MediaStore（29+ 免权限）；**待真机试** |
-| 设置 → 关于「开源许可」页 | ✅ 读 `assets/notices/` 原文（声明 / AGPL / Apache / 两份 MIT），构建期 `syncNotices` 同步 |
-| `core/` 注释改署名式 | ✅ 9 处"照抄"改成"移植自 SillyTavern 1.19.1（AGPL-3.0，上游文件）" |
-| 默认 `prompt_order` 走 100001 | ✅ 原版 `Default.json` 有两张表，聊天补全那张（100001）才有 `personaDescription` |
-| **群聊**（P2-1） | 🔶 **夹具 7 份 + 提示词组装完成**（`PromptBuilder.build(group = …)`：只取说话人那张卡、历史加 `名字: `、组标记、末尾 `[Write the next reply only as X.]`）；**数据模型 / 接线 / 界面未做** |
-| `data` 层 JVM 测试 | 🔶 开了个头（`ConfigOverrideTest` 4 条）；顺带修了 `check-tests-ran.sh`（Android 报告在 `testDebugUnitTest/`）|
-| 结构守卫 | ✅ INV-11（胶囊菜单只能由骨架画 + **INV-11b：页头 actions 的 provider 必须提供 `LocalCapsuleMenu`**）、INV-12（揭示节奏两条结构约束），都自测会红 |
-| **真机 v181 三条回执的修正**（`apk-m221`） | ✅ ① ⋮ 点不动 = 页头 provider 漏了 `LocalCapsuleMenu`；② 首条回复退回旧动画 = 看门狗把"等首字"算成停滞（`RevealPacer` 追平态洗计时器）；③ 版本条提前出现 = 打印期动作行/版本条只占位不显示。口径 [plan-reveal-pacing.md §F](../plan-reveal-pacing.md)，清单 [M30](verification/2026-11-27-M30.md) |
-| **v187 语音修正**（`apk-m228`） | ✅ 权限通过后 15.7s 报 `ERROR_SERVER_DISCONNECTED(11)`：改机内识别优先（API31+）+ `EXTRA_PREFER_OFFLINE`，服断/网络类自动重试一次；错误码 11–14 补名；日志加 `机内=… 引擎=<包名>`、`开始听（机内/服务端）`、`首个中间结果 N 字` |
-| **v186 三条/一项**（`apk-m227`） | ✅ ① 分享导入后详情没有开场白/内嵌书 = `importCard` 只写了 `detailCardId`、没走 `openDetail`（日志里那次 push 没有 `读详情`）→ 改调 `openDetail`。② 分享确认框是纯色板 = 顶层没有底片；新增 `PageGlass`，页面骨架登记 frost + 原点。③ 语音输入：真机 `服务=1 意图=0`，接入 App 内 `SpeechRecognizer` + `RECORD_AUDIO`；拒绝权限保留入口、下次再申请 |
-| **v185 三条修正**（`apk-m226`） | ✅ ① 英文切中文时输入区收回（模型钮消失）= `imeHiding` 判"比上一帧小"，候选栏的高度变化被当成收键盘；改成"掉到峰值一半以下"才算。② 分享确认框"没弹"第三修 = 一个进程里 `tabs init` 出现 3 次（standard 模式每次分享新建实例，框弹在新实例里）；`launchMode=singleTask` 走 onNewIntent。③ 人设位置**本来就是对的**（`[system] 一个神秘的人` 就是 6 字描述，在 worldInfoBefore 之后），名字按原版只展开 `{{user}}`；只在请求面板加了 `人设=…(描述=N字)` |
-| **v184 三条修正**（`apk-m225`） | ✅ ① 重进仍实时打印 = `LaunchedEffect(sessionId/pageIsCurrent)` 首跑把续接游标清掉（日志有 `打印续接`、无后续 `打印帧`）；改成首跑不动作。② 分享确认框第一次没弹 = 宿主挂在 `TabsRoot`（是否在组合树里取决于当前页）；挪到 `MainScreen` 最外层 + 三行日志。③ 人设没进请求 = 当前预设的 `prompt_order` 缺 `personaDescription` 格；`PromptOrderCompat.ensurePersonaSlot` 自动补（有但被关掉的尊重），这是**故意偏离原版**，已记 original-behavior |
-| **v183 B 组的四条**（`apk-m224`） | ✅ ① 退页重进变实时打印 = 回来时不建游标，之后的字走桥接老路径；改成"续接"（从当前长度建游标，新字按档位打，日志 `打印续接`）。② 点停止剩余文本突然出现 = `clearReveal("停止")` 瞬移；改走快进（0.5s 连续刷完）。③ 语音输入：新增 `VoiceInput` 两条判据 + 日志 + Manifest `<queries>`，没有服务就不显示入口（取证见 M33 §一）。④ 分享导入前加玻璃确认框。⑤ 人设不在请求里 = **先取证**（发送日志补 `人设=<名字>(描述=N字)`） |
-| **真机 v183 两条回执的修正**（`apk-m223`） | ✅ ① 快进之后变实时打印 = 速率按"当前欠账"现算是反馈环（平衡点在 供给×0.35，永不为 0）；改成点下去那一刻冻结目标与速率（`core/model/RevealCatchUp` + 3 条单测）。② 详情页退场变成会话页 = 开聊天那一刻就清了详情数据，退场页快照跟着变空；改成 `returnToSessionsOnClose`，关聊天时才原子地退详情 + 切会话栏。口径 §F.5，清单 [M32](verification/2026-11-27-M32.md) |
-| **真机 v182 两条回执的修正**（`apk-m222`） | ✅ ① 玻璃太透 = 菜单一直用 `Default`(0.22)；新增 `LiquidGlassSpec.Menu`(0.60)，`Sheet` 0.50→0.66（动作单/选卡/确认框）；② 点气泡变整块 = 清游标后走桥接 → 改成"快进"（游标不清，剩余量 / 0.35s 刷完，之后继续按档位打）。口径 §F.4，清单 [M31](verification/2026-11-27-M31.md) |
+## 还没做 / 待验
 
-## 还没做（按下一轮优先级）
-
-1. **群聊的落地**（P2-1 剩下的全部）：`ChatSession.groupMembers`、消息 `speaker`、**DB v5 迁移**、
-   应用接线、群聊界面，以及验收那 7 条。**这一段要改数据库，没有用户明确同意与真机回滚路径不动**，
-   口径在 [plan-group-chat.md](../plan-group-chat.md)。附带疑点：两份 swipe 夹具里 `char_name` 都指向
-   **下一位**说话人，语义没分清（§6.2），**先别照抄**。
-2. **后台生成 + 通知**（P2-2）：前台服务 + `POST_NOTIFICATIONS` 运行时权限 + Android 14 的
-   `foregroundServiceType`。权限/类型配错就是启动即崩，**必须真机在线才做**。
-3. **桌面小组件**（P2-4 最后一项）：RemoteViews + 深色适配，必须真机看。
-4. **`data` 层测试补齐**：`ConfigOverride` 的编解码（现在埋在 `SharedPreferences` 实现里，要先抽成纯函数）、
-   DB 迁移、`.meta` 容错。抽取编解码不碰 schema，可以先做；迁移测试要等 DB v5 一起。
-5. **人设那条轴剩下的**：人设描述的 `TOP_AN` / `BOTTOM_AN` 位置（"人设描述跟作者注拼在一起"）、
-   人设头像、按角色锁定人设（原版 `locked.character`）。
-6. **作者注剩下的**：参与世界书扫描（`allowWIScan`）、按角色的 AN（character notes）。
-7. **P4 收尾**：删除 / 撤回的位移动画 —— 判据要真机看（V7），没法在 CI 上验。
+1. **语音输入复验**（`apk-m228`，M35 §三）：拿 `语音识别 … 机内=… 引擎=…` 与 `首个中间结果` 两行定结论。
+2. **B 组没看过的**：作者注（深度/间隔/位置三档）、世界书 outlet、示例顶底 `EMTop/EMBottom`、
+   `forbid_overrides`、打印中换档 / 不限速 / 系统「移除动画」/ emoji / 打印中切会话。
+3. **群聊（P2-1）**：夹具 7 份 + 提示词组装完成；数据模型 / DB v5 / 接线 / 界面**未做**，要用户点头。
+4. **后台生成 + 通知、桌面小组件**：要真机在线才做（权限/`foregroundServiceType` 配错就是启动崩）。
+5. 不依赖真机也不动 DB 的活：人设描述 `TOP_AN`/`BOTTOM_AN`、作者注 `allowWIScan`、
+   按角色锁定人设、`data` 层 `ConfigOverride` 编解码抽成纯函数。
 
 ## 已知风险
 
-- **这一批基本没上过真机**（v181 只报了 3 条，M29 其余 26 条没验）。最需要真机看的三件：
-  揭示节奏的观感（尤其慢档 15cp/s）、胶囊菜单的定位与磨砂、TTS 朗读的音色与打断行为。
-- `apk-m221` 的第 3 条修法改的是**布局**（打印期动作行只占位不显示）：打完那一刻"不跳"只在纸面上成立，
-  必须真机看（M30 #5/#6）。
-- 揭示节奏的**排版开销**只过了 CI 编译，`打印帧` 日志要真机跑一段长回复才有数。
-- 胶囊菜单的定位用 `boundsInWindow()` 算，**折叠屏 / 分屏没验**。
-- 分享收卡依赖系统 `ACTION_SEND` 的读权限授予；某些文件管理器给的是不可读的 content URI（要真机试）。
-- 老风险照旧：本机编不了 `:app`（缺 import / 类型错只能 CI 抓，这一批因此废了 5 次 CI）；
-  超长气泡不能整段一个节点；覆盖保存卡无备份。
+- **语音输入**：真机有识别服务、没识别界面（`服务=1 意图=0`）。若机内识别也不可用，
+  这台 ROM 的引擎可能需要联网/登录 —— 下一轮日志定，别猜。
+- 打印期"动作行/版本条只占位不显示"是**布局改动**："打完那一刻不跳"只在纸面上成立过，仍需真机确认。
+- 顶层确认框的底片靠页面登记（`PageGlass`），转场期间谁最后登记没验过。
+- `launchMode=singleTask` 改的是返回栈行为，只在分享路径上验过。
+- 老风险照旧：本机编不了 `:app`（缺 import / 作用域错只能 CI 抓，v181–v187 共废 5 次 CI）；
+  超长气泡不能整段一个节点；覆盖保存卡无备份；折叠屏/分屏下胶囊菜单落点没验。
 
 ## 已作废的口径（别再重新提）
 
-- 卡库"分组"—— **原版 1.19.1 没有角色文件夹**（`src/endpoints/characters.js` 只按角色名建目录），
-  矩阵 P0-8 该项作废，卡片归类靠标签。
-- 揭示节奏的「用滞后换平滑」（追平时间 T / 弹簧 / px/s 高度匀速）—— 实测就是走走停停，v179/v180 两次都死在这；
-  「不跟（浏览器式）」—— 攒包后整块上跳 4–7 行。都已否。
+- 卡库"分组"—— 原版 1.19.1 没有角色文件夹，靠标签归类。
+- 揭示节奏的「用滞后换平滑」（追平时间 T / 弹簧 / px/s 匀速）—— v179/v180 两次都被驳回；
+  「不跟（浏览器式）」—— 攒包后整块上跳 4–7 行。
+- 点气泡 = 清游标补满；点停止 = 瞬移补满；退页回来 = 不建游标。（三条都已被 v183 的回执推翻）
+- 给群聊 swipe 照抄 `char_name`（它指向"下一位"，语义没分清）。
