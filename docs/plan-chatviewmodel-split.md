@@ -452,7 +452,9 @@ Key 防抖时长不变。**单测**：不可得（依赖仓库）；只能真机
 | B4 档案写入 | ⬜ 未开始（默认不做） | — | — | 触发条件见 B4 |
 | **B5-0** 状态类型搬出 | ✅ 完成，CI 绿 | `apk-m236` | 文件 **3,756 → 3,343（−413）**；非空行 3,499 → **3,107** | `UiState` + 8 个周边值类型 → `ChatState.kt`（新文件 431 行） |
 | **B5-1** `EditState` 分组 | ✅ 完成，CI 绿 | `apk-m237` | VM 不变（3,343）；`ChatState.kt` 420（+11 声明脚手架） | 字段：`profileDraft` / `cardEditOpen` / `presetEditName` / `presetPromptDetail`；25 处引用改成 `state.edit.*` / `it.edit.copy(...)` |
-| B5-2~4 分组 | ⬜ 未开始 | — | — | 余下：Nav / Config / Gen（引用从少到多） |
+| **B5-2a** `NavState` 第一刀 | ✅ 完成，CI 绿 | `apk-m238` | VM +5（3,348）、State +15（435）：`nav = it.nav.copy(...)` 包装 | 6 个字段：`screen` / `chatOpen` / `returnToSessionsOnClose` / `settingsPage` / `showCardPicker` / `galleryOpen` |
+| B5-2b `NavState` 第二刀 | ⬜ 未开始 | — | — | 下钻上下文：`detailCardId` / `detailTab` / `cardConfigPage` / `configPicker` / `sessionConfigOpen` / `worldBookView` / `worldBookEntry`（13 个字段里剩下的 7 个，引用最多） |
+| B5-3 / B5-4 | ⬜ 未开始 | — | — | Config / Gen |
 | B6 分页 | ⬜ 未开始（需先设计） | — | — | — |
 
 **B5-0 的偏差（记录在案）**：原计划只搬 `UiState`（307 行），实际搬了 **9 个类型**（`UiState` +

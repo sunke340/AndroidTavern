@@ -151,6 +151,26 @@ data class Collapse(
 )
 
 /**
+ * 导航状态：现在在哪一页、哪个浮层开着。
+ *
+ * 为什么单独一组（B5-2，2026-11-28）：`Screen` 与其下钻上下文（详情页/设置二级页/选卡浮层/画廊）
+ * 决定"看得见什么"，和聊天内容、配置值不是一类东西。本轮只做归属调整，字段名与默认值不动。
+ *
+ * 说明：这一组按引用量分了两刀。这一刀是"顶层页面 + 浮层"；下钻上下文
+ * （`detailCardId` / `detailTab` / `cardConfigPage` / `configPicker` / `sessionConfigOpen` /
+ * `worldBookView` / `worldBookEntry`）仍在 `UiState` 上，等第二刀再搬。
+ */
+data class NavState(
+    val screen: Screen = Screen.Sessions,
+    val chatOpen: Boolean = false,
+    /** 从卡详情页新建会话时置 true：关聊天时连详情页一起退掉。 */
+    val returnToSessionsOnClose: Boolean = false,
+    val settingsPage: SettingsPage? = null,
+    val showCardPicker: Boolean = false,
+    val galleryOpen: Boolean = false,
+)
+
+/**
  * 编辑中的临时状态：草稿，以及"哪一页编辑器开着"。
  *
  * 为什么单独一组（B5-1，2026-11-28）：这些字段的生命周期是"打开编辑器 → 改 → 保存/取消"，
@@ -200,8 +220,6 @@ data class UiState(
     val showRequest: Boolean = false,
     val importing: Boolean = false,
     // ---- 界面结构（导航） ----
-    val screen: Screen = Screen.Sessions,
-    val chatOpen: Boolean = false,
     /**
      * 这一次聊天是"从卡详情页新建会话"进来的：关掉它时**直接落回会话栏**。
      *
@@ -210,13 +228,9 @@ data class UiState(
      * 那 280ms 的退场页就成了空壳/别的页，观感是"翻页动画还没跑，背后的详情页已经变成会话页"。
      * 所以改成：进聊天时什么都不动，**关聊天时**再连详情页一起退掉。
      */
-    val returnToSessionsOnClose: Boolean = false,
     /** 设置里的二级页面；null = 一级列表。 */
-    val settingsPage: SettingsPage? = null,
     /** 新建会话前先选卡：true 时显示角色卡选择弹层。 */
-    val showCardPicker: Boolean = false,
     /** 组件预览页（**只在 debug 包里能进**，入口在 设置 → 关于）。 */
-    val galleryOpen: Boolean = false,
     /** 角色卡配置的二级页（作用域：当前详情页那张卡）。 */
     val cardConfigPage: CardConfigPage? = null,
     /** 非 null 时显示角色详情页（覆盖在三栏之上，返回键先退它）。 */
@@ -296,6 +310,8 @@ data class UiState(
     val cardOverride: ConfigOverride = ConfigOverride(),
     /** 编辑中的临时状态（草稿 / 哪个编辑器开着）：见 [EditState]。 */
     val edit: EditState = EditState(),
+    /** 导航状态（当前在哪一页 / 哪个浮层开着）：见 [NavState]。 */
+    val nav: NavState = NavState(),
     /** 会话配置二级页（从聊天页 ⋮ 进）。 */
     val sessionConfigOpen: Boolean = false,
     /**

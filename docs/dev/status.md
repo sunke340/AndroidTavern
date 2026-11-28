@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | 代码 | HEAD 见 `git log -1`；回退点 `apk-m212` … **`apk-m232`**（`39f1d50` / `e651303` 是文档收尾） |
-| 最新交付 | `apk-m237`：拆分 **B5-1** —— `UiState` 里切出 `EditState`（4 个编辑态字段，25 处引用改 `state.edit.*`） |
+| 最新交付 | `apk-m238`：拆分 **B5-2a** —— 切出 `NavState` 的第一刀（6 个顶层页面/浮层字段） |
 | 真机确认到哪 | v181 → v188 共八轮回执，除**语音**外全部修完并确认（见下表） |
 | CI | 铁律（含文档相对链接、UI 词表）/ 纯 JVM 单测 / debug APK 三 job 全绿 |
 | 本机测试 | `tools/test-core.sh` **10 模块 168 条**全绿；`data` 的 4 条本机编不了（无 SDK），由 CI 跑 |
@@ -43,7 +43,7 @@
    `RECORD_AUDIO` 与两条 speech `<queries>`；决策与代价记在 [pitfalls](pitfalls.md)「五个包」一节，
    历史方案留在 [plan-voice-offline.md](../plan-voice-offline.md)（已标作废）。
 
-2. **`ChatViewModel` 拆分**（**已开工**：B0 / B1 / B2 / B5-0 已交付 `apk-m236`；B5-2~4 与 B6 未做，B4 默认不做）：
+2. **`ChatViewModel` 拆分**（**已开工**：B0 / B1 / B2 / B5-0 已交付 `apk-m236`；B5-2b/3/4 与 B6 未做，B4 默认不做）：
    [plan-chatviewmodel-split.md](../plan-chatviewmodel-split.md)。审查推翻了三条旧结论：P0-2 主线程重活
    **已修**（`c984f71`）、消息操作**早已按 `uiKey`/`dbId`**（不是下标耦合）、行数目标 ≤2,600 **不成立**
    （现实 ≈−400）。现行顺序：B0 棘轮 → B1 抽解析链+SAF 小工具 → B2 `scanWorldInfo` 落 core →

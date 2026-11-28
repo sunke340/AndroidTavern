@@ -234,7 +234,7 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
             // 先取到局部变量：state 是委托属性，属性访问不能智能转换
             val detailId = state.detailCardId
             val cardConfig = state.cardConfigPage
-            val settingsPage = state.settingsPage
+            val settingsPage = state.nav.settingsPage
             val worldBook = state.worldBookView
             val editingProfile = state.edit.profileDraft != null
             val presetEdit = state.edit.presetEditName
@@ -247,14 +247,14 @@ fun MainScreen(viewModel: ChatViewModel = viewModel()) {
                 configPicker != null -> Destination.ConfigPicker(configPicker)
                 // 会话配置叠在聊天页之上：返回落回聊天（chatOpen 保持 true）
                 state.sessionConfigOpen -> Destination.SessionConfig
-                state.chatOpen -> Destination.Chat
+                state.nav.chatOpen -> Destination.Chat
                 detailId != null && state.edit.cardEditOpen -> Destination.CardEdit(detailId)
                 detailId != null && cardConfig != null -> Destination.CardConfig(detailId, cardConfig)
                 detailId != null -> Destination.Detail(detailId)
                 // 档案编辑页叠在"模型列表"之上：返回时回到列表，所以 settingsPage 不清
                 editingProfile -> Destination.ProfileEdit
                 // 组件预览叠在"设置→关于"之上：返回落在关于页，所以 settingsPage 不清
-                state.galleryOpen -> Destination.Gallery
+                state.nav.galleryOpen -> Destination.Gallery
                 // 预设的「提示词全文」叠在预设编辑之上：返回落回编辑页
                 state.edit.presetPromptDetail != null -> Destination.PresetPrompt
                 // 预设编辑叠在"设置→预设"之上：返回落在预设列表，所以 settingsPage 不清
@@ -575,7 +575,7 @@ private fun TabsRoot(
             enabled = !state.importing,
         ) { importLauncher.launch(arrayOf("image/*")) }
     }
-    val headerActions: (@Composable () -> Unit)? = when (state.screen) {
+    val headerActions: (@Composable () -> Unit)? = when (state.nav.screen) {
         Screen.Sessions -> newSessionAction
         Screen.Characters -> importAction
         Screen.Settings -> null
@@ -623,7 +623,7 @@ private fun TabsRoot(
                     },
             ) {
                 AnimatedContent(
-                    targetState = state.screen,
+                    targetState = state.nav.screen,
                     // 同上层：钉死整屏 + 关掉 SizeTransform，否则 tab 切换也会有"从 0 长出来"的抽动。
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
@@ -662,7 +662,7 @@ private fun TabsRoot(
 
             // 页头浮层：画在录制之外，否则玻璃胶囊会采样到上一帧的自己（无限套娃）。
             PageHeader(
-                title = when (state.screen) {
+                title = when (state.nav.screen) {
                     Screen.Sessions -> "会话"
                     Screen.Characters -> "角色卡"
                     Screen.Settings -> "设置"
@@ -675,19 +675,19 @@ private fun TabsRoot(
             )
 
             TavernBottomBar(
-                current = state.screen,
+                current = state.nav.screen,
                 onSelect = viewModel::showScreen,
                 glass = glassOn,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },
                 // 抽屉要弹出来时，底栏先滑走 —— 两块浮层不叠在一起（用户 2026-11-24）
-                hidden = sheet.spec != null || confirm.spec != null || state.showCardPicker,
+                hidden = sheet.spec != null || confirm.spec != null || state.nav.showCardPicker,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
             // 选卡弹层（新建会话前必须先选卡）：一级页的浮层里，才有真磨砂
             GlassSheetScaffold(
-                visible = state.showCardPicker,
+                visible = state.nav.showCardPicker,
                 onDismiss = viewModel::closeCardPicker,
                 frost = frostLayer,
                 contentOrigin = { contentOrigin.value },

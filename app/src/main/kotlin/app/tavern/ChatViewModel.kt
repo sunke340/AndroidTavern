@@ -579,7 +579,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     detailCardId = null,
                     sessionId = if (currentGone) null else it.sessionId,
                     rows = if (currentGone) emptyList() else it.rows,
-                    chatOpen = if (currentGone) false else it.chatOpen,
+                    nav = it.nav.copy(chatOpen = if (currentGone) false else it.nav.chatOpen),
                 )
             }
             AppLog.i("card", "删除卡 id=$cardId 连带会话=$removedSessions file=$deletedFile")
@@ -684,7 +684,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         sessionId = null,
                         rows = emptyList(),
                         inflight = null,
-                        chatOpen = false,
+                        nav = it.nav.copy(chatOpen = false),
                     )
                 }
             }
@@ -798,10 +798,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // 生成中状态按**归属**算：切回还在跑的那条会话时别把"生成中"清掉
                 // （以前一律清掉 → 用户能再发一条，旧流永远停不掉）
                 inflight = if (currentRound?.sessionId == id) it.inflight else null,
-                chatOpen = navigate,
-                // 每次开会话都重写这个标记：只有"从详情页新建"这一次是 true，其余一律清掉，
-                // 免得下一次从别处打开的聊天被上一次的标记带偏。
-                returnToSessionsOnClose = returnToSessions,
+                nav = it.nav.copy(
+                    chatOpen = navigate,
+                    // 每次开会话都重写这个标记：只有"从详情页新建"这一次是 true，其余一律清掉，
+                    // 免得下一次从别处打开的聊天被上一次的标记带偏。
+                    returnToSessionsOnClose = returnToSessions,
+                ),
                 cardMessageStyle = cardStyle,
                 bookDisabled = bookOverride.off,
                 bookForced = bookOverride.forcedOn,
@@ -1485,7 +1487,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
-    fun showScreen(screen: Screen) = _state.update { it.copy(screen = screen) }
+    fun showScreen(screen: Screen) = _state.update { it.copy(nav = it.nav.copy(screen = screen)) }
 
     fun openCardConfigPage(page: CardConfigPage) = _state.update { it.copy(cardConfigPage = page) }
 
@@ -1601,25 +1603,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeCardConfigPage() = _state.update { it.copy(cardConfigPage = null) }
 
-    fun openCardPicker() = _state.update { it.copy(showCardPicker = true) }
+    fun openCardPicker() = _state.update { it.copy(nav = it.nav.copy(showCardPicker = true)) }
 
-    fun closeCardPicker() = _state.update { it.copy(showCardPicker = false) }
+    fun closeCardPicker() = _state.update { it.copy(nav = it.nav.copy(showCardPicker = false)) }
 
-    fun openGallery() = _state.update { it.copy(galleryOpen = true) }
+    fun openGallery() = _state.update { it.copy(nav = it.nav.copy(galleryOpen = true)) }
 
-    fun closeGallery() = _state.update { it.copy(galleryOpen = false) }
+    fun closeGallery() = _state.update { it.copy(nav = it.nav.copy(galleryOpen = false)) }
 
     /** 选卡弹层里点了某张卡：关弹层 + 用它开新会话。 */
     fun pickCardAndStart(cardId: String) {
-        _state.update { it.copy(showCardPicker = false) }
+        _state.update { it.copy(nav = it.nav.copy(showCardPicker = false)) }
         startSessionForCard(cardId)
     }
 
     fun openSettingsPage(page: SettingsPage) = _state.update {
-        it.copy(settingsPage = page, worldBookView = null)
+        it.copy(nav = it.nav.copy(settingsPage = page), worldBookView = null)
     }
 
-    fun closeSettingsPage() = _state.update { it.copy(settingsPage = null, worldBookView = null) }
+    fun closeSettingsPage() = _state.update { it.copy(nav = it.nav.copy(settingsPage = null)) }
 
     // ---- 模型档案（C 批） ---------------------------------------------------
 
@@ -1758,18 +1760,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // 离开聊天页时流**照常跑完**（用户可能只是回去看一眼列表），但它归 [streaming] 管：
         // 回到同一会话能看到"生成中"，切到别的会话会被取消（审计 P1-1）。
         _state.update {
-            val backToSessions = it.returnToSessionsOnClose
+            val backToSessions = it.nav.returnToSessionsOnClose
             it.copy(
-                chatOpen = false,
+                nav = it.nav.copy(
+                    chatOpen = false,
+                    // 这一次的标记用完就清：只有"从详情页新建"那一次该退详情
+                    returnToSessionsOnClose = false,
+                    // 从详情页「新建会话」进来的这一次：连详情页一起退掉，落回会话栏
+                    screen = if (backToSessions) Screen.Sessions else it.nav.screen,
+                ),
                 sessionConfigOpen = false,
                 configPicker = null,
-                // 从详情页「新建会话」进来的这一次：关聊天时连详情页一起退掉，落回会话栏。
                 // 放在**这一刻**做，是因为退场页读的是快照 —— 提前清会把它渲染成空壳。
                 detailCardId = if (backToSessions) null else it.detailCardId,
                 detail = if (backToSessions) null else it.detail,
                 cardConfigPage = if (backToSessions) null else it.cardConfigPage,
-                screen = if (backToSessions) Screen.Sessions else it.screen,
-                returnToSessionsOnClose = false,
             )
         }
         currentRound?.let { AppLog.i("chat", "离开聊天页：流仍在跑 round=${it.roundId} session=${it.sessionId.take(8)}") }

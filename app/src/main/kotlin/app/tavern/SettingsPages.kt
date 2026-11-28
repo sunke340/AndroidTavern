@@ -73,7 +73,7 @@ import app.tavern.data.settings.Persona
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSubPage(state: UiState, viewModel: ChatViewModel) {
-    val page = state.settingsPage ?: return
+    val page = state.nav.settingsPage ?: return
     // 人设的编辑/删除是**页级**动作（「+」在页头、长按在行上），所以状态提到这里
     var personaDraft by remember { mutableStateOf<Persona?>(null) }
     var personaDelete by remember { mutableStateOf<Persona?>(null) }
