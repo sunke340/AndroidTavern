@@ -47,6 +47,11 @@ jobs:
       - name: 文档相对链接必须可解析
         run: bash tools/check-doc-links.sh
 
+      # 上帝类的尺寸棘轮：只降不升（判据见 docs/plan-chatviewmodel-split.md 的 B0）。
+      # 本机同样能跑：bash tools/check-viewmodel-size.sh
+      - name: ChatViewModel 不超过预算
+        run: bash tools/check-viewmodel-size.sh
+
   jvm-tests:
     name: 纯 JVM 单测（兼容性断言）
     runs-on: ubuntu-latest
