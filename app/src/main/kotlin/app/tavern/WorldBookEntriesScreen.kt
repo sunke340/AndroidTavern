@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun WorldBookEntriesScreen(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {

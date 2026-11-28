@@ -494,7 +494,7 @@ private val BarHeight = 56.dp
  */
 @Composable
 private fun TabsRoot(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     sessionsList: LazyListState,
     charactersGrid: LazyGridState,

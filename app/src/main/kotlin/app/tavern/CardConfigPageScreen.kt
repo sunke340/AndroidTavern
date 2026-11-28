@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun CardConfigPageScreen(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     /** 条目列表的滚动位置由上层持有：点进「条目全文」再返回时不能回到顶部（M16）。 */
     bookListState: LazyListState = rememberLazyListState(),
@@ -201,7 +201,7 @@ private fun CardMessageStylePage(
     detail: CardDetail?,
     cardId: String,
     viewModel: ChatViewModel,
-    state: ChatViewModel.UiState,
+    state: UiState,
 ) {
     SectionLabel("这张卡的对话样式")
 

@@ -39,7 +39,7 @@ import app.tavern.core.regex.BuiltinRegex
  * 这样能连着对比几个选项。当前生效项用和设置页同一种勾选圈标出来。
  */
 @Composable
-fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun ConfigPickerScreen(state: UiState, viewModel: ChatViewModel) {
     val target = state.configPicker ?: return
     val glass = state.visualEffects.effective() == VisualEffects.Glass
 
@@ -207,7 +207,7 @@ fun ConfigPickerScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
 /** 模型页：顶部思考强度滑块（用户：思考强度就放模型里，别再单独一行）+ 模型列表。 */
 @Composable
 private fun ModelPickerPageBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -233,11 +233,11 @@ private fun ModelPickerPageBody(
  * 采样三级（用户 2026-11-25 第 2 条）：五项都留空 = 跟随上级。
  *
  * 每格里**显示的是这一层的值**，占位符写"跟随上级：X"——否则用户看不出现在到底发的是几。
- * 优先级：会话 > 卡 > 预设 > 全局（和 [ChatViewModel.UiState.effectiveTemperature] 那组 getter 一致）。
+ * 优先级：会话 > 卡 > 预设 > 全局（和 [UiState.effectiveTemperature] 那组 getter 一致）。
  */
 @Composable
 private fun SamplingPickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -296,7 +296,7 @@ private fun SamplingPickerBody(
 /** 世界书多选：勾的是"哪些全局书参与"，书自己的启用开关是另一层。 */
 @Composable
 private fun WorldBookPickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -351,7 +351,7 @@ private fun WorldBookPickerBody(
 /** 正则多选：勾的是"哪些脚本参与"，脚本自己的 disabled 是另一层。 */
 @Composable
 private fun RegexPickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -410,7 +410,7 @@ private fun RegexPickerBody(
 /** 预设单选。 */
 @Composable
 private fun PresetPickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -514,7 +514,7 @@ private fun PickerBulkMenu(
  */
 @Composable
 private fun FontSizePickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {
@@ -567,7 +567,7 @@ private fun FontSizePickerBody(
  */
 @Composable
 private fun PersonaPickerBody(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
 ) {

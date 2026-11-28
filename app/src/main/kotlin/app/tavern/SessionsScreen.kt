@@ -31,7 +31,7 @@ import app.tavern.data.chat.ChatSession
  */
 @Composable
 fun SessionsScreen(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     // 滚动位置由上层持有：从二级页返回时列表不该回到顶部。
     listState: LazyListState = rememberLazyListState(),

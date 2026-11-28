@@ -67,7 +67,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  * - 恢复默认在页头右上角的圆钮菜单里；列表就是这一页本身（`headerMode` + `contentPadding`）。
  */
 @Composable
-fun PresetEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun PresetEditScreen(state: UiState, viewModel: ChatViewModel) {
     val name = state.presetEditName ?: return
     val listState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
@@ -242,7 +242,7 @@ internal fun promptLabel(identifier: String): String = when (identifier) {
  * 空内容（原版里 nsfw / jailbreak 默认就是空的）给一句空状态，不留白板。
  */
 @Composable
-fun PresetPromptScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun PresetPromptScreen(state: UiState, viewModel: ChatViewModel) {
     val identifier = state.presetPromptDetail ?: return
     val content = state.presetPrompts[identifier].orEmpty()
 

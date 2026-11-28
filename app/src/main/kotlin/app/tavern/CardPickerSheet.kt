@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
  * 而且从列表上完全看不出来。现在必须点一张卡才建。
  */
 @Composable
-fun CardPickerBody(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun CardPickerBody(state: UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
 
     LazyVerticalGrid(

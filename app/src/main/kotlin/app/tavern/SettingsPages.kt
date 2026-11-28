@@ -72,7 +72,7 @@ import app.tavern.data.settings.Persona
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun SettingsSubPage(state: UiState, viewModel: ChatViewModel) {
     val page = state.settingsPage ?: return
     // 人设的编辑/删除是**页级**动作（「+」在页头、长按在行上），所以状态提到这里
     var personaDraft by remember { mutableStateOf<Persona?>(null) }
@@ -197,7 +197,7 @@ fun SettingsSubPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  * 副行只留模型 ID（+ 思考档）；baseUrl 是编辑页的事，手机上一行放不下。
  */
 @Composable
-private fun ModelPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun ModelPage(state: UiState, viewModel: ChatViewModel) {
     var pendingDelete by remember { mutableStateOf<ModelProfile?>(null) }
     val sheet = LocalSheetController.current
 
@@ -275,7 +275,7 @@ internal fun ActiveMark(isActive: Boolean) {
 // ---- 采样 -----------------------------------------------------------------
 
 @Composable
-private fun SamplingPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun SamplingPage(state: UiState, viewModel: ChatViewModel) {
     SectionLabel("采样参数")
     OutlinedTextField(
         value = state.temperatureText,
@@ -323,7 +323,7 @@ private fun SamplingPage(state: ChatViewModel.UiState, viewModel: ChatViewModel)
 // ---- 外观 -----------------------------------------------------------------
 
 @Composable
-private fun AppearancePage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun AppearancePage(state: UiState, viewModel: ChatViewModel) {
     SectionLabel("主题色")
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -450,7 +450,7 @@ private fun ThemeSwatch(preset: ThemePreset, selected: Boolean, onClick: () -> U
  * 在这里再列一遍会让同一个东西有两个入口、语义还不一样。
  */
 @Composable
-private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun WorldBookPage(state: UiState, viewModel: ChatViewModel) {
     // 删除走长按：行尾只留开关，不再塞一个删除图标（那会让每行都很挤，也容易误触）
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     val sheet = LocalSheetController.current
@@ -514,7 +514,7 @@ private fun WorldBookPage(state: ChatViewModel.UiState, viewModel: ChatViewModel
  * 这里只做"导入 / 开关"：脚本是文件，编辑仍在 PC 版做——手机上写正则是最难受的事。
  */
 @Composable
-private fun RegexPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun RegexPage(state: UiState, viewModel: ChatViewModel) {
     // 内置显示规则（用户 2026-11-25 定的形态）：只读、带开关、关掉就是原文。
     // 它们不写进用户脚本，也不随导入覆盖；只影响气泡显示。
     SectionLabel("内置")
@@ -587,7 +587,7 @@ private fun placementLabel(script: app.tavern.core.regex.RegexScript): String = 
  * 导出走 SAF，落到用户自己选的位置，不需要存储权限。
  */
 @Composable
-private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun AboutPage(state: UiState, viewModel: ChatViewModel) {
     val context = LocalContext.current
     val buildLabel = if (BuildConfig.BUILD_ID.startsWith("local-")) {
         "local:" + BuildConfig.BUILD_ID.takeLast(7)
@@ -682,7 +682,7 @@ private fun AboutPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
  * 和"选预设"这种一眼扫过去的列表混在一起会让两件事都变难。
  */
 @Composable
-private fun PresetPage(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+private fun PresetPage(state: UiState, viewModel: ChatViewModel) {
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     val sheet = LocalSheetController.current
 
@@ -890,7 +890,7 @@ private fun NoticeDialog(file: NoticeFile, onClose: () -> Unit) {
  */
 @Composable
 private fun PersonaPage(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     onEdit: (Persona) -> Unit,
     onDelete: (Persona) -> Unit,

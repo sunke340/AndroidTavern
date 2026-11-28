@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
  * 每行右边显示**当前生效值**，这样不用点进去也知道现在用的是哪个模型、什么主题。
  */
 @Composable
-fun SettingsScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun SettingsScreen(state: UiState, viewModel: ChatViewModel) {
     // 一级行只说"现在用哪条档案"，细节进二级页看
     val activeProfile = state.profiles.firstOrNull { it.id == state.activeProfileId }
     val modelSummary = activeProfile?.let { "${it.name} · ${it.model}" }

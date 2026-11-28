@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
  * 免得"这一页改了没"变成第二个心智模型。
  */
 @Composable
-fun WorldBookEntryScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun WorldBookEntryScreen(state: UiState, viewModel: ChatViewModel) {
     val entry = state.worldBookEntry ?: return
 
     GlassDetailScaffold(

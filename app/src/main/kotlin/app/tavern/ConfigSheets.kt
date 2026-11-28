@@ -31,7 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  */
 @Composable
 internal fun ModelPickerRows(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     scope: ConfigScope,
     modifier: Modifier = Modifier,
@@ -129,13 +129,13 @@ internal fun showModelSheet(
 }
 
 /** 解析后的世界书集合（用于显示"参与几本"）。 */
-internal fun effectiveBookNames(state: ChatViewModel.UiState): Set<String> =
+internal fun effectiveBookNames(state: UiState): Set<String> =
     state.effectiveWorldBookNames ?: state.worldBooks.filter { it.enabled }.map { it.name }.toSet()
 
 /** 解析后的正则集合。 */
-internal fun effectiveRegexNames(state: ChatViewModel.UiState): Set<String> =
+internal fun effectiveRegexNames(state: UiState): Set<String> =
     state.effectiveRegexIds ?: state.regexScripts.map { it.name }.filter { it.isNotBlank() }.toSet()
 
 /** 会话里是否已经有用户消息（开场白切换只看这个）。 */
-internal fun hasUserMessage(state: ChatViewModel.UiState): Boolean =
+internal fun hasUserMessage(state: UiState): Boolean =
     state.transcript.any { it.role == app.tavern.core.model.ChatRole.User }

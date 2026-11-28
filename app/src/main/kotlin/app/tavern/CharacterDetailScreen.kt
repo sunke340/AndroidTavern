@@ -79,7 +79,7 @@ import app.tavern.data.chat.ChatSession
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CharacterDetailScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun CharacterDetailScreen(state: UiState, viewModel: ChatViewModel) {
     val cardId = state.detailCardId ?: return
     // 系统「移除动画」：四标签之间只做淡化，不做横向位移
     val reduceMotion = rememberReduceMotion()
@@ -510,7 +510,7 @@ private fun GreetingTab(
     detail: CardDetail?,
     viewModel: ChatViewModel,
     defaultIndex: Int,
-    state: ChatViewModel.UiState,
+    state: UiState,
 ) {
     // 空串要剔掉：有的卡在 alternateGreetings 里留了空项，翻过去就是一条空气泡
     val greetings = (listOf(detail?.firstMessage.orEmpty()) + detail?.alternateGreetings.orEmpty())

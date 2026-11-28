@@ -163,7 +163,7 @@ import kotlin.math.roundToInt
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun ChatScreen(state: UiState, viewModel: ChatViewModel) {
     val palette = LocalTavernPalette.current
     // 玻璃档要 API 33+（液态玻璃的 AGSL）；低于它只开放轻量，所以这里直接压成 false
     val glassOn = state.visualEffects.effective() == VisualEffects.Glass
@@ -941,14 +941,14 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
             }
             wasCollapsing.value = collapseKey != null
         }
-        val displayRows: List<ChatViewModel.ChatRow> = remember(state.rows, inflightNow) {
+        val displayRows: List<ChatRow> = remember(state.rows, inflightNow) {
             // 生成行一直在这里合成，正文可能还是空 —— 占位/流式/定稿三态是同一个 uiKey。
             when {
                 inflightNow == null -> state.rows
                 // 就地改写（重新生成）：`rows` 原样交出去 —— 那一行本来就是时间线里的一条。
                 // 正文由 item 里按收缩窗口决定（窗口开窗前那一帧还得是旧正文）。
                 inflightNow.targetDbId != null -> state.rows
-                else -> state.rows + ChatViewModel.ChatRow(
+                else -> state.rows + ChatRow(
                     uiKey = inflightNow.uiKey,
                     role = ChatRole.Assistant,
                     content = inflightNow.text,
@@ -1336,7 +1336,7 @@ private const val PendingAppearDelayMs = 480L
  */
 @Composable
 private fun ChatInputBar(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     glass: Boolean,
     backdrop: GlassBackdrop,
@@ -2180,7 +2180,7 @@ private fun StreamingCursor() {
  * 放在弹层里而不是嵌在消息区，是因为它只在排查时需要，不该常驻占版面。
  */
 @Composable
-private fun RequestDialog(state: ChatViewModel.UiState, onClose: () -> Unit) {
+private fun RequestDialog(state: UiState, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val text = state.requestPreview.ifEmpty { "（还没发过请求）" }
     // 每个可滚动面都要挂橡皮筋（INV-06）：请求正文这一段也一样

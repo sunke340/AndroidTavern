@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun ProfileEditScreen(state: UiState, viewModel: ChatViewModel) {
     val draft = state.profileDraft ?: return
     var confirmDelete by remember { mutableStateOf(false) }
     // 删除确认在页面这一层发起（骨架之前），控制器要自己建再传进去

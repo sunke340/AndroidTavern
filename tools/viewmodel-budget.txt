@@ -1,16 +1,17 @@
-# ChatViewModel 尺寸棘轮。**只降不升**：每完成一批（见 docs/plan-chatviewmodel-split.md）
+# 上帝类的尺寸棘轮。**只降不升**：每完成一批（见 docs/plan-chatviewmodel-split.md）
 # 就把这里的数字下调到新的实测值。要上调必须改这份文件，并在提交信息里写清为什么。
 #
-# 口径：非空行（无歧义）/ public fun（无可见性修饰符的类内顶层 fun）/ _state.update 出现次数。
-# 注释行、空行、文件总行只打印作信息，不参与判定。
+# 格式：<文件> nonblank=<非空行> public_fun=<无修饰符的类内顶层 fun> state_update=<_state.update 次数>
+# 口径：非空行（无歧义，注释/空行只打印）；扩展函数、override、嵌套 fun 分开打印、不计入 public_fun。
+#
+# B5-0（2026-11-28）之后有两个目标文件：状态类型搬去 ChatState.kt 了，
+# 只盯 ChatViewModel 的话，"搬到 State 文件里继续长"就能绕过门禁。
 
-nonblank=3499
-public_fun=121
-state_update=146
+app/src/main/kotlin/app/tavern/ChatViewModel.kt nonblank=3107 public_fun=121 state_update=146
+app/src/main/kotlin/app/tavern/ChatState.kt nonblank=409 public_fun=0 state_update=0
 
 # ---- 已移出到其它文件的量（防止用"搬文件"刷指标）----
-# 每完成一批，在这里记一笔：批次、移出多少、去了哪里。
-# B2（2026-11-28）：世界书激活 → core/lorebook/WorldInfoPass.kt（`scanWorldInfo` 的过滤/选择/预算/前缀）。
+# B2（2026-11-28）：世界书激活 → core/lorebook/WorldInfoPass.kt。
 # B1（2026-11-28）：生效值解析规则 → core/preset/EffectiveConfig.kt（14 个 getter 的 `?:` 链）。
-#   注意：**文件行数只降 24 行**（非空行 −13）—— getter 的 `?:` 链换成了"lazy 装配块 + 13 行转发"，
-#   真正搬走的是**规则与它的测试**，不是行数。别用行数衡量这一批的价值。
+#   B1 只让 VM 少 24 行（非空行 −13）——真正搬走的是规则与测试，别用行数衡量这一批的价值。
+# B5-0（2026-11-28）：UiState + 周边 8 个值类型 → ChatState.kt（−413 行 / 非空行 −392）。

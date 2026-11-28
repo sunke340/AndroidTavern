@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
  * 思考强度在「模型」页顶部，不再单独占一行。
  */
 @Composable
-fun SessionConfigScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun SessionConfigScreen(state: UiState, viewModel: ChatViewModel) {
     val glass = state.visualEffects.effective() == VisualEffects.Glass
 
     fun src(sessionSet: Boolean, cardSet: Boolean): String = when {

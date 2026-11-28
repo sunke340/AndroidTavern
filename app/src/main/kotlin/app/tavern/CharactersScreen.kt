@@ -62,7 +62,7 @@ import app.tavern.data.cards.CardRef
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CharactersScreen(
-    state: ChatViewModel.UiState,
+    state: UiState,
     viewModel: ChatViewModel,
     // 滚动位置由上层持有：从角色详情返回时网格不该回到顶部。
     gridState: LazyGridState = rememberLazyGridState(),

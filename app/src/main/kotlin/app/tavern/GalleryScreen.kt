@@ -60,7 +60,7 @@ import androidx.compose.ui.unit.toIntSize
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GalleryScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun GalleryScreen(state: UiState, viewModel: ChatViewModel) {
     val glass = state.visualEffects.effective() == VisualEffects.Glass
     val tune = remember { Tuning() }
     // 只在"松手后的值"变化时才换 spec：拖动中每帧换 = 每帧重建 AGSL 着色器

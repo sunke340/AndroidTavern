@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
  * 为什么不做成"什么都能改"：`raw` 里有大量我们不认识的字段，露出来改错一个键就是废卡。
  */
 @Composable
-fun CardEditScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
+fun CardEditScreen(state: UiState, viewModel: ChatViewModel) {
     val detail = state.detail
     val glass = state.visualEffects.effective() == VisualEffects.Glass
 
