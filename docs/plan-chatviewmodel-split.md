@@ -1,339 +1,450 @@
-# `ChatViewModel` 拆分方案（3,792 行的上帝类）
+# `ChatViewModel` 拆分方案（3,793 行）
 
-> 2026-11-28 **第二次修订**（审查后）。上诉条款：本页只是方案，**未改一行代码**。
-> 数字全部按当前 `HEAD` 重新统计；凡与 [architecture-audit.md](dev/architecture-audit.md)（2026-11-26 快照）
-> 冲突的，以本页为准。修订过程与被推翻的旧结论见文末「二次审查记录」。
+> **第三版 + 第四轮小修**（2026-11-28）。本页只是方案：**未改任何生产代码 / 测试 / CI / 脚本**。
+> 数字按当前 `HEAD` 逐项重新统计；凡与 [architecture-audit.md](dev/architecture-audit.md)（11-26 快照）冲突，
+> 以本页为准。
+>
+> **状态标记**（本页全文使用）：
+> - **【已验证】** = 在本轮用只读命令从当前代码/CI 记录里读出来的；
+> - **【推断】** = 由代码结构推导、但没有运行验证的；
+> - **【待验证】** = 必须在实施时用特定方法确认的（每条都给最小验证方法）。
 
-## 零、这一版推翻了上一版的什么
+## 零、本版修正了三处事实错误
 
-| 上一版的说法 | 按 HEAD 核实的结果 |
-|---|---|
-| B2「发送前准备在主线程，要挪走」 | **已修**：`c984f71` 把世界书扫描 + 提示词组装放进 `withContext(Dispatchers.Default)`（[ChatViewModel.kt:3162-3195](../app/src/main/kotlin/app/tavern/ChatViewModel.kt#L3162-L3195)）。**这批不再是线程问题** |
-| 「B1 抽 302 行三级继承规则」 | 302 行是整个区块（含采样辅助），`effective*` 只有 **73 行**，且**分三类**不是同一类规则（详见 B1） |
-| 「B3 四份 × 25 行 SAF 重复」 | 真正重复的只有 **3 行**（4 处）+ `displayNameOf`（2 处），共可减 **~12 行** |
-| 「B6 UI 下标 ↔ DB 行号强耦合」 | **已不存在**：消息操作全部按 `uiKey`/`dbId`（`deleteMessageAt(uiKey)`、`rows.firstOrNull { it.uiKey == … }`）。剩下的真问题是**全量载入** |
-| 「B0–B5 后 ≤2,600 行」 | **不成立**，现实减量约 **−400 行**（3,792 → ~3,390）。详见「五、预算重算」 |
-| 「18 个 effective getter 同一规则」 | 只有 **14 个**是解析链，其中 5 个是四层（采样）、9 个是二三层；另 4 个是派生计算，不该搬 |
+| 第二版的说法 | 本版核实结果 | 证据 |
+|---|---|---|
+| B2「`scanWorldInfo` 已是纯函数」 | **错一半**：函数自身无副作用，但它调用的 `LorebookScanner` **持有 `Random`**（`LorebookScanner(private val random: Random = Random.Default)`），概率条目的结果**不确定** → "相同输入必得相同输出"**不成立** | `core/lorebook/.../LorebookScanner.kt:20`【已验证】 |
+| B4「档案只有 1 个写入口」 | **错**：同一份档案存储有 **5 个**写入口（`persistConnection` / `onApiKeyChange` / `saveProfileDraft` / `saveProfile`-类路径 / `deleteProfile`），且 `saveProfileDraft` 写的是**整条记录** | `ChatViewModel.kt:1903, 1919, 2121, 2122, 2158`【已验证】 |
+| 预算「≈3,390–3,450」 | **算式不闭合**：漏加了 B6 的 +50~100，且 B1 的 73 行也低估了。按本版重算见「四」 | 见下 |
 
-## 一、现在到底多大（HEAD 口径）
+## 一、现状（HEAD 口径，全部【已验证】）
 
 | 指标 | 值 |
 |---|---|
-| 文件行数 | **3,793**（末行为空；有效内容 3,792） |
-| 非空且非整行注释的行 | **3,334** |
-| 类内 `fun` | **159** = 无修饰符（=public）**121** + `private` **38**（含 **3 个扩展函数**）；`override` **0** |
-| `viewModelScope.launch` / `withContext(...)` | **85** / **105** |
-| `_state.update {}` | **146** |
-| `.copy(...)`（状态更新） | **194** |
-| `UiState` 字段 / `effective*` getter | **72** / **18**（+1 个 `displayRegexScripts`） |
-| UI 侧 `state.xxx` 引用 | **373**（`ChatScreen` 72 · `ConfigPickerScreen` 52 · `SettingsPages` 36 · `MainScreen` 31 · 其余分散） |
+| 文件总行数 | **3,793**（末行为空串） |
+| 非空行 | **3,523**（空行 270） |
+| 注释 / KDoc 行 | **717**（非空非注释 = 2,806，**仅作参考**，不做预算指标） |
+| 类内 `fun` | **159** = 无修饰符（=public）**121** + `private` **38**；其中 **3 个是扩展函数**；`override` **0**；嵌套类型里的 fun **0** |
+| `viewModelScope.launch` / `withContext(...)` | 85 / 105 |
+| `_state.update {}` / `.copy(...)` | 146 / 194 |
+| `UiState` 字段 | **72** |
+| `effective*` / `display*` getter | **18 + 1** = 19（明细见 B1） |
+| UI 侧 `state.xxx` 属性访问 | **373**（`ChatScreen` 72 · `ConfigPickerScreen` 52 · `SettingsPages` 36 · `MainScreen` 31 · 其余分散） |
 | 显式 `ChatViewModel.UiState` 类型注解 | **42** |
-| 文件内嵌套类型 | 8 个 `data class`（`WorldBookView`/`ChatRow`/`UiState` …）+ 1 个顶层 `enum class BookBulkMode` |
+| 跨模块引用 `UiState` | **0**（`data`/`core` 都不认识它） |
+| 嵌套类型 | 8 个 `data class` + 1 个顶层 `enum class BookBulkMode` |
 
-> 上一版写的「156 个函数」是错的：那条正则要求 `fun 名(`，把 3 个扩展函数（`fun X.y(`）漏掉了。
-> 本页口径：**逐行 `fun` 计数 + 按修饰符分类**，扩展函数与嵌套类型分开列，脚本化时照此实现。
+> 口径变更说明：第二版的「156 个函数」漏掉了 3 个扩展函数（`fun X.y(`）。本版的口径是
+> **逐行 `fun` 计数 + 按修饰符分类 + 扩展函数/override/嵌套类型分开统计**，B0 的脚本必须照此实现。
 
-文件内已有的 `// ---- 区块 ----` 边界（按 HEAD 重算，含行数）：
+## 二、约束（决定"怎么拆"）
 
-| 起始行 | 行数 | 区块 |
-|---|---|---|
-| 110 | 149 | 嵌套数据类型（`WorldBookView` / `ChatRow` / `UiState` 等） |
-| 260 | 37 | 界面结构（导航） |
-| 297 | 32 | 预设（设置→预设） |
-| 329 | 134 | 采样参数（文本框保留原始输入） |
-| 463 | 25 | 三级继承生效值总述 + 5 个 getter |
-| 488 | 277 | 采样五项四层解析 + `SamplingPreset` 装配 |
-| 765 | 300 | 卡 |
-| 1065 | 228 | 会话 |
-| 1293 | 99 | 导出 |
-| 1392 | 64 | 开场白 |
-| 1456 | 125 | 采样三级写入 |
-| 1581 | 110 | 会话级配置 |
-| 1691 | 51 | 角色卡级覆盖 |
-| 1742 | 136 | 人设 |
-| 1878 | 53 | 输入与请求（含 `persistConnection`） |
-| 1931 | 132 | 卡编辑 |
-| 2063 | 599 | 模型档案 |
-| 2662 | 188 | 预设 |
-| 2850 | 492 | 正则脚本 |
-| 3342 | 228 | 发送收尾 |
-| 3570 | 224 | 消息操作 |
-
-## 二、约束（决定"怎么拆"，不是"拆不拆"）
-
-1. **本机编不了 `:app`** → 每批必须小到一屏能看完的 diff，一批 = 一个提交 = 一个 tag。
-2. **纯逻辑落 `core/*` 才有本机秒级反馈**（`tools/test-core.sh`）；`app` 的单测**未验证**会不会被
-   `./gradlew test` 跑到（见「九、未验证事项」），所以**不把测试押在 `app/src/test` 上**。
+1. **本机编不了 `:app`** → 每批的 diff 必须一屏能看完；一批 = 一个提交 = 一个 tag。【已验证】
+2. **纯逻辑落 `core/*` 才有本机秒级反馈**（`tools/test-core.sh`）。`app` 的单测是否被 `./gradlew test`
+   跑到**尚未验证**（见「九」#1），所以**不把测试押在 `app/src/test`**。
 3. **先例**：`RevealPacer` / `RevealCatchUp` / `PromptOrderCompat` 都从它里面抽出来、带单测、行为不变。
-4. **回退成本**：一次 tag 构建 ≈ 2 分钟 CI + 十几 MB 下载（本机网络慢，实测 15MB 要 10~20 分钟）。
+4. **回退成本**：一次 tag 构建 ≈2 分钟 CI + 15MB 下载（本机实测 10~20 分钟）。
 
 ## 三、批次
 
-### B0 · 尺寸棘轮（只加门禁，不改代码）
+### B0 · 尺寸棘轮（只加门禁，不改产品代码）
 
-- `tools/check-viewmodel-size.sh`：输出三项并比对 `tools/viewmodel-budget.txt`
-  —— **有效行数**（非空非整行注释）**+ public fun 数 + `_state.update` 数**。
-  三项都设封顶，**下限只降不升**（每批成功后下调）。
-- 口径固定为：正则在 `^    (public|private|internal|protected)? (suspend)? (inline)? fun 名`
-  上匹配，**另行统计** `override`、扩展函数 `fun X.y(`、嵌套类型里的 fun，避免上一版的漏计。
-- CI 的「铁律检查」job 里跑；输出里同时打印**文件行数**，便于人看趋势。
+**为什么先做**：没有门禁，后面每一批都会被新需求重新撑大（历史曲线 144 → 2,391 → 3,137 → 3,792）。
 
-**这不是"架构改善"的证明**，只防"一边拆一边涨"。承认局限：把代码搬到新文件就能绕过 —— 所以
-B5 的搬迁量会同步写进预算文件的注释里，避免数字游戏。
+**范围**：`tools/check-viewmodel-size.sh` + `tools/viewmodel-budget.txt`，在 CI 的「铁律检查」job 里跑。
 
-**判据**：故意加 1 行 → 红；撤掉 → 绿。
-**风险**：极低。**减行**：0（不改产品代码）。
+**统计口径（本版定稿，已用只读命令在 HEAD 上验过）**：
 
-### B1 · 抽「生效值解析」到 core（只抽解析链，不抽派生）
+| 指标 | 规则 | 当前值 |
+|---|---|---|
+| **非空行（主指标）** | `line.strip().isNotEmpty()` | **3,523** |
+| 文件总行 / 空行 / 注释行 | 仅打印作信息，**不参与判定** | 3,793 / 270 / 717 |
+| 类内 fun | `^    (public\|private\|internal\|protected)? (override)? (suspend)? (inline)? fun 名` | **159** |
+| 分开报告 | 扩展函数 `^    (private\|internal)? fun X.y(`、`override fun`、嵌套类型里的 `^        fun ` | 3 / 0 / 0 |
+| public fun | 上表里无可见性修饰符的 | **121** |
+| `_state.update` | 出现次数 | **146** |
 
-`effective*` 的 18 个 getter 在 `UiState` 内部（纯数据类，无仓库访问），按 HEAD 实际分成三类：
+三项封顶（非空行 / public fun / `_state.update`），**只降不升**。
 
-| 类 | getter | 层级 | 备注 |
+**为什么主指标是"非空行"而不是"有效行"**：判断"哪一行是注释"必须排除**字符串里的 `//` 与 `*`**
+（本项目现在 0 处 ``"""``，`//` 只出现在 URL 字面量里，靠"行首"判断侥幸没错），
+但脚本要长期用、不能依赖"当前文件恰好没有多行字符串"。**非空行没有任何歧义**；
+注释量另打印一行，人看趋势即可。
+
+**承认局限（不掩盖）**：把代码搬到新文件就能绕过 → 所以 `viewmodel-budget.txt` 里**同时记录
+"已移出到别的文件的量"**（B1/B2/B5-0 各记一笔），避免用搬文件刷指标。它只能防增长，**不能证明架构改善**。
+
+**不变量**：现有 6 个 check 全绿；脚本输出与手工统计一致（首跑必须对一次账）。
+**单测**：无（纯脚本）。**CI**：故意加 1 行 → 红；撤销 → 绿。【待验证：这是实施时的第一个动作】
+**真机**：无。**回退**：`git revert` 该提交即可。
+
+### B1 · 抽「生效值解析」到 core（含 B3 的小工具）
+
+**为什么这时做**：它是最独立的一块（纯数据类上的纯计算），先跑通"抽到 core + 一行转发"的流程，
+B2 照抄；而且它是"界面显示 A、请求发 B"那类历史 bug 的根源。
+
+**已核实的结构**（19 个 getter，**分三类**，不是同一类规则）：
+
+| 类 | getter | 层级 | 行数 |
 |---|---|---|---|
-| **A 解析链（14 个）** | `effectivePersonaId` / `effectiveProfileId` / `effectivePresetName` | 会话 → 卡 → 全局 | 全局默认值是 `personaDefaultId` / `activeProfileId` / `activePreset` |
-| | `effectiveReasoningEffort` / `effectiveWorldBookNames` / `effectiveRegexIds` | 会话 → 卡 | **没有全局层**（`null` 就是"跟随到底=不发"） |
-| | `effectiveMessageStyle` / `effectiveBubbleFontSize` | 卡 → 全局 | 只有两层 |
-| | `effectiveBuiltinDisabled` | 会话 → 卡 → 全局 | **空集 ≠ null**：空集 = 这一层明确全开 |
-| | `effectiveTemperature` / `MaxTokens` / `TopP` / `FrequencyPenalty` / `PresencePenalty` | 会 → 卡 → **预设** → 全局文本 | 带 `toDoubleOrNull()`/`toIntOrNull()`；`maxTokens` 还要 `takeIf { it > 0 }` |
-| **B 派生（4 个，不搬）** | `effectivePersona`（查表）/ `effectiveUserName`（依赖人设）/ `effectiveAuthorNote`（多字段 + 角色映射 + 默认值）/ `effectiveRegexScripts` + `displayRegexScripts`（过滤与合成） | — | 它们是**组合**而不是解析；搬去 core 只会制造包装层 |
-| C 与配置无关（2 个） | `activeRoundId` / `streamingText` | — | 不动 |
+| **A 解析链（14 个，该抽）** | `effectiveMessageStyle` | 卡 → 全局 | 4 |
+| | `effectivePersonaId` / `effectiveProfileId` / `effectivePresetName` | 会话 → 卡 → 全局默认 | 4+4+4 |
+| | `effectiveBubbleFontSize` | 会话 → 卡 → 全局 | 8 |
+| | `effectiveReasoningEffort` / `effectiveWorldBookNames` / `effectiveRegexIds` | 会话 → 卡（**无全局层**） | 4+4+6 |
+| | `effectiveBuiltinDisabled`（空集 ≠ null） | 会话 → 卡 → 全局 | 5 |
+| | `effectiveTemperature` / `MaxTokens` / `TopP` / `FrequencyPenalty` / `PresencePenalty`（四层，含文本解析） | 会话 → 卡 → **预设** → 全局文本 | 5+4+4+4+9 |
+| **B 派生（5 个，不抽）** | `effectivePersona`（查表）/ `effectiveUserName` / `effectiveAuthorNote`（多字段 + 角色映射）/ `effectiveRegexScripts`（过滤） | — | 7+7+26+12 |
+| | `displayRegexScripts`（与内置规则合成） | — | 2 |
+| **合计** | | | **123 行** |
 
-- 新增 `core/config`（纯 JVM 模块）或放进现有 `core/model`：`EffectiveConfig` 数据类 +
-  `resolve(session, card, sampling, global, texts)` 纯函数。**输入类型问题**：`ConfigOverride`
-  现在在 `data`（`data/src/.../config/ConfigOverrideRepository.kt`，是**纯数据类**，全仓只有 3 个文件引用）。
-  → 把该数据类**下沉到 core**（`data` 的仓库实现继续留在 `data`，接口引用 core 类型），依赖方向不变。
-- `UiState` 里 14 个 getter 退化成一行转发（**名字与签名不变**，UI 零改动）。
-- 单测（本机可跑）覆盖：四层优先级、`null` vs 空集、`maxTokens<=0` = 不限、
-  `effectiveReasoningEffort` 无全局层、采样文本解析失败回落、`"off"` 语义。
-  **另需钉住一处现存歧义**：`effectiveAuthorNote` 注释写"正文为空 = 这一层没有，继续往上找"，
-  但代码是 `?:` 链 —— 会话层若显式存了空串会**截断继承**（持久化层目前把空串归一成 `null`，
-  所以现实不可达）。抽纯函数时必须决定语义并写进测试，不许两头都不写。
+**范围**：
+1. `ConfigOverride` 数据类**下沉到 `:core:model`**（不放新模块）。核实过：该文件 **0 个 import、0 个注解**，
+   字段只有 `String?` / `Set<String>` / `Double?` / `Int?` / `Float?`，无 Room/Gson/Serialization 注解，
+   不依赖 `data` 内任何类型 → 迁移不触碰序列化与数据库映射。【已验证】
+   ⚠️ 但它是**一个文件里同时声明了接口 `ConfigOverrideRepository`**（还带 `session()/card()` 两个作用域键）：
+   迁移 = **拆文件**（数据类走、接口留 `data`），3 个引用文件改 import。这是"拆文件"而非"搬类"，要在提交信息里写清。
+2. `resolve(...)` 放 **`:core:preset`**（它已拥有 `SamplingPreset`；`core:model` 是叶子不能反向依赖 preset）。
+   需要在 `core/preset/build.gradle.kts` 加 `implementation(project(":core:model"))`（core→core，无环）。
+   **不新建 `core/config` 模块**：按 [layout.md](dev/layout.md) §9 三条判据（独立 JVM 测试 / 两个以上 feature 复用 /
+   自有三方依赖）都不充分，模块数量本身是成本。
+3. `UiState` 里 14 个 A 类 getter 退化成一行转发，**名字与签名不变**，UI 零改动。
+4. **解析结果与 `copy()` 的生命周期（必须写死，否则会出"状态改了、effective 没变"）**：
+   - `UiState` 是 `data class`，且**从不就地修改**（146 处状态变更全走 `copy()`）；
+     `copy()` 会**跑一遍构造**，因此存在构造体里的 `EffectiveConfig` 每次 `copy()` **必然重算** ——
+     语义绝对安全，代价是 194 处 `copy()` 各多分配一个小对象；
+   - 若用 `private val cfg by lazy(LazyThreadSafetyMode.NONE) { resolve(...) }`：也是**每实例至多算一次**，
+     且只有真正被读的实例才算（界面只读关心的字段）；`copy()` 生成的新实例 lazy 状态是全新的，
+     **不存在"复制了旧解析结果"的过期问题**。UI 单线程访问，用 `NONE` 免锁；
+   - **禁止**：把 `cfg` 做成 `companion` 缓存、或按 `hashCode` 记忆化 —— 状态对象每次都变，反而更慢更错；
+   - 选 `lazy(NONE)`，并在类注释里写明"`copy()` 后由新实例重新解析"。
+   【推断：两种方案的开销差异未实测；语义上两者都正确，`lazy` 只在"构造了但没读"的实例上省一次计算】
+5. **等价性验证（B1 的硬验收）**：写一组"新旧公式对照"测试 —— 在测试里把 14 个 getter 的**旧 `?:` 链原样重写**，
+   对同一批输入（覆盖 null/空串/空集/0/负数/`"off"`/四层组合）逐项比较 `resolve()` 输出与旧公式结果。
+   这条测试是"行为不变"的直接证据，比"我看了一遍"可靠。
 
-**不变量**：优先级不变 / 空集语义不变 / 采样五项顺序不变 / UI 显示与请求实际值一致（用「查看请求」对照）。
-**风险**：中低（规则有测试兜住，UI 不改）。**减行**：规则 73 行→ core，留 14 行转发 → VM **净减 ≈ 30~40 行**。
-**收益主要是可测性，不是行数** —— 如果只想要行数，这批不值得做。
+**`effectiveAuthorNote` 的语义（重点核实项）**【已验证】：
+- 注释写的是"正文为空 = 这一层没有，继续往上找"，代码是 `sessionOverride.authorNote ?: cardOverride.authorNote`
+  然后 `isNullOrBlank() → null` —— 单看代码，**空串会截断继承**；
+- 但**两个写入点都做了归一**：`setSessionAuthorNote` 用 `text?.takeIf { it.isNotBlank() }`，
+  持久化用 `ifBlank { null }` → **空串在运行时不可达**，"注释与代码"目前并不矛盾；
+- 风险在于这是**每个写入点各自遵守的约定**，不是类型保证。→ **规则**：`resolve()` 内部也对
+  `authorNote` 做 `takeIf { isNotBlank() }` 归一（与现状等价，因为不可达），并在**测试里钉住**
+  「层写入空串时，解析结果等于上一层的值」。
 
-### B2 · 把 `scanWorldInfo` 参数收窄并落 core（原「挪线程」作废）
+**B3（并入本批，不单独占一轮 CI）**：四处 SAF 读取块实测 **3 + 5 + 5 + 5 = 18 行**，
+抽成 `private fun readTextOf(uri): String`（约 6 行）后 → 4 行调用 + 6 行定义 = **净 −8 行**。
+`displayNameOf` 只有 2 个调用点，**不动**；四处的后续差异（`setActive`+`applySamplingOf` / 不需要文件名 /
+`ChatFile.parse`）是真实的，**不抹平**。
 
-HEAD 事实：线程问题已解（`c984f71`），`scanWorldInfo` 已经**是纯函数**（参数全传、注释写明不碰
-`worldInfoStates`/`globalBookEntries`），且运行在 `Dispatchers.Default`。剩下的问题只有两个：
+**不变量**：优先级与层级不变；空集 ≠ null 不变；`maxTokens <= 0` = 不限不变；`"off"` 语义不变；
+采样文本解析失败回落不变；UI 显示值与「查看请求」里的实际值一致；四处导入的成功/失败文案不变。
+**单测**（`core`，本机可跑）：四层优先级 × 边界（`null` / 空串 / 空集 / 0 / 负数 / `"off"`）≥ 12 条。
+**CI**：绿 + 168 条旧测试全绿。**真机**：改一个会话的采样/人设/作者注，看「查看请求」与界面一致（1 次）。
+**回退**：单提交 revert；tag 回到上一批。
+**预算**：VM 文件 **−55（getters）+ −8（B3）= −63**；仓库总量 **+约 120**（EffectiveConfig + resolve + 测试）。
 
-1. 它吃整个 `UiState`（`snapshot: UiState`）—— 一个纯函数却依赖整个状态对象，无法在 core 里测；
-2. 它待在 `:app`，本机跑不了。
+### B2 · 把 `scanWorldInfo` 收窄成 core 输入（原「挪线程」作废）
 
-- 在 `core/lorebook` 加一个形参对象（`WorldInfoInputs`：内嵌书、禁用/强制集合、全局书、模型名、
-  用户名、聊天历史、扫描状态），`scanWorldInfo` 变成 core 函数；
-- ViewModel 里只负责"从 `_state.value` 组这个对象"（主线程快照，与现在一致）；
-- 现有世界书夹具（`P1-*` 那批）全部照旧；新增 2~3 条针对"三级书选择 + 强制开启 + 预算 3795"的单测。
+**为什么这时做**：B1 已经跑通"抽到 core"的流程；这块是唯一还端着整个 `UiState` 的纯计算。
+**前提已变**：线程问题在 `c984f71` 已修（`withContext(Dispatchers.Default)`），**本批不碰线程**。【已验证】
 
-**不变量**：世界书激活结果不变（同一夹具）；`character_first` 顺序不变；sticky/cooldown 状态读写位置不变；
-发送/继续/重生成三条路径的提示词内容与顺序不变。
-**风险**：中低（参数收窄是机械的，但世界书是兼容行为，必须夹具兜）。**减行**：VM **≈ −45 行**。
+**核实结果**【已验证】：
 
-### B3 · SAF 读取去重（降级为「顺手做」，不单独一批）
+| 检查项 | 结果 |
+|---|---|
+| 读共享可变状态（`worldInfoStates` / `globalBookEntries`） | **不读**；调用方在主线程取快照（`HashMap(globalBookEntries)`）再传参 |
+| 修改输入 | 不改；对 `cardEntries` 用 `filter/map` 生成新列表 |
+| 文件 / 数据库 / 日志 / 网络副作用 | 无（`AppLog`/仓库调用都在调用方） |
+| 依赖时间 / 随机数 | **随机数：依赖**（`LorebookScanner(random = Random.Default)`）→ **输出不确定** |
+| 相同输入 → 相同输出 | **默认不成立**（概率条目）；换成固定 seed 才成立 |
+| 输入集合是否可能被并发修改 | 不会：传入的是不可变 `List`/`Set` 与快照 `HashMap`（**读**方不再改它） |
 
-按 HEAD 核实，四处并不相同：
+**范围**：
+1. `core/lorebook` 新增输入对象 `WorldInfoInputs`（**最小业务字段**，不是 UiState 的改名）：
+   `cardEntries`（已应用禁用/强制开启）、`globalBooks`（名字 + enabled + 条目）、`onlyBookNames`、
+   `model`、`userName`、`characterDescription/Personality/Scenario`、`history`、`scanState`、`maxContext`；
+2. `scanWorldInfo` 移入 core（`WorldInfoPreferences` 之类的入口），VM 只负责组对象并调用；
+3. **随机性显式化**：生产路径照旧 `Random.Default`；测试传固定 seed。
+   **这必须在文档与代码注释里写清楚**，否则下一轮会有人以为它是纯函数。
+4. **随机数调用顺序必须不变（否则同 seed 也会出不同结果）**：概率条目按"每次扫描按顺序抽号"决定激活，
+   只要**抽号顺序**变一格，后面所有条目的结果全部平移。本批是**整体搬迁、不重写内部循环**，
+   顺序按构造保持；但仍要验：
+   - **core 侧可验**：用一个 `RecordingRandom`（包装 `Random(seed)`，记录每次抽号的类型与顺序）跑同一输入两次，
+     断言"抽号序列一致"；再把搬迁当刻的输出**录成 golden**（固定 seed 的激活条目集合），后续任何改动都必须对得上；
+   - **core 侧验不了**：与"搬迁前 app 里的旧路径"逐位对比（旧路径在 `:app`，本机编不了）→ 只能真机对照一次：
+     同一条会话、同一本书，分别在看得到的日志里核对 `wi=…(before=…字 after=…字)` 的激活条数。
+   - 另外提醒：生产用 `Random.Default` 意味着**同一用户两次发送，概率条目结果可能不同 —— 这是现状**，不是本次引入，别当回归。
 
-| 调用点 | 取文件名 | 读文本 | 后续差异 |
-|---|---|---|---|
-| `importWorldBook` | ✔ `displayNameOf` | ✔ | `worldBookRepository.import(name, json)` |
-| `importPreset` | ✔ `displayNameOf` | ✔ | 额外 `setActive` + `applySamplingOf` |
-| `importRegexScripts` | ✘ | ✔ | `regexRepository.import(json)`（不需要名字） |
-| `importChat` | ✘ | ✔ | `ChatFile.parse` + 逐条映射 + 卡名查表 |
+**不变量**：世界书激活结果不变（现有 `P1-*` 夹具全绿）；`character_first` 顺序不变；强制开启/禁用不变；
+预算 3795 不变；sticky/cooldown 状态读写位置不变；发送/继续/重生成三条路径提示词一致。
+**单测**：固定 seed 下"同一输入两次结果相同" + 三级书选择 + 强制开启 + 预算裁剪（≥ 5 条）。
+**CI**：绿 + 夹具全绿。**真机**：发一条消息，看请求里世界书条目数与之前一致（1 次）。
+**回退**：单提交 revert（core 新文件无用即删）。
+**预算**：VM **−42**（46 行移出，调用点 +4）；仓库 **+46（core）+ 测试**。
 
-真正重复的只有这一句（4 处）：
-```kotlin
-getApplication<Application>().contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("读不到文件")
-```
-→ 抽 `private fun readTextOf(uri): String`（5 行）**并入 B1 那个提交**，不单独占一轮 CI。
-`displayNameOf` 只有 2 个调用点，保留原样，**不做"统一导入框架"**（四处差异是真实的，抹平只会加分支）。
+### B3 · 已并入 B1（原因：18 行 → 净 −8，独立一批要多花一次 CI + 一次真机，不划算）
 
-**不变量**：四处导入的成功/失败提示文案与 `notice` 内容不变；异常路径仍是 `error("读不到文件")`。
-**风险**：极低。**减行**：**≈ −12 行**（不是 −80）。
+### B4 · 档案写入：两类风险，默认**不做**（改由证据触发）
 
-### B4 · `persistConnection` 先调查再决定（拆成 B4a / B4b）
+**核实到的写入口（5 个，全部在 `ChatViewModel`）**【已验证】：
 
-**HEAD 事实**：只有两个调用点（`onBaseUrlChange` / `onModelChange`，逐按键触发）；
-`saveConnection` 用 `prefs.edit()...apply()`；同时还会 `profileRepository.find(id)` →
-`save(copy(...))`（**读-改-写**）；没有 `onCleared()`。
+| 行 | 入口 | 写什么 |
+|---|---|---|
+| 1919 | `persistConnection`（`onBaseUrlChange` / `onModelChange` **逐按键**触发） | `existing.copy(baseUrl, model)` **读-改-写** |
+| 1903 | `onApiKeyChange`（600ms 防抖） | `saveApiKey(profileId, key)` |
+| 2121 | `saveProfileDraft` | **整条 `ModelProfile`**（name/baseUrl/model/headers/isDefault） |
+| 2122 | `saveProfileDraft` | `saveApiKey(id, draft.apiKey)` |
+| 2158 | `deleteProfile` | 删除 |
 
-**参考意见说得对：不能直接上 Mutex/Channel。** 先分清楚两个不同的风险：
+**风险 A：过期草稿覆盖（可达，比并发更值得注意）**【已验证代码路径】
+`openProfileEditor` 在**打开编辑器那一刻**读一次库、把整条档案放进 `UiState.profileDraft`（`:2066-2084`）；
+`saveProfileDraft` 用**草稿**构造整条 `ModelProfile` 写回（`:2100-2122`）。草稿存活到 `closeProfileEditor`，
+期间任何写入口改了同一条档案，保存时都会被草稿里的**旧值**整条覆盖。可达操作序列：
 
-1. `apply()` 本身：`SharedPreferencesImpl` 的落盘是**单线程串行**的，同一实例内按入队顺序写 →
-   **"SharedPreferences 会乱序"这个担心不成立**；
-2. 真正的风险是**档案表的读-改-写**：两个协程各自 `find` 到旧值、先后 `save`，后完成的那次会用
-   旧值覆盖新值（丢更新）；另外两次写跨越"偏好 + 档案表"两个存储，顺序不定。
+> 设置 → 档案 → 编辑某档案 → 返回 → 设置 → 连接 → 改 baseUrl（`persistConnection` **立即**写档案）→
+> 回到档案编辑 → 保存 → **baseUrl（以及 apiKey）被草稿旧值冲掉**。
 
-**B4a（只调查，不改代码）**：临时加日志量"连续输入 20 个字符 → 实际写入次数 / 最大间隔"，
-判断是否值得合并写入。产出结论写进本页。
-**B4b（按结论选最小方案）**：优先级从低到高 —— ① 只在失焦/回车时落盘（改 UI 调用点）；
-② 用一个 `Mutex` 把"偏好 + 档案"整段串行化（约 5 行）；③ 并发槽只保留最新值（`Channel(CONFLATED)`）。
-**没有证据就先只做 ②**。
+**风险 B：两个写入口并发交错（概率低）**：`persistConnection` 的读-改-写与其它写入同时进行，后完成者整条覆盖。
+`SharedPreferences.apply()` 的落盘是**单线程串行**的（"SP 乱序"不成立），真正的缝隙在"读旧值 → 写整条"。
+**无 `onCleared` 丢写问题**（`persistConnection` 不防抖）；`onApiKeyChange` 的 600ms 防抖**保持不动**
+（它防的是 Keystore 加密频率）。
 
-**不变量**：连续快速改完 `baseUrl`/`model` 后重启，看到的是最后的值；Key 的 600ms 防抖行为不变。
-**风险**：低中。**减行**：0（可能 +5）。
+**修复选项与预算（做/不做分开列）**：
+
+| 方案 | 具体改动 | VM 预算 | 治哪个风险 | 行为变化 |
+|---|---|---|---|---|
+| **不做**（默认） | — | **0** | — | 无 |
+| M1 只加锁 | 一个 `Mutex` 包住上表 5 个入口（都在同一个类、不嵌套调用 → 无死锁面） | **+5 ~ +8** | 只治 B | 无 |
+| M2 治过期草稿 | `ProfileDraft` 加"打开时的原值快照"，保存前重读库，**只写用户真正改过的字段** | **+12 ~ +20** | 治 A（也顺带覆盖 B 的大部分） | **有**：别人改过的字段以库里为准 |
+| M1+M2 | 两者都做 | **+17 ~ +28** | 两个都治 | 同 M2 |
+
+**推荐：默认不做。** 触发条件（任一）：真机撞到 baseUrl / Key 被回退；或用户明确要求。
+若要做，**优先 M2** —— 风险 A 可达、风险 B 需要毫秒级撞车；而 M1 解决不了 A。
+**调查方式**：不写永久诊断代码；若需量化，用**一次性临时构建**打时间戳日志，测完撤销〔本轮不执行〕。
+
+**不变量（若做）**：快速改 baseUrl/model 后重启取到最新值；保存档案不会把别处刚改的字段冲回旧值；
+Key 防抖时长不变。**单测**：不可得（依赖仓库）；只能真机：按上面的操作序列复现一次。
+**回退**：单提交 revert。
 
 ### B5 · `UiState` 搬迁与分组
 
-**先纠正上一版的风险判断**：373 处 `state.xxx` 是**属性访问**，只要字段名不变就不受影响；
-真正要动的是 **42 处显式 `ChatViewModel.UiState` 类型注解** 和 194 处 `copy(...)`（后者只要不改字段名也安全）。
+**先纠正第二版的风险判断**（也已核实）：373 处 `state.xxx` 是**属性访问**，只要字段名不变就不受影响；
+真正要动的是 42 处显式类型注解。**已核实的其他约束**【已验证】：
 
-分两段，中间必须有一个可交付的包：
-
-**B5-0（先做，风险最低）**：把 `UiState` 及 18 个 getter 从 `ChatViewModel` 的**嵌套类**改成
-**顶层类并搬到独立文件** `app/.../ChatState.kt`（同包，`UiState` 名字不变）。
-- 影响面：42 处 `ChatViewModel.UiState` → `UiState`；373 处 `state.` **不动**；
-- 收益：VM 文件 **−307 行**（声明 229–535），`UiState` 变成可独立阅读的单元；
-- 风险：低（纯搬迁），但**一次改 42 个文件**，所以单独一个包 + 一个 tag。
-
-**B5-1 … B5-4（按组切，每刀一个包）**：`Nav` / `Config` / `Gen` / `Edit` 分成 4 个 `data class`
-作为 `UiState` 的字段。**规则：字段名与类型先不动，只改归属**（`state.screen` → `state.nav.screen`），
-不许出现"临时双份字段 / 兼容代理 / 两处同时写"。
-- 每刀：先在该组内的**生产点**（`_state.update { it.copy(...) }` 约 146 处中的一部分）改，
-  再改消费点，最后全量 `grep` 复核 + CI + 真机回归；
-- 顺序：先 `Edit`（引用最少）→ `Nav` → `Config` → `Gen`（引用最多、风险最大）。
-
-**不变量**：初始值不变（`UiState()` 默认值逐项相同）；状态转移结果不变；Compose 观察点数量与重组范围不扩大
-（`collectAsState` 仍然只订阅一个 `StateFlow`）；没有持久化/序列化（已核实：`UiState` 不被 `data`/`core` 引用）。
-**风险**：B5-0 低；B5-1~4 机械但面广，每刀必须独立 tag。**减行**：B5-0 **−307**；B5-1~4 **0**（结构变化）。
-
-### B6 · 消息分页（最后做，且先写技术设计）
-
-按 HEAD 核实的事实（原方案说"下标耦合"是错的）：
-
-- 读取：`chatRepository.messages(sessionId)` **一次返回全部**（`ORDER BY id ASC`）；
-  `openSessionInternal` 把它整份映射成 `rows`（`uiKey = "m"+id`、`dbId = id`）；
-- 身份：消息操作已按 `uiKey`/`dbId`（`deleteMessageAt(uiKey)`、`rewindToMessage(uiKey)`），
-  **不按下标**；swipe 备选在独立表里按 `message_id + seq` 关联；
-- 真正的问题：**全量载入 + 全量重建**（长会话首屏与内存）。
-
-所以 B6 的设计要点（**开工前必须先成文**，本轮不设计完）：
-
-1. 排序与游标：`ORDER BY id ASC` 已是稳定序；游标用 **`id` 上界/下界**（不是 `send_date`，
-   导入的旧会话 `send_date` 会重复）；
-2. 首屏：最近 N 条（建议 50）逆序取再翻转；
-3. 向上翻页：`id < 当前首条 id` 取 N 条，插入到 `rows` **前面**，并按住滚动锚点
-   （反排列表里这是"末尾追加"，与现有 `reverseLayout=true` 的锚点逻辑要对上 —— **未验证**）；
-4. 删除/撤回/重生成：一律按 `dbId`/`uiKey`，不依赖下标 → 分页后仍成立；
-5. 生成中的占位行仍在 `rows` 尾部（不落库），不能被"向上翻页"的插入打乱；
-6. 旧会话/重复时间戳/坏行：解析层已经在导入时归一，分页不看时间字段；
-7. 测试：`core` 里加一个纯 JVM 的"分页切片 + 游标推进"单测；DB 层行为只能在 CI/真机验。
-
-**不变量**：消息顺序与完整性不变；删除/撤回目标不串位；滚动不跳（往上翻页时视口内容不动）；
-生成中切换会话再回来，续接与分页不打架。
-**风险**：高（数据正确性 + 滚动）。**减行**：不减（预计 +50~100）。
-
-## 四、减量预算（重算）
-
-| 批次 | VM 文件 | 说明 |
-|---|---|---|
-| 现在 | 3,792 | |
-| B1 | −35 | 规则 73 行进 core，留 14 行转发；含 B3 的 −12 |
-| B2 | −45 | `scanWorldInfo` 整块进 core |
-| B4 | ±0~+5 | 串行化 |
-| B5-0 | −307 | `UiState` 搬出到 `ChatState.kt`（**同一份代码，换文件**） |
-| B5-1~4 | 0 | 组内重组 |
-| B6 | +50~100 | 分页状态与游标 |
-| **合计** | **≈ 3,390–3,450** | |
-
-**结论：上一版的 ≤2,600 行不成立，撤回该 KPI。** 想继续减只有一条路：把整块职责搬成独立类
-（模型档案 599 行、正则 492 行、世界书 ~300 行），但那是**新增 3 个抽象层**，与"不要为数字硬拆"冲突。
-→ 列为**可选的 C 阶段，必须单独决定**；在此之前，目标改为：
-
-- **职责目标**：`ChatViewModel` 只剩"编排"（收事件 → 改状态 → 调仓库/服务）；
-- **可测目标**：解析（B1）、世界书输入（B2）、分页切片（B6）三类纯逻辑在 `core` 有单测（≥ +15 条）；
-- **防增长**：B0 棘轮三项只降不升。
-
-## 五、顺序（与上一版的差别）
-
-`B0 → B1（含 B3） → B2 → B4a → B4b → B5-0 → B5-1…4 → B6`
-
-- **B3 并入 B1**：只有 12 行，单独一批要多花一次 CI + 一次真机 —— 不划算。
-- **B2 放在 B1 之后**：两者都要动 core，B1 先验证"抽到 core + 转发"这套流程，B2 照抄。
-- **B4 提前到 B5 之前**：它只碰 30 行，且是真 bug（丢更新）；但**必须先有 B4a 的测量**，
-  没有测量就不许上并发结构。
-- **B5-0 排在后半段**：42 个文件一次改，虽然机械但影响面大，要等前面的批次把"流程"跑顺。
-- **B6 永远最后**：它要动数据读法与滚动锚点，和别的批次混在一起会分不清是谁导致的回归。
-
-## 六、每批的不变量（验收不只看 CI 绿）
-
-- **B0 后**：所有既有 check 仍绿；预算文件与实测一致（脚本自己打印）。
-- **B1 后**：配置继承优先级、`null` vs 空集、`maxTokens<=0`、`"off"`、采样解析回落 全部有测试；
-  「查看请求」里五项采样与界面显示一致（真机 1 次）。
-- **B2 后**：世界书夹具全绿；`character_first` 顺序、强制开启、预算 3795 不变；三条发送路径提示词一致。
-- **B3 后**：四处导入的成功/失败提示文案不变。
-- **B4 后**：快速改 `baseUrl`/`model` 后重启取到最新值；Key 防抖不变。
-- **B5-0 后**：界面/状态无任何变化（纯搬迁）；42 处类型注解编译通过。
-- **B5-1~4 后**：`UiState()` 默认值逐项相同；进入聊天/切卡/改配置/编辑 四个回归动作正常。
-- **B6 后**：消息顺序与完整性、删除/撤回目标、向上翻页不跳、续接不打架。
-
-## 七、Git / CI / APK / 回退（按 workflow 实际行为）
-
-`.github/workflows/ci.yml` 的现状：
-
-| 事项 | 实际机制 |
+| 检查项 | 结果 |
 |---|---|
-| 触发 | `push` 到 `main`、`push` 任何 `apk-*` tag、PR、手跑 |
-| `apk-latest` release | **只在 `refs/heads/main` 构建成功时覆盖** → 文档提交也会覆盖它 |
-| 回退点 | 打 `apk-mNNN` tag → 构建出**独立 release**（资产不被后续覆盖） |
-| APK 与 commit 的绑定 | `TAVERN_BUILD_ID = github.sha`（写进 `BuildConfig.BUILD_ID`，可从 dex 里查出来） |
-| versionCode | `TAVERN_VERSION_CODE = github.run_number`（只增不减，手机不会拒装） |
-| 资产完整性 | release 资产自带 `digest: sha256:…`；本机 `sha256sum` 逐字节核对（已验：`apk-m233` 一致） |
-| 签名 | `tools/verify-apk.sh <apk> <证书SHA-256>`；CI 也会冒烟打印证书摘要 |
+| 反射（`UiState::class` 等） | **0 处** |
+| `typealias` / 间接类型引用 | **0 处** |
+| 跨模块（`data`/`core`）引用 | **0 处** |
+| 测试代码依赖嵌套类 | **0 处**（唯一提到 `ChatViewModel` 的是 core 测试里的一行注释） |
+| 构造器默认值依赖外部上下文 | **无**（都是字面量，无 `System.*` / `UUID` / `Context`） |
+| 可见性变化 | 从"嵌套在 public 类里"变成同包顶层 public —— 调用方都在同包/同模块，**无破坏** |
+| 序列化 / 持久化 | **无**（`UiState` 纯内存，不落盘、不导出） |
+| Compose 观察 | 仍是**一个** `StateFlow` + `collectAsState`，不新增流 |
 
-所以每批的验收记录必须写四个值：**commit sha、tag、APK 的 sha256、`BUILD_ID` 读数**。
-⚠️ tag 只证明"这个 commit 被构建过"，**不能**当作"这个 APK 在真机上验过"——真机回执要单独记。
+**B5-0（先做，纯搬迁）**：`UiState` 从嵌套类改为**同包顶层类**，搬到 `app/.../ChatState.kt`。
+- 影响面：42 处 `ChatViewModel.UiState` → `UiState`；373 处 `state.` **不动**；2 处构造 **不动**；
+- 收益：VM 文件 **−307 行**（229–535），`UiState` 成为可独立阅读的单元；
+- **风险**：一次改 42 个文件（纯类型名），所以**单独一批 + 单独 tag**。
 
-回退操作：`git revert <sha>` 或直接 `git checkout <上一个 tag> -- <文件>`，
-装机回退 = 装上一个 tag 的 APK（同一把签名，可直接覆盖安装）。
+**B5-1 … B5-4（按组切，每刀一批）**：`Nav` / `Config` / `Gen` / `Edit` 四个 `data class` 作为字段。
+**规则**：字段名与类型先不动，只改归属（`state.screen` → `state.nav.screen`）；**禁止**过渡期双份字段、
+兼容代理、两处同时写、新增 `StateFlow`。
+- 每刀：先改该组的**生产点**（146 处 `_state.update` 里属于该组的部分），再改消费点，
+  最后全量 `grep` 复核 + CI + 真机回归；
+- 顺序：`Edit`（引用最少）→ `Nav` → `Config` → `Gen`（引用最多）。
 
-## 八、二次审查记录
+**不变量**：`UiState()` 默认值逐项相同；状态转移结果相同；Compose 观察点不变（一个流、不扩大订阅面）；
+无状态更新遗漏（每刀用"改过的生产点 ↔ 改过的消费点"清单对账）。
+**单测**：无（Compose/状态机不在 core）。**CI**：绿。**真机**：进聊天 / 切卡 / 改配置 / 编辑卡 四动作。
+**回退**：每刀独立 tag，回装上一版 APK + revert 对应提交。
+**预算**：B5-0 **−307**；B5-1~4 **0**（结构变化，总行数不变）。
 
-本次修订参考了另一份 **由 AI 生成** 的审查意见（非人工确认，也不构成权威结论）。逐条判断如下。
+### B6 · 消息分页（独立技术设计，本轮不实施）
 
-**采纳（经 HEAD 代码验证成立）**
+**已核实的事实**【已验证】：
+- 存储**不是 Room**，是手写 `SQLiteOpenHelper`（`data/.../chat/impl/TavernDatabase.kt`）；
+- `messages(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, is_user, content, …)`，
+  且**已有索引** `idx_messages_session ON messages(session_id, id)` → 游标查询有现成索引；
+- swipe 备选表 `PRIMARY KEY (message_id, seq)` + `FOREIGN KEY … ON DELETE CASCADE`；
+- 读取 `chatRepository.messages(sessionId)` **一次返回全部**（`ORDER BY id ASC`），
+  `openSessionInternal` 全量映射成 `rows`（`uiKey = "m"+id`、`dbId = id`）；
+- 消息操作**已按 `uiKey`/`dbId`**（`deleteMessageAt(uiKey)`、`rewindToMessage(uiKey)`），
+  **不存在"UI 下标 ↔ DB 行号"耦合**（第二版已纠正，此处保留）。
 
-1. **B0 的统计口径有矛盾** —— 成立。上一版"156 总数 / 121 public / 38 private"三者不自洽
-   （121+38=159）。已改为统一口径并把扩展函数、`override`、嵌套类型分开统计。
-2. **门禁容易被绕过、也不能证明架构改善** —— 成立。已在 B0 里写明局限，并把"搬迁量"记进预算文件。
-3. **B3 的四处重复可能不一致** —— 成立，且比意见更极端：只有 3 行是真重复，减量从 80 降到 12。
-4. **B4 不能直接上 Mutex/Channel/runBlocking** —— 成立。已拆成 B4a（测量）/B4b（按证据选最小方案），
-   并纠正了一个错误担心：`apply()` 是单线程串行落盘的，"SharedPreferences 乱序"不成立，
-   真风险在档案表的读-改-写。
-5. **B5 的机械替换风险** —— 成立。已把 373 处属性访问与 42 处类型注解分开，先做 B5-0（纯搬迁），
-   并明令禁止过渡期双份字段/兼容代理。
-6. **B6 信息不足、不许直接动库** —— 成立。已按 HEAD 补上"身份是 `uiKey`/`dbId`、排序是 `ORDER BY id`、
-   全量载入是真问题"三条事实，并把设计要点列成 7 条前置条件。
-7. **减量预算必须重算、目标应由职责推导** —— 成立。≤2,600 撤回，改为职责 + 可测 + 棘轮三目标。
-8. **顺序可考虑 B3 先于 B2** —— 部分采纳：B3 太薄，**并入 B1 一个提交**比单独一批更省一轮 CI。
-9. **每批要写行为不变量** —— 采纳，并按代码补了"空集语义""maxTokens<=0""空串截断继承"等具体条目。
+**必须回答清楚才能开工的问题**（目前**都没有答案**，因此 B6 = **需要独立技术设计**）：
 
-**部分采纳 / 需要调整**
+1. 首屏 N 条（建议 50）是否包含**生成中的占位行**？（占位行不在库里 → 应在"分页结果 + inflight"合成层处理）
+2. `reverseLayout = true` 下，向上加载历史是"末尾插入"还是"头部插入"？锚点用哪套补偿？
+   （现有 `scroll` 日志与 `followBridgePx` 都在跟底方向，**反方向未验证**）
+3. 快速滚动如何防重入/重复游标（同一 `id` 窗口被请求两次）？
+4. 加载中删除消息：游标已越过被删行时如何继续？
+5. 切会话时如何取消旧的分页请求（现有 `openSessionInternal` 会停流，但分页是自己的协程）？
+6. 删除 / 撤回 / 重生成是否**始终**用稳定 id（当前是，分页后要保持）？
+7. 分页期间新消息到达：`rows` 尾部合并规则（现在靠"落库后重建/追加"，分页后要防止与"历史窗口"打架）。
+8. 数据库 ID 游标是否可能漏/重（`AUTOINCREMENT` 单调，删除留下空洞 → 用"边界 id"而非 offset 即可）。
+9. 导入的旧会话（`send_date` 重复、坏行已丢弃）在分页后是否仍按 `id` 排序（应与时间无关）。
 
-10. **「B2 分两层：data 收集 + core 纯计算」** —— 方向对，但前提已变：HEAD 里线程问题已修（`c984f71`），
-    `scanWorldInfo` 已是纯函数。改为"只收窄参数 + 落 core"，不做整条 `prepare()` 的分层。
-11. **「不要预先假定整个 prepare 是纯函数」** —— 认可，所以 B2 只搬**已证明是纯**的那一段
-    `scanWorldInfo`；`PromptBuilder().build()` 本来就在 `core/prompt`（已是纯函数 + 夹具），不动。
+**归属（谁写 SQL、谁持游标）**【已验证 ADR】：
 
-**不成立 / 过度设计**
+| 层 | 负责什么 | 依据 |
+|---|---|---|
+| `data/chat/impl/SqliteChatRepository.kt` | **所有 SQL**（`WHERE session_id=? AND id<? ORDER BY id DESC LIMIT ?`，返回前反转成升序） | ADR 0003：SQL 集中在 `TavernDatabase` 与 impl，**不在 VM 里拼 SQL** |
+| `data/chat/TavernDatabase.kt` | 表结构与索引 | **索引已存在** `idx_messages_session(session_id, id)` → **本项不需要 schema 迁移** |
+| `data/chat/ChatRepository.kt`（接口） | 新增 `messages(sessionId, limit, beforeId)` | **ADR 0003 已经写死了这个签名**（"分页仍要做：`messages(sessionId, limit, beforeId)`，不许整表载入"） |
+| `ChatViewModel` | 只持 `pageCursor: Long?` / `hasMoreHistory: Boolean`，负责调用与合并 | 不写 SQL、不碰 `SQLiteDatabase` |
+| `core/*` | **不新增**（除非确需"纯切片/游标推进"函数，届时再定） | 分页是 I/O 关注点，不是业务规则 |
 
-12. **「B6 的 UI 下标 ↔ DB 行号强耦合」** —— 在 HEAD 上不成立：所有消息操作已按 `uiKey`/`dbId`。
-    该条是 11-26 审查的旧结论，已被 K1/K3 重构消掉。B6 真问题是全量载入。
-13. **「token 预算裁剪要纯化」** —— 现状里**没有**历史裁剪逻辑（只有世界书的 `maxContext = 3795`）。
-    没有的东西不搬。
-14. **「新增 Manager/Controller 层把行数降下来」** —— 不采纳。要降到 2,600 只能拆出 3 个新类，
-    与"不为数字硬拆"冲突；列为可选 C 阶段，需单独决定。
+⚠️ **文档与代码不一致（顺手记录，B6 时一并修）**：`ChatRepository.messages` 的注释写着
+"分页接口等长聊天真的出现再加（见 ADR 0003 的约束）"，但 **ADR 0003 明确说"分页仍要做，不许整表载入"**。
+两者措辞相反 → B6 实施时改注释对齐 ADR，别让下一个人以为"可以不做"。
 
-## 九、未验证事项（不许当成已成立）
+**不变量**：消息顺序与完整性不变；删除/撤回目标不串位；向上翻页视口内容不动；生成中切会话再回来不打架；
+导出仍覆盖全部消息（分页只影响加载，不影响导出）。
+**验证**：SQL 与游标推进都在 `data` 层 → **core 单测覆盖不到**，靠 ①`data` 实现自审 + CI 编译、
+②真机（300+ 条会话首屏、向上翻页、删除/撤回、续接）。**不为了"能测"把分页逻辑硬塞进 core**。
+**预算**：VM **+50~100**（分页状态与合成），仓库 **+100~150**（仓库 API + 状态 + 测试）。
 
-1. **`./gradlew test` 是否跑到 `:app` 的单测**（`tools/check-tests-ran.sh` 会不会因此变红）——
-   未验证。确认方式：加一条最小 `@Test` 看 CI 反应（一次性实验，不留在代码里）。
-2. **B4 的真实写入频率与丢更新概率** —— 未验证，B4a 就是为它准备的。
-3. **B6 的向上翻页与现在 `reverseLayout = true` 滚动锚点的配合** —— 未验证，属 B6 技术设计的一部分。
-4. **tag 构建是否也跑 `apk-latest` 步骤** —— 已从 workflow 读到 `github.ref == 'refs/heads/main'` 条件，
-   tag 不会更新 `apk-latest`；但**未实测**过一次 tag 构建的完整行为，只按配置推断。
-5. **本机下载速度**：15MB APK 实测 10~20 分钟（多次），所以"每批一个包"的真实成本要按 20 分钟算。
+## 四、预算（逐项算式，两个口径分开算）
+
+**口径 A：`ChatViewModel.kt` 文件行数**（3,793 起始）
+
+| 批次 | 算式 | 净变化 | 累计 |
+|---|---|---|---|
+| B0 | 不改产品代码 | 0 | 3,793 |
+| B1（含 B3） | A 类 getter 69 行 → 14 行转发 = −55；SAF 18 行 → 4 调用 + 6 定义 = −8 | **−63** | 3,730 |
+| B2 | `scanWorldInfo` 46 行移出 + 调用点 +4 | **−42** | 3,688 |
+| B4（默认不做） | 不做 = 0；只加锁 M1 = +5~+8；只治草稿 M2 = +12~+20；两者 +17~+28 | 0 ~ +28 | 3,688 ~ 3,716 |
+| B5-0 | `UiState` 307 行搬到 `ChatState.kt` | **−307** | 3,381 ~ 3,409 |
+| B5-1~4 | 组内重组，字段总数不变 | 0 | 3,381 ~ 3,409 |
+| B6 | 分页状态 + 合成 | **+50 ~ +100** | **3,431 ~ 3,509** |
+
+→ **VM 文件：B6 之前 ≈ 3,381（不做 B4）/ 3,409（做满 B4）；B6 之后 ≈ 3,431 ~ 3,509**。
+相对 3,793 净减 ≈ **284 ~ 362 行**，非空行从 3,523 降到 ≈ 3,150~3,270。
+**注意**：第二版写的「3,390–3,450」是漏加 B6 且 B1 少算 14 行的结果，已作废；
+区间上界取决于 B4 做不做、B6 的具体设计。
+
+**口径 B：整个仓库的代码量**（不是同一件事）
+
+| 批次 | 仓库总量 |
+|---|---|
+| B1 | **+≈120**（`EffectiveConfig` + `resolve` + ≥12 条测试），另有 data 层 3 处 import 调整 |
+| B2 | **+≈46**（core 新文件）+ 测试 ≈ +60 |
+| B3 | −8 与 +6 已在 B1 内 |
+| B5-0 | **±0**（同一个类换文件） |
+| B6 | **+100 ~ +150** |
+
+→ **"拆完总代码变少"是错的**：VM 文件少约 300 行，仓库总量反而**增加约 200~300 行**（新的纯函数、测试、分页状态）。
+**这正是应该追求的方向**（职责外移 + 可测），但不要拿它当"精简"宣传。
+
+**不再有 2,600 行目标。** 验收改为：行为不变 + 职责清晰 + 可测性提升 + B0 棘轮只降不升。
+要继续把 VM 压到 2,600 以下，只能把整块职责（模型档案 599 / 正则 492 / 世界书 ~300）拆成独立类 ——
+那是**新增 3 个抽象层**，与"不制造 Manager/Helper"冲突 → 列为**可选的 C 阶段，需单独决定，本轮不做**。
+
+## 五、执行顺序（最终推荐）
+
+`B0 → B1（含 B3）→ B2 → [B4 可选，可插在这里] → B5-0 → B5-1…B5-4 → B6`
+
+| 顺序 | 为什么此时做 | 与第二版的差别 |
+|---|---|---|
+| B0 | 先把尺寸钉住，否则后面每批都在涨 | 不变 |
+| B1 | 最独立、纯数据类上的纯计算；验证"抽到 core + 转发"流程 | 含 B3（18 行不值一轮 CI） |
+| B2 | 照抄 B1 的流程；唯一还端着 UiState 的纯计算 | 前提改为"收窄 + 落 core"，不碰线程 |
+| B4 | **降级为可选**：风险真实但概率低、后果可恢复；不做也不阻塞 | 原为必做批次，现为"可选加固" |
+| B5-0 | 42 个文件一次改，要等流程跑顺 | 保留 |
+| B5-1~4 | 引用最多的 `Gen` 放最后 | 保留 |
+| B6 | 要动数据读法与滚动锚点，混在别处无法归因 | 保留（且必须先成文设计） |
+
+## 六、验收矩阵
+
+| 批次 | CI | 单测（core，本机） | 真机 |
+|---|---|---|---|
+| B0 | 6 个 check + 棘轮（故意加一行要变红） | — | — |
+| B1 | 绿 + 旧 168 条全绿 | 优先级/边界/空串/`"off"` ≥12 条 | 改采样+人设+作者注 → 「查看请求」与界面一致 |
+| B2 | 绿 + 世界书夹具全绿 | 固定 seed 确定性 + 三级书 + 强制开启 ≥5 条 | 发一条消息，核对世界书条目数 |
+| B4（默认不做；若做） | 绿 | —（依赖仓库，不可测） | 按「打开档案编辑 → 别处改 baseUrl → 回来保存」序列复现；M2 之后 baseUrl 不应被冲回 |
+| B5-0 | 绿 | — | 进聊天/切卡无任何变化 |
+| B5-1~4 | 每刀绿 | — | 四个回归动作 + 状态清单对账 |
+| B6 | 绿 | 分页切片 + 游标推进 | 300+ 条会话首屏、向上翻页、删除/撤回、续接 |
+
+## 七、Git / CI / APK / 回退（区分已验证与推断）
+
+**【已验证，2026-11-28 实测】**：
+
+- 触发：`push` 到 `main`、`push` 任何 `apk-*` tag、PR、手动；
+- **tag 构建不会更新 `apk-latest`**：核对了 run `46126860611`（tag `apk-m233`）——
+  `公开 APK（apk-latest release）` = **skipped**，`公开 APK（回退点 tag）` = success；
+- `apk-latest` 只由 `refs/heads/main` 的构建覆盖（**文档提交也会覆盖它**）；
+- APK 与 commit 绑定：`TAVERN_BUILD_ID = github.sha`（可从 dex 里查出）；
+- `versionCode = github.run_number`（只增不减，不会拒装）；
+- release 资产自带 `digest: sha256:…`，本机 `sha256sum` 逐字节核对一致（`apk-m233` 实测）；
+- `tools/verify-apk.sh` 验 x.509 签名（x.509 摘要，不是文件摘要）。
+
+**【推断，未实测】**：tag 构建是否也会跑「出 debug APK」的 smoke 步骤（配置上看会，未逐条核对 run 的 step 明细）。
+
+**每批的验收记录必须写四个值**：commit sha、tag、APK 的 sha256、`BUILD_ID` 读数。
+⚠️ **tag 只证明"这个 commit 被构建过"，不代表 APK 过了真机验收** —— 真机回执单独记。
+
+**回退**：`git revert <sha>`；装机回退 = 装上一个 tag 的 APK（同一把签名，可覆盖安装）。
+
+## 八、审查记录
+
+### 第一轮（初版）→ 第二版：见第二版旧记录，结论保留：P0-2 已修、下标耦合不存在、≤2,600 撤回。
+
+### 第二轮（参考 AI 意见）→ 第二版：已采纳 8 条、调整 2 条、拒绝 3 条（明细见提交 `b75277c` 说明）。
+
+### 第三轮（本轮最终审计）→ 第三版
+
+**必须修正（已改）**
+
+1. **B2 的"纯函数"结论错误**：`LorebookScanner` 持有 `Random`，默认输出不确定。→ 改为"函数无副作用、
+   但含随机性"，并要求测试传固定 seed、生产保留 `Random.Default`。
+2. **预算算式不闭合**：漏加 B6 的 +50~100、B1 少算 14 行。→ 重新逐项计算，给出两个口径，
+   撤销 `3,390–3,450` 这个区间。
+3. **B4 的"单写入口"错误**：实际 5 个写入口，且 `saveProfileDraft` 写整条记录。→ 风险重新描述，
+   并把 B4 降级为可选加固。
+4. **`effectiveAuthorNote` 的"注释与代码矛盾"判断过于草率**：核实后两个写入点都归一空串，
+   现实不可达。→ 改为"约定式保证 + 在 `resolve()` 内做防御性归一 + 测试钉住"。
+5. **`ConfigOverride` 迁移依据不足**：不能凭"3 处引用"。→ 改为逐项核实（0 import / 0 注解 / 仅基础类型 /
+   文件需拆分 / 接口留 data），并给出模块落点与理由（`core:model` + `core:preset`，不新建模块）。
+
+**建议修正（已改）**
+
+6. B0 的统计口径补全（扩展函数/override/嵌套 fun 分开统计、搬迁量记账）。
+   *（第四轮又改了主指标：有效行 → 非空行，见下）*
+7. B5 补"已核实无反射/别名/跨模块/测试依赖、构造默认值无外部上下文"六项检查。
+8. B6 补"已有 `idx_messages_session(session_id, id)`、手写 SQLite 而非 Room、`AUTOINCREMENT`"
+   三条事实，并把未决问题从 7 条扩到 9 条。
+9. tag 与 `apk-latest` 的关系：从"待验证推断"升级为**实测已验证**（附 run id）。
+
+**可以保留（未改）**
+
+10. 批次顺序 B0 → B1 → B2 → B5-0 → B5-1~4 → B6 及每批不变量：与代码证据一致，无需变动。
+11. 拒绝"新增 Manager/Controller 压到 2,600 行"的判断：维持。
+12. `state.xxx` 373 处不需要机械替换的判断：维持（已核实是属性访问）。
+
+### 第四轮（用户点名的六项小修）→ 本版
+
+| # | 要求 | 本版处理 |
+|---|---|---|
+| 1 | 修正 B0 注释统计口径 | 主指标改为**非空行 3,523**（无歧义）；文件总行/空行/注释行只打印；说明"有效行"要排除字符串里的 `//`、`*`，不能依赖"当前文件恰好没有多行字符串" |
+| 2 | 明确 B1 解析结果与 `UiState.copy()` 生命周期 | 写死：`copy()` 会跑构造 → 要么每次重算、要么 `by lazy(NONE)` 每实例至多算一次；**新实例不继承旧 lazy**，故不会过期；禁止 companion 缓存/按 hashCode 记忆化；加"新旧公式对照"测试作为等价性硬验收 |
+| 3 | 补充 B2 随机数调用顺序不变的验证 | 加 `RecordingRandom` 断言抽号序列 + 固定 seed golden；并注明"与搬迁前 app 旧路径逐位对齐"**core 验不了**，只能真机核对激活条数 |
+| 4 | 修正 B4 过期草稿覆盖风险 | 新增**风险 A**（可达操作序列：编辑档案 → 别处改 baseUrl → 回来保存 → 被草稿旧值覆盖，`:2066/2100`）；原并发问题降为**风险 B** |
+| 5 | B4 做与不做的预算分别列出 | 四种方案表：不做 0 / M1 加锁 +5~8（只治 B）/ M2 草稿基线合并 +12~20（治 A）/ 两者 +17~28；**推荐默认不做**，触发条件写明 |
+| 6 | 明确 B6 的 SQL 分页归属 | 按 ADR 0003 的原文签名 `messages(sessionId, limit, beforeId)`：SQL 只在 `data/chat/impl`、索引已在 `TavernDatabase`（无需迁移）、VM 只持游标、`core` 不加；并记下接口注释与 ADR 措辞相反的待修点 |
+
+## 九、未验证事项（每条给最小验证方法）
+
+| # | 事项 | 状态 | 最小验证方法 |
+|---|---|---|---|
+| 1 | `./gradlew test` 是否覆盖 `:app` 的单测（`check-tests-ran.sh` 会不会变红） | 待验证 | 临时在 `app/src/test` 放 1 条 `@Test`，push，看 CI 的「纯 JVM 单测」是否跑到它；随后撤销 |
+| 2 | B4 风险 B（并发交错）的实际概率 | 待验证（推断为低） | 一次性临时构建：在 5 个写入口打"入口名 + 时间戳"，连打 20 字符后立刻保存档案；测完撤销。**风险 A（过期草稿）不靠测量，靠上面的操作序列复现** |
+| 3 | B6 向上翻页与 `reverseLayout=true` 的锚点配合 | 待验证（B6 前置） | 技术设计阶段先写"锚点补偿方案"，再在真机上用 300+ 条会话验 |
+| 4 | `EffectiveConfig` 用 `lazy(NONE)` 与"构造体重算"的实际开销差 | 待验证（推断可忽略） | B1 实施后对比 300+ 条会话的滚动帧时间（`scroll` 日志），两者语义都正确，只比开销 |
+| 5 | tag 构建是否也跑签名冒烟步骤 | 推断 | 查一次 tag run 的 job steps 明细 |
+| 6 | B1 迁移后 `data` 层 3 个文件的 import 是否有遗漏（本机编不了 data） | 待验证 | CI 的「出 debug APK」job 会编译 `:data`；红了按 `build-<sha7>.log` 修 |
 
 ---
 
-**本次仅修订方案，未修改业务代码、未执行任何重构、未创建脚本/预算文件/测试/新类。**
+**本轮只做审计与文档修订：未修改生产代码、未修改测试、未修改 CI、未创建脚本、未新建类、未创建 commit 或 tag。**
