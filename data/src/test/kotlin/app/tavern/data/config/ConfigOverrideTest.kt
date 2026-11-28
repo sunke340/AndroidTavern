@@ -1,5 +1,6 @@
 package app.tavern.data.config
 
+import app.tavern.core.model.ConfigOverride
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
