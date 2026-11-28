@@ -38,10 +38,14 @@ import app.tavern.core.lorebook.LorebookScanSettings
 import app.tavern.core.lorebook.LorebookScanState
 import app.tavern.core.lorebook.LorebookScanStateCodec
 import app.tavern.core.lorebook.LorebookTokenCounter
+import app.tavern.core.preset.EffectiveConfig
+import app.tavern.core.preset.GlobalDefaults
 import app.tavern.core.preset.PresetDefaults
 import app.tavern.core.preset.PromptOrderCompat
 import app.tavern.core.preset.PromptOrderEntry
 import app.tavern.core.preset.SamplingPreset
+import app.tavern.core.preset.SamplingTexts
+import app.tavern.core.preset.resolveEffectiveConfig
 import app.tavern.core.prompt.AuthorNote
 import app.tavern.core.prompt.PromptBuilder
 import app.tavern.core.regex.BuiltinRegex
@@ -57,7 +61,7 @@ import app.tavern.data.log.AppLog
 import app.tavern.data.settings.Persona
 import app.tavern.data.presets.PresetRef
 import app.tavern.data.sessionstate.SessionScanStateRepository
-import app.tavern.data.config.ConfigOverride
+import app.tavern.core.model.ConfigOverride
 import app.tavern.data.config.ConfigOverrideRepository
 import app.tavern.data.settings.CardBookOverride
 import app.tavern.data.presets.PresetRepository
@@ -426,8 +430,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
          */
         val effectiveAuthorNote: AuthorNote?
             get() {
-                val text = sessionOverride.authorNote ?: cardOverride.authorNote
-                if (text.isNullOrBlank()) return null
+                // 正文由 core 解析（空串归一、逐层继承，规则与测试都在 `core/preset`）；
+                // 深度/角色/间隔/位置是**复合**（带默认值 + 角色名映射），留在这一层。
+                val text = effective.authorNoteText ?: return null
                 val depth = sessionOverride.authorNoteDepth
                     ?: cardOverride.authorNoteDepth
                     ?: 4
@@ -460,63 +465,45 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val effectiveBubbleFontSize: Float
             get() = sessionOverride.bubbleFontSize ?: cardOverride.bubbleFontSize ?: bubbleFontSize
 
-        // ---- 三级继承的生效值（会话 → 角色卡 → 全局）--------------------------
-        // 全 App 只有这几个 getter 能回答"现在真正用的是什么"，界面与请求都读它们；
-        // 各处自己写 `x ?: y ?: z` 迟早会有一处漏掉一层。
+        // ---- 生效值（三级继承）：规则在 core/preset/EffectiveConfig.kt，这里只取用 ----
+        // lazy(NONE)：copy() 会跑构造，两种写法语义都对；lazy 只对"真读过它"的实例算一次。
+        // 新实例的 lazy 是全新的，所以不会拿着旧解析结果（UI 单线程，不需要锁）。
+        private val effective: EffectiveConfig by lazy(LazyThreadSafetyMode.NONE) {
+            resolveEffectiveConfig(
+                session = sessionOverride,
+                card = cardOverride,
+                sampling = presetSampling,
+                globals = GlobalDefaults(
+                    personaId = personaDefaultId,
+                    profileId = activeProfileId,
+                    presetName = activePreset,
+                    bubbleFontSize = bubbleFontSize,
+                    builtinDisabled = builtinRegexDisabled,
+                ),
+                texts = SamplingTexts(
+                    temperature = temperatureText,
+                    maxTokens = maxTokensText,
+                    topP = topPText,
+                    frequencyPenalty = frequencyPenaltyText,
+                    presencePenalty = presencePenaltyText,
+                ),
+            )
+        }
 
-        /** 真正生效的档案 id：会话 → 卡 → 全局默认档案。 */
-        val effectiveProfileId: String?
-            get() = sessionOverride.profileId ?: cardOverride.profileId ?: activeProfileId
-
-        /** 真正生效的思考强度：null = 跟随档案；`"off"` = 明确关掉。 */
-        val effectiveReasoningEffort: String?
-            get() = sessionOverride.reasoningEffort ?: cardOverride.reasoningEffort
-
-        /** 真正生效的预设名（null = 内置默认）。 */
-        val effectivePresetName: String?
-            get() = sessionOverride.presetName ?: cardOverride.presetName ?: activePreset
-
-        /** 参与的全局世界书：null = 按每本书自己的启用开关。 */
-        val effectiveWorldBookNames: Set<String>?
-            get() = sessionOverride.worldBookNames ?: cardOverride.worldBookNames
-
-        /** 参与的正则脚本 id（脚本名）：null = 全部启用。 */
-        val effectiveRegexIds: Set<String>?
-            get() = sessionOverride.regexIds ?: cardOverride.regexIds
-
-        /** 实际参与的正则脚本（显示与输入侧都读它，保证"看到的就是生效的"）。 */
-        // ---- 采样五项：会话 > 卡 > 预设 > 全局（用户 2026-11-25 第 2 条） ----
-        // 为什么预设排在全局前面：预设就是"这一份提示词配套的采样"，它比全局默认更具体。
-        val effectiveTemperature: Double
-            get() = sessionOverride.temperature ?: cardOverride.temperature
-                ?: presetSampling?.temperature ?: temperatureText.toDoubleOrNull() ?: 1.0
-
-        /** null = 不限（不往请求里放 max_tokens）。 */
-        val effectiveMaxTokens: Int?
-            get() = sessionOverride.maxTokens ?: cardOverride.maxTokens
-                ?: presetSampling?.maxTokens ?: maxTokensText.toIntOrNull()?.takeIf { it > 0 }
-
-        val effectiveTopP: Double?
-            get() = sessionOverride.topP ?: cardOverride.topP
-                ?: presetSampling?.topP ?: topPText.toDoubleOrNull()
-
-        val effectiveFrequencyPenalty: Double?
-            get() = sessionOverride.frequencyPenalty ?: cardOverride.frequencyPenalty
-                ?: presetSampling?.frequencyPenalty ?: frequencyPenaltyText.toDoubleOrNull()
-
-        val effectivePresencePenalty: Double?
-            get() = sessionOverride.presencePenalty ?: cardOverride.presencePenalty
-                ?: presetSampling?.presencePenalty ?: presencePenaltyText.toDoubleOrNull()
-
-        /**
-         * 生效的"关掉哪些内置规则"：**会话 > 卡 > 全局**（用户 2026-11-25 第 15 条）。
-         *
-         * 空集 ≠ null：空集 = 这一层明确全开（把上级关掉的重新打开），null = 跟随上级。
-         */
-        val effectiveBuiltinDisabled: Set<String>
-            get() = sessionOverride.builtinDisabled
-                ?: cardOverride.builtinDisabled
-                ?: builtinRegexDisabled
+        // 语义（null = 跟随、空集 ≠ null、maxTokens 0/负数 = 不限）都写在 core 的 EffectiveConfig 里，这里不重复。
+        val effectivePersonaId: String? get() = effective.personaId
+        val effectiveProfileId: String? get() = effective.profileId
+        val effectivePresetName: String? get() = effective.presetName
+        val effectiveReasoningEffort: String? get() = effective.reasoningEffort
+        val effectiveWorldBookNames: Set<String>? get() = effective.worldBookNames
+        val effectiveRegexIds: Set<String>? get() = effective.regexIds
+        val effectiveBuiltinDisabled: Set<String> get() = effective.builtinDisabled
+        val effectiveBubbleFontSize: Float get() = effective.bubbleFontSize
+        val effectiveTemperature: Double get() = effective.temperature
+        val effectiveMaxTokens: Int? get() = effective.maxTokens
+        val effectiveTopP: Double? get() = effective.topP
+        val effectiveFrequencyPenalty: Double? get() = effective.frequencyPenalty
+        val effectivePresencePenalty: Double? get() = effective.presencePenalty
 
         val effectiveRegexScripts: List<RegexScript>
             get() {
@@ -1351,9 +1338,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val text = getApplication<Application>().contentResolver
-                        .openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                        ?: error("读不到文件")
+                    val text = readTextOf(uri)
                     val file = ChatFile.parse(text)
                     if (file.messages.isEmpty()) error("文件里没有消息")
                     val imported = file.messages.map { message ->
@@ -2434,11 +2419,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val name = displayNameOf(uri)
-                    val json = getApplication<Application>().contentResolver
-                        .openInputStream(uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: error("读不到文件")
+                    val json = readTextOf(uri)
                     worldBookRepository.import(name, json)
                 }
             }
@@ -2723,11 +2704,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val name = displayNameOf(uri)
-                    val json = getApplication<Application>().contentResolver
-                        .openInputStream(uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: error("读不到文件")
+                    val json = readTextOf(uri)
                     presetRepository.import(name, json)
                 }
             }
@@ -2861,11 +2838,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val json = getApplication<Application>().contentResolver
-                        .openInputStream(uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: error("读不到文件")
+                    val json = readTextOf(uri)
                     regexRepository.import(json)
                 }
             }
@@ -2913,6 +2886,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
         return engine.applyAll(scripts, text, placement)
     }
+
+    /**
+     * 读一个 SAF 选来的文本文件。四处导入（聊天 / 世界书 / 预设 / 正则）原先各抄一遍
+     * `contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error(…)`。
+     *
+     * 只统一**这一段**：取文件名（`displayNameOf`）只有世界书与预设需要，导入后的处理
+     * （设默认、解析、逐条映射）四处本来就不一样 —— 那些差异是真实的，不抹平。
+     */
+    private fun readTextOf(uri: Uri): String =
+        getApplication<Application>().contentResolver
+            .openInputStream(uri)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: error("读不到文件")
 
     private fun displayNameOf(uri: Uri): String {
         runCatching {

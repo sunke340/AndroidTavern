@@ -10,6 +10,10 @@ kotlin {
 }
 
 dependencies {
+    // api：`EffectiveConfig` 的解析入参里出现 `ConfigOverride`（:core:model），
+    // 上层（app/data）只依赖 core:preset 时也要能编译到它。
+    api(project(":core:model"))
+
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
     testImplementation(kotlin("test-junit5"))

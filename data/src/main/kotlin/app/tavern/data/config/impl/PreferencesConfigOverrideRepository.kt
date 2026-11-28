@@ -1,7 +1,7 @@
 package app.tavern.data.config.impl
 
 import android.content.Context
-import app.tavern.data.config.ConfigOverride
+import app.tavern.core.model.ConfigOverride
 import app.tavern.data.config.ConfigOverrideRepository
 
 /**
