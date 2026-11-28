@@ -891,10 +891,10 @@ fun ChatScreen(state: ChatViewModel.UiState, viewModel: ChatViewModel) {
                                 toast("识别服务断开：系统语音服务连不上它的服务器")
 
                             reason == "识别服务没响应" ->
-                                toast("语音服务一直没响应（补发 3 次、等了 25 秒）")
+                                toast("语音服务一直没响应（25 秒零回调）")
 
-                            reason == "识别器忙" ->
-                                toast("引擎收下了请求但一直没出声")
+                            reason == "客户端错误" ->
+                                toast("引擎收下了请求但没出声（客户端状态冲突）")
 
                             reason == "识别器启动失败" ->
                                 toast("语音识别没能启动")

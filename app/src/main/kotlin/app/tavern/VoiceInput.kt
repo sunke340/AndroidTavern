@@ -72,6 +72,28 @@ internal object VoiceInput {
             .getString(context.contentResolver, "voice_recognition_service")
     }.getOrNull().orEmpty()
 
+    /**
+     * 识别服务**自己声明**了什么：是否导出、要不要权限、是否启用。
+     *
+     * 为什么要它（2026-11-28）：判"引擎到底开不开放给第三方"不能只凭行为推 —— 行为可能是它
+     * 云端挂了。声明是硬事实：`导出=false` 或签名级 `权限=` 就意味着第三方结构上用不了，
+     * 反过来"导出=true 且无权限"就说明通了、问题在它服务端。
+     */
+    @Suppress("DEPRECATION")
+    fun serviceDeclaration(context: Context): String = runCatching {
+        val comp = android.content.ComponentName.unflattenFromString(defaultService(context))
+            ?: return@runCatching "无默认组件"
+        val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            context.packageManager.getServiceInfo(
+                comp,
+                android.content.pm.PackageManager.ComponentInfoFlags.of(0),
+            )
+        } else {
+            context.packageManager.getServiceInfo(comp, 0)
+        }
+        "导出=${info.exported} 启用=${info.enabled} 权限=${info.permission ?: "无"}"
+    }.getOrElse { "读不到（${it::class.simpleName}）" }
+
     /** 有没有**机内**（离线）识别。API 31+ 才有；有它就不用连服务端。 */
     fun onDeviceAvailable(context: Context): Boolean =
         android.os.Build.VERSION.SDK_INT >= 31 && runCatching {
@@ -93,7 +115,8 @@ internal object VoiceInput {
             "ui",
             "语音识别 可用=$ok 服务=$service 意图=$intent 机内=${onDeviceAvailable(context)} " +
                 "引擎=${servicePackages(context).joinToString(",").ifEmpty { "无" }} " +
-                "默认=${defaultService(context).ifEmpty { "读不到" }}",
+                "默认=${defaultService(context).ifEmpty { "读不到" }} " +
+                "声明=${serviceDeclaration(context)}",
         )
         return ok
     }
@@ -116,16 +139,10 @@ internal class VoiceSession internal constructor(private val stopAction: () -> U
 }
 
 internal object VoiceListen {
-    /**
-     * `startListening` 最多发几次、每隔多久补发一次。
-     *
-     * 为什么（2026-11-28 真机两次 25 秒零回调）：`createSpeechRecognizer` 只保证"对象建好了"，
-     * 服务绑定是异步的；AOSP 里 `startListening()` 在没连上时走 `checkOpenConnection()` 失败 ——
-     * **只写 logcat，不抛异常、不回调一句**。所以"发一次然后干等"分不清两种死法：
-     * 是没发出去，还是引擎不说话。补发能把它们分开（发到了通常会回 `识别器忙`）。
-     */
-    private const val START_ATTEMPTS = 3
-    private const val START_RETRY_MS = 1_200L
+    // ⚠️ 别再补发 startListening（apk-m231 试过，是坏主意）：第 2 发会立刻回 `客户端错误`，
+    // 而 AOSP/公开报告里的原话是 "concurrent startListening received - ignoring this call" ——
+    // 那是**我们自己的第二发**打出来的，不是引擎拒绝。要判"发出去没有"，靠服务声明与引擎回调，
+    // 不靠重发（2026-11-28 真机，见 docs/dev/verification/2026-11-27-M35.md v191）。
 
     /**
      * 这么久**一个回调都没有**才放弃。
@@ -267,32 +284,20 @@ internal object VoiceListen {
 
         AppLog.i(
             "ui",
-            "语音识别：开始听（${if (onDevice) "机内" else "服务端"}；先自检麦克风，再最多补发 " +
-                "$START_ATTEMPTS 次 startListening）",
+            "语音识别：开始听（${if (onDevice) "机内" else "服务端"}；先自检麦克风，再发一次 startListening）",
         )
 
-        // **重发**是这一轮的重点：AOSP 在服务还没连上时 `startListening` 只写 logcat —— 不抛异常、
-        // 不回调。发一次就干等，等于把"没发出去"和"引擎不说话"混成同一个现象（真机 11-28 15:46
-        // 两次 25 秒零回调就是这个形态）。所以每隔 START_RETRY_MS 重发一次，**拿到任何回调就停**。
-        // 若引擎其实已经受理，重发通常会回一个 `识别器忙` —— 那本身也是"第一发到了"的铁证。
-        var attempt = 0
+        // 只发一次（见上面那条警告）：补发会把还在等握手的会话搅掉。
         fun attemptStart() {
             if (closed || anyCallback) return
-            attempt++
             val sent = runCatching { recognizer.startListening(intent) }.isSuccess
-            AppLog.i(
-                "ui",
-                "语音识别：第 $attempt/$START_ATTEMPTS 次 startListening（${since()}ms）" +
-                    if (sent) "" else "，抛错",
-            )
+            AppLog.i("ui", "语音识别：已发出 startListening（${since()}ms）${if (sent) "" else "，抛错"}")
             if (!sent) {
                 closed = true
                 handler.removeCallbacks(watchdog)
                 runCatching { recognizer.destroy() }
                 onError("识别器启动失败")
-                return
             }
-            if (attempt < START_ATTEMPTS) handler.postDelayed({ attemptStart() }, START_RETRY_MS)
         }
 
         // 先自己录一小段（证"我们这条线能收音"），录完再开始听 —— 免得两边抢麦克风。
