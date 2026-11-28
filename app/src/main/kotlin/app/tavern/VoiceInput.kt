@@ -3,6 +3,9 @@ package app.tavern
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -87,9 +90,38 @@ internal object VoiceInput {
  * 调用方负责：先确认权限、并在离开页面时 [SpeechRecognizer.destroy]。
  * 这里只保证"拿到最终文本就回调一次"，不给 UI 加任何东西。
  */
+/**
+ * 一次识别会话：拿着识别器 + 那只看门狗，`stop()` 一次收干净。调用方不用管线程和计时器。
+ */
+internal class VoiceSession internal constructor(private val stopAction: () -> Unit) {
+    fun stop() = stopAction()
+}
+
 internal object VoiceListen {
     /**
-     * 开始听。返回识别器（调用方存着，结束/离开时 destroy）；这台机器没有识别服务时返回 null。
+     * 建完识别器**延后一拍**再 `startListening`。
+     *
+     * 为什么（2026-11-28 真机）：`createSpeechRecognizer` 只保证"对象建好了"，服务绑定是异步的；
+     * AOSP 里 `startListening()` 在没连上时走 `checkOpenConnection()` 失败 —— **只写 logcat，
+     * 不抛异常、不回调一句**。于是同一帧里 create + start 就等于什么都没发生：不报错、不出字。
+     * 那两次真机日志正是这个形态（`开始听` 之后 5.9s / 11.5s 内零回调）。150ms 用户感觉不到，
+     * 但足够服务绑上。
+     */
+    private const val START_DELAY_MS = 150L
+
+    /**
+     * 这么久**一个回调都没有**就当作服务没响应，放弃。
+     *
+     * 为什么不是干等：引擎自己的失败要 15 秒（v186 真机：15.7s 才报 11），对着空气等 15 秒
+     * 比报错还难受。4 秒足够任何健康的绑定 + `onReadyForSpeech`。
+     */
+    private const val SILENT_TIMEOUT_MS = 4000L
+
+    /**
+     * 开始听。返回会话（调用方存着，结束/离开时 [VoiceSession.stop]）；这台机器没有识别服务时返回 null。
+     *
+     * 启动阶段失败（`startListening` 抛错）走 `onError("识别器启动失败")`，不返回 null ——
+     * 因为真正的 start 发生在 [START_DELAY_MS] 之后，那时已经没法改返回值了。
      *
      * @param onPartial 中间结果（`EXTRA_PARTIAL_RESULTS`），用来边听边把字填进输入框
      * @param onFinal 最终结果（可能是空串：识别器没听清）
@@ -100,7 +132,7 @@ internal object VoiceListen {
         onPartial: (String) -> Unit,
         onFinal: (String) -> Unit,
         onError: (String) -> Unit,
-    ): SpeechRecognizer? {
+    ): VoiceSession? {
         if (!VoiceInput.available(context)) return null
         // 有机内（离线）识别就优先用它：不用连服务端，也就不会 `ERROR_SERVER_DISCONNECTED`
         //（2026-11-27 真机就是这条：允许权限后引擎在听，15 秒后服务端连接断开）
@@ -112,20 +144,69 @@ internal object VoiceListen {
                 SpeechRecognizer.createSpeechRecognizer(context)
             }
         }.getOrNull() ?: return null
-        AppLog.i("ui", "语音识别：开始听（${if (onDevice) "机内" else "服务端"}）")
+        val handler = Handler(Looper.getMainLooper())
+        val t0 = SystemClock.elapsedRealtime()
+        fun since() = SystemClock.elapsedRealtime() - t0
+        var closed = false
+        var anyCallback = false
         var partialLogged = false
+        var rmsPeak = 0f
+
+        val watchdog = Runnable {
+            if (!closed) {
+                closed = true
+                AppLog.w("ui", "语音识别：${SILENT_TIMEOUT_MS}ms 没有任何回调，放弃")
+                runCatching { recognizer.cancel() }
+                runCatching { recognizer.destroy() }
+                onError("识别服务没响应")
+            }
+        }
+        // 第一个回调就撤销看门狗：说明服务真的在跑，后面交给引擎自己的超时
+        fun alive(what: String) {
+            if (!anyCallback) {
+                anyCallback = true
+                handler.removeCallbacks(watchdog)
+                AppLog.i("ui", "语音识别：首个回调 $what（${since()}ms）")
+            }
+        }
+        val session = VoiceSession {
+            closed = true
+            handler.removeCallbacks(watchdog)
+            runCatching { recognizer.cancel() }
+            runCatching { recognizer.destroy() }
+        }
+
         recognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) = Unit
-            override fun onBeginningOfSpeech() = Unit
-            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onReadyForSpeech(params: Bundle?) {
+                alive("服务就绪")
+            }
+
+            // 这一句是"麦克风真的收到了声音"的判据（和"服务就绪"分开记）
+            override fun onBeginningOfSpeech() {
+                alive("听到声音")
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+                alive("音量")
+                if (rmsdB > rmsPeak) rmsPeak = rmsdB
+            }
+
             override fun onBufferReceived(buffer: ByteArray?) = Unit
-            override fun onEndOfSpeech() = Unit
-            override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+            override fun onEndOfSpeech() {
+                alive("说完了（${since()}ms）")
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {
+                alive("事件 $eventType")
+            }
 
             override fun onPartialResults(partialResults: Bundle?) {
+                if (closed) return
                 val text = partialResults?.text() ?: return
                 if (text.isEmpty()) return
-                // 第一条中间结果说明"麦克风真的收到了声音" —— 排障时这句最值钱
+                alive("中间结果")
+                // 第一条中间结果说明"麦克风收到了、引擎也认了" —— 排障时这句最值钱
                 if (!partialLogged) {
                     partialLogged = true
                     AppLog.i("ui", "语音识别：首个中间结果 ${text.length} 字")
@@ -134,25 +215,56 @@ internal object VoiceListen {
             }
 
             override fun onResults(results: Bundle?) {
-                onFinal(results?.text().orEmpty())
+                if (closed) return
+                val text = results?.text().orEmpty()
+                AppLog.i(
+                    "ui",
+                    "语音识别：结果 ${text.length} 字（${since()}ms，" +
+                        "备选 ${results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.size ?: 0} 条，" +
+                        "音量峰值 ${rmsPeak.toInt()}）",
+                )
+                onFinal(text)
             }
 
             override fun onError(error: Int) {
+                if (closed) return
+                AppLog.w(
+                    "ui",
+                    "语音识别：错误 ${errorName(error)}（${since()}ms，回调见过=${anyCallback}，" +
+                        "音量峰值 ${rmsPeak.toInt()}）",
+                )
                 onError(errorName(error))
             }
         })
+
         val intent = VoiceInput.recognizeIntent()
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PROMPT, "说话…")
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            // 机内识别时明确要离线，别又去连服务端
-            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, onDevice)
-        val ok = runCatching { recognizer.startListening(intent) }.isSuccess
-        if (!ok) {
-            runCatching { recognizer.destroy() }
-            return null
-        }
-        return recognizer
+        // 只有真要机内识别时才提这个要求：键存在本身就是一种要求，服务端引擎可能据此改走离线
+        if (onDevice) intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+
+        AppLog.i(
+            "ui",
+            "语音识别：开始听（${if (onDevice) "机内" else "服务端"}，延后 ${START_DELAY_MS}ms 等绑定）",
+        )
+        handler.postDelayed(
+            {
+                if (!closed) {
+                    val ok = runCatching { recognizer.startListening(intent) }.isSuccess
+                    if (!ok) {
+                        closed = true
+                        handler.removeCallbacks(watchdog)
+                        AppLog.w("ui", "语音识别：startListening 抛错（服务没绑上？）")
+                        runCatching { recognizer.destroy() }
+                        onError("识别器启动失败")
+                    }
+                }
+            },
+            START_DELAY_MS,
+        )
+        handler.postDelayed(watchdog, START_DELAY_MS + SILENT_TIMEOUT_MS)
+        return session
     }
 
     private fun Bundle.text(): String =
